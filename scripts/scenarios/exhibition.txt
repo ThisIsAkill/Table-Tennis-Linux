@@ -1,0 +1,16 @@
+# Main menu -> Exhibition (D-pad = Shift+arrows, A = space); accept each screen and watch.
+menu 3 shift+Down
+menu 5 space
+menu 10 space
+menu 15 space
+menu 20 space
+menu 25 space
+menu 30 space
+menu 35 space
+menu 42 space
+menu 50 space
+menu 58 space
+menu 66 space
+menu 74 space
+stop 90
+timeout 240

@@ -1,3 +1,2 @@
-# Boot to the main menu and stop.
-stop 3
-timeout 240
+stop 25
+timeout 200
