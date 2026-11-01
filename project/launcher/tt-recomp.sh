@@ -94,12 +94,22 @@ EOF
   mv -f "$config.tmp" "$config"
 fi
 
+args=(
+  "--game_data_root=$iso_path"
+  "--resolution_scale=$scale" "--draw_resolution_scale_x=$scale" "--draw_resolution_scale_y=$scale"
+  "--window_width=$width" "--window_height=$height" "--fullscreen=$fullscreen"
+  "--swap_post_effect=$aa" "--present_effect=$post"
+  "--show_fps=$show_fps" "--framerate=$framerate"
+  --protect_zero=false --gpu_allow_invalid_fetch_constants=true
+)
+# The engine rejects a flag given twice, so an extra flag replaces ours.
+for flag in "${extra[@]}"; do
+  [[ "$flag" == --*=* ]] || continue
+  name="${flag%%=*}"
+  for i in "${!args[@]}"; do
+    [[ "${args[i]%%=*}" == "$name" ]] && unset 'args[i]'
+  done
+done
+
 cd "$here"
-exec "$here/tabletennis" \
-  "--game_data_root=$iso_path" \
-  "--resolution_scale=$scale" "--draw_resolution_scale_x=$scale" "--draw_resolution_scale_y=$scale" \
-  "--window_width=$width" "--window_height=$height" "--fullscreen=$fullscreen" \
-  "--swap_post_effect=$aa" "--present_effect=$post" \
-  "--show_fps=$show_fps" "--framerate=$framerate" \
-  --protect_zero=false --gpu_allow_invalid_fetch_constants=true \
-  "${extra[@]}"
+exec "$here/tabletennis" "${args[@]}" "${extra[@]}"
