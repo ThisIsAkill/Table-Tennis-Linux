@@ -7,7 +7,9 @@ import zlib
 ORIGINAL_ARCHIVE = '2dd3b2e2141caf554a63b0791271ab256b9597238f3685ca9569776fb80e28bc'
 ORIGINAL_MOVIE = '75c3a8250db52a44461b5fea383c148ce938229231257f5cd7f8a985848dfa17'
 OFFLINE_MOVIE = '220d6f63f77b57f90b474d2f8fe33e2b077347e087160b49a98a2afd8214f13a'
-PATCHED_MOVIE = 'cb3f3eaf65f096ce66e783b364aebd9ca317d7a46a250cf841cda3efa6cde301'
+PATCHED_MOVIE = 'ebab047a621e51954a1bfc7c81aa36e3e6c996066453c04c256874d32e237513'
+# Earlier patch with PC SETTINGS as the last OPTIONS item; its regions are rewritten in full.
+PC_SETTINGS_LAST_MOVIE = 'cb3f3eaf65f096ce66e783b364aebd9ca317d7a46a250cf841cda3efa6cde301'
 
 
 # Small AVM1 assembler for the PC SETTINGS entry. Constant pool indices refer
@@ -50,14 +52,22 @@ def _fit(code, size):
 
 
 def _options_list(size):
-    """_global.LIST_OPTIONS with an eighth item ["PC SETTINGS", FE_GAME_OPTIONS, -1].
+    """_global.LIST_OPTIONS with ["PC SETTINGS", FE_GAME_OPTIONS, -1] added as the third item,
+    after AUDIO OPTIONS.
 
     Each item is [text, target frame state, -1]; Array pops its arguments, so
     the last item is pushed first. The frame state constants (FE_GAME_OPTIONS
-    21, FE_CONTROLLER 79, FE_AUDIO_OPTIONS 24) are inlined to make room.
+    21, FE_CONTROLLER 79, FE_AUDIO_OPTIONS 24) are inlined to make room. The
+    PC SETTINGS state is never used: the accept handler raises a flag for it.
     """
-    code = _push(_pool(279), _int(-1), _int(21), _str('PC SETTINGS'), _int(3), _pool(162)) + NEW_OBJECT
-    for state, text in ((21, 280), (21, 281), (21, 282), (21, 283), (79, 284), (24, 285), (21, 286)):
+    # In menu order; None marks PC SETTINGS. The texts are the movie's own t_* constants.
+    items = [(21, 286), (24, 285), None, (79, 284), (21, 283), (21, 282), (21, 281), (21, 280)]
+    code = _push(_pool(279))
+    for item in reversed(items):
+        if item is None:
+            code += _push(_int(-1), _int(21), _str('PC SETTINGS'), _int(3), _pool(162)) + NEW_OBJECT
+            continue
+        state, text = item
         code += (_push(_int(-1), _int(state), _pool(1)) + GET_VARIABLE + _push(_pool(text)) + GET_MEMBER +
                  _push(_int(3), _pool(162)) + NEW_OBJECT)
     code += _push(_int(8), _pool(162)) + NEW_OBJECT
@@ -65,14 +75,17 @@ def _options_list(size):
 
 
 def _options_accept(start, end, done):
-    """OPTIONS accept handler: items 3-6 raise the save/load flags; item 7 raises
-    _global.GLOBAL_PC_SETTINGS, which the executable polls to open its page."""
+    """OPTIONS accept handler: item 2 (PC SETTINGS) raises _global.GLOBAL_PC_SETTINGS,
+    which the executable polls to open its page; items 4-7 raise the save/load flags.
+    Every other item falls through to the game's own handling (its target frame state)."""
     flags = [_pool(214), _pool(215), _pool(216), _pool(217), _str('GLOBAL_PC_SETTINGS')]
     bodies = [_push(_reg(1), flag, _int(1)) + SET_MEMBER for flag in flags]
     sound = (_push(_reg(1), _pool(81), _reg(1), _pool(213)) + GET_MEMBER + SET_MEMBER +
              _push(_reg(1), _pool(83), _int(1)) + SET_MEMBER)
     # The first test compares the item index StoreRegister left on the stack.
-    tests = [_push(_int(3)) + STRICT_EQUALS] + [_push(_reg(0), _int(i)) + STRICT_EQUALS for i in (4, 5, 6, 7)]
+    tests = [_push(_int(2)) + STRICT_EQUALS] + [_push(_reg(0), _int(i)) + STRICT_EQUALS for i in (4, 5, 6, 7)]
+    # Test i jumps to body test_body[i]: index 2 -> the PC flag (body 4), 4-7 -> bodies 0-3.
+    test_body = [4, 0, 1, 2, 3]
     position = start + sum(len(test) + 5 for test in tests) + 5
     targets = []
     for body in bodies[:4]:
@@ -81,7 +94,8 @@ def _options_accept(start, end, done):
     targets.append(position)
     sound_at = position + len(bodies[4])
     code = b''
-    for test, target in zip(tests, targets):
+    for test, body in zip(tests, test_body):
+        target = targets[body]
         code += test
         code += _branch(IF, target - (start + len(code) + 5))
     code += _branch(JUMP, end - (start + len(code) + 5))
@@ -96,6 +110,13 @@ def _options_accept(start, end, done):
 def _add_pc_settings(movie):
     movie[0x1878F:0x188BC] = _options_list(0x188BC - 0x1878F)
     movie[0x13C0D:0x13D00] = _options_accept(0x13C0D, 0x13D00, 0x13E3C)
+    # The localisation script copies the translated labels into LIST_OPTIONS by row
+    # (LIST_OPTIONS[i][0] = t_...); move CONTROLS through LOAD SHARED SETTINGS down one row
+    # so PC SETTINGS keeps its own label in row 2.
+    for address, row in ((0x3AC880, 2), (0x3AC8AB, 3), (0x3AC8D6, 4), (0x3AC901, 5), (0x3AC92C, 6)):
+        if movie[address:address + 4] != b'\x96\x05\x00\x07' or movie[address + 4] not in (row, row + 1):
+            raise ValueError('Unexpected OPTIONS label code')
+        movie[address + 4] = row + 1
 
 
 def patch(path):
@@ -131,7 +152,7 @@ def patch(path):
     if current == PATCHED_MOVIE:
         print('Menu patches already verified.', flush=True)
         return
-    if current == OFFLINE_MOVIE:
+    if current in (OFFLINE_MOVIE, PC_SETTINGS_LAST_MOVIE):
         _add_pc_settings(movie)
     elif hashlib.sha256(archive).hexdigest() != ORIGINAL_ARCHIVE or current != ORIGINAL_MOVIE:
         raise ValueError('Unsupported menu archive; no changes made')
