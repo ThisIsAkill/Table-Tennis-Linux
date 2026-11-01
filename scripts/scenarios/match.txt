@@ -1,0 +1,17 @@
+# Main menu -> Tournament -> first match, rallying with space (timings from a 60 FPS run).
+menu 1 Return
+menu 7 Return
+menu 15 space
+menu 23 space
+menu 31 space
+menu 41 space
+menu 49 space
+menu 57 space
+menu 65 space
+menu 73 space
+menu 81 space
+menu 89 space
+menu 97 space
+menu 105 space
+stop 110
+timeout 300
