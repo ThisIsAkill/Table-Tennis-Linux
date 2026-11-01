@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include "offline_menu_device.h"
@@ -323,6 +324,17 @@ class TabletennisApp : public rex::ReXApp {
 
     // Hotkey ESC quits game cleanly to Windows
     rex::ui::RegisterBind("bind_quit_game", "Escape", "Quit Game", [this] {
+#if !defined(_WIN32)
+      // On Linux a stray Escape is easy to send (the Steam Deck's desktop layout maps B to
+      // it), so quitting needs a second press within two seconds.
+      static std::chrono::steady_clock::time_point last_escape{};
+      const auto now = std::chrono::steady_clock::now();
+      if (now - last_escape > std::chrono::seconds(2)) {
+        last_escape = now;
+        REXLOG_INFO("ESC pressed. Press ESC again within 2 seconds to quit.");
+        return;
+      }
+#endif
       REXLOG_INFO("ESC pressed. Exiting cleanly...");
       if (window()) {
         window()->RequestClose();
@@ -331,7 +343,7 @@ class TabletennisApp : public rex::ReXApp {
       }
     });
 
-    REXLOG_INFO("TabletennisApp: Binds for ESC (Quit) and F10 (FPS Toggle) are active");
+    REXLOG_INFO("TabletennisApp: Binds for ESC (Quit; twice on Linux) and F10 (FPS Toggle) are active");
   }
 
   void OnPostSetup() override {
