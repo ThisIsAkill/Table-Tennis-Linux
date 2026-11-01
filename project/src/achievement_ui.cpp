@@ -77,8 +77,8 @@ std::vector<float> SynthesizeChime(float pan) {
                   0.10f * std::sin(2.0f * kChimePi * freq * 3.01f * tt));
     }
   };
-  bell(0.38f, 1174.66f, 0.30f, 0.22f);  // D6 with the name
-  bell(0.58f, 1760.00f, 0.32f, 0.45f);  // A6 with the gamerscore
+  bell(0.38f, 1174.66f, 0.30f, 0.28f);  // D6 with the name
+  bell(0.58f, 1760.00f, 0.34f, 0.65f);  // A6 with the gamerscore
 
   float peak = 0.0f;
   for (float v : mono) peak = std::max(peak, std::fabs(v));

@@ -54,7 +54,7 @@ struct ToastConfig {
   float hold_seconds = 4.2f;    // fully visible, measured from the end of the entry
   float exit_seconds = 0.45f;   // slide/fade out
   float gap_seconds = 0.25f;    // pause between queued notifications
-  float sound_volume = 0.45f;   // unlock chime peak level, 0 = silent (also cvar achievement_sound)
+  float sound_volume = 0.75f;   // unlock chime peak level, 0 = silent (also cvar achievement_sound)
 };
 inline constexpr ToastConfig kToast{};
 
