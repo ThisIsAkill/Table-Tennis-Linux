@@ -45,9 +45,9 @@ namespace tabletennis::achievement_ui {
 enum class ToastAnchor { kTopCenter, kTopLeft, kTopRight, kBottomCenter, kBottomLeft, kBottomRight };
 
 struct ToastConfig {
-  // Top center keeps clear of the in-match score boxes (top corners), the rally counter
-  // (bottom right) and the shot meter (lower left).
-  ToastAnchor anchor = ToastAnchor::kTopCenter;
+  // Bottom right, sliding up from the screen edge like a desktop achievement popup. It can
+  // briefly cover the in-match rally counter; top center is the spot that clears all HUD.
+  ToastAnchor anchor = ToastAnchor::kBottomRight;
   float margin = 26.0f;         // distance from the screen edge
   float enter_seconds = 0.55f;  // slide/scale in, with the highlight sweep
   float hold_seconds = 4.2f;    // fully visible, measured from the end of the entry
