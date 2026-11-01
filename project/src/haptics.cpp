@@ -28,10 +28,11 @@ struct Pulse {
   uint16_t high;  // high-frequency motor
   uint32_t ms;
 };
-// Tunables. Hit: short, firm; menu: a light tick.
-constexpr Pulse kHitPulse{0x6000, 0xD000, 45};
-constexpr Pulse kMenuPulse{0x0000, 0x7000, 18};
-constexpr Pulse kSelectPulse{0x2000, 0x9000, 28};
+// Tunables. The Steam Deck renders mostly the low-frequency motor (the game's own rumble uses
+// only that one), so every pulse drives it. Hit: strong and short; menu: a light tick.
+constexpr Pulse kHitPulse{0xFFFF, 0xC000, 80};
+constexpr Pulse kMenuPulse{0x9000, 0x4000, 40};
+constexpr Pulse kSelectPulse{0xC000, 0x6000, 55};
 
 std::mutex g_mutex;
 Clock::time_point g_pulse_until{};
@@ -56,9 +57,13 @@ SDL_Gamepad* PlayerOnePad() {
   return pad;
 }
 
-void Play(const Pulse& pulse) {
+void Play(const Pulse& pulse, const char* what) {
   if (!REXCVAR_GET(haptics)) return;
   SDL_Gamepad* pad = PlayerOnePad();
+  static std::atomic<int> logged{0};
+  if (logged.fetch_add(1) < 6) {
+    REXLOG_INFO("Tabletennis: haptics {} on \"{}\"", what, pad ? SDL_GetGamepadName(pad) : "no pad");
+  }
   if (!pad) return;
   std::lock_guard lock(g_mutex);
   // Never weaken a stronger rumble the game is playing right now.
@@ -95,9 +100,9 @@ void OnPadSample(uint32_t user, uint16_t buttons, int16_t thumb_lx, int16_t thum
   state.buttons = buttons;
   if (user != 0 || InMatch() || !intro::MainMenuReached()) return;
   if (pressed & (kButtonA | kButtonB)) {
-    Play(kSelectPulse);
+    Play(kSelectPulse, "select");
   } else if ((pressed & kDpad) || stick_moved) {
-    Play(kMenuPulse);
+    Play(kMenuPulse, "menu");
   }
 }
 
@@ -111,7 +116,7 @@ extern "C" void sub_823F9318(PPCContext& ctx, uint8_t* base) {
   if (const uint32_t name = ctx.r4.u32) {
     const char* text = reinterpret_cast<const char*>(base + name);
     if (std::strcmp(text, "rallyCount") == 0) {
-      Play(kHitPulse);
+      Play(kHitPulse, "hit");
     } else if (std::strcmp(text, "ServeMeterX") == 0) {
       g_last_hud_ns.store(NowNs(), std::memory_order_relaxed);
     }
