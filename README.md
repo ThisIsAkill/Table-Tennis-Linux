@@ -22,7 +22,7 @@ Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and
 
 ### Achievements
 
-All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded; progress is saved in `user_data/achievements/`. Unlocks show an animated popup in the bottom right corner of the picture with a short chime (turn the sound off with `engine_flags=--achievement_sound=false`), and the achievements list opens with F7 or by holding the View/Back button for a moment (scroll with the D-pad or stick, close with B). Both are drawn in the game's own menu style, with the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`). The online-only achievements cannot be earned any more.
+All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded; progress is saved in `user_data/achievements/`. Unlocks show an animated popup in the bottom right corner of the picture with a short ping-pong sound (turn it off with `engine_flags=--achievement_sound=false`), and the achievements list opens with F7 or by holding the View/Back button for a moment (scroll with the D-pad or stick, close with B). Both are drawn in the game's own menu style, with the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`). The online-only achievements cannot be earned any more.
 
 <p align="center">
   <img src="docs/images/linux-achievement-popup.jpg" width="60%" alt="Achievement unlocked popup"><br>

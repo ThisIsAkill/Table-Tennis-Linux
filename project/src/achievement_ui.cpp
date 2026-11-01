@@ -32,9 +32,9 @@ namespace tabletennis::achievement_ui {
 namespace {
 
 // ---------------------------------------------------------------------------------------------
-// Unlock chime, synthesized here (nothing comes from the game): a soft whoosh while the pill
-// slides in, a ping-pong "pock" as it lands, then a bright two-note chime with the name and
-// the gamerscore. Timed to the default animation and panned towards the popup's side.
+// Unlock sound, synthesized here (nothing comes from the game): a soft whoosh while the pill
+// slides in, two ping-pong ball bounces as it lands, then a quick marimba-like roll up a G major
+// chord over a low thump. Timed to the default animation and panned towards the popup's side.
 // ---------------------------------------------------------------------------------------------
 constexpr int kChimeRate = 48000;
 constexpr float kChimePi = 3.14159265f;
@@ -43,42 +43,61 @@ std::vector<float> SynthesizeChime(float pan) {
   constexpr float kLength = 1.6f;
   const int frames = int(kLength * kChimeRate);
   std::vector<float> mono(frames, 0.0f);
-  auto at = [](float seconds) { return int(seconds * kChimeRate); };
-
-  // Whoosh: noise through a low-pass whose cutoff rises while the pill moves.
   std::minstd_rand rng(0x7AB1E);
   std::uniform_real_distribution<float> noise(-1.0f, 1.0f);
-  float low = 0.0f;
-  for (int i = 0; i < at(0.32f); ++i) {
-    const float u = float(i) / float(at(0.32f));
-    const float cutoff = 500.0f + 5500.0f * u;
-    const float k = 1.0f - std::exp(-2.0f * kChimePi * cutoff / kChimeRate);
-    low += k * (noise(rng) - low);
-    mono[i] += 0.16f * std::sin(kChimePi * u) * std::sin(kChimePi * u) * low;
+  auto mix = [&](float start, int count, auto&& sample) {
+    const int first = int(start * kChimeRate);
+    for (int i = 0; i < count && first + i < frames; ++i) {
+      mono[first + i] += sample(float(i) / kChimeRate);
+    }
+  };
+  auto seconds = [](float s) { return int(s * kChimeRate); };
+
+  // Whoosh: noise through a low-pass whose cutoff rises from 400 Hz to 4 kHz.
+  {
+    const int count = seconds(0.28f);
+    float low = 0.0f;
+    for (int i = 0; i < count; ++i) {
+      const float u = float(i) / float(count);
+      const float k = 1.0f - std::exp(-2.0f * kChimePi * (400.0f + 3600.0f * u) / kChimeRate);
+      low += k * (noise(rng) - low);
+      const float bell = std::sin(kChimePi * u);
+      mono[i] += 0.25f * 3.0f * bell * bell * low;
+    }
   }
-  // Pock: a short, high, fast-decaying tone with a click, like a ball on a table.
+  // Ball bounce: a hollow 1.65/2.9 kHz body with a short noisy click.
   auto pock = [&](float start, float gain) {
-    for (int i = 0; i < at(0.06f); ++i) {
-      const float tt = float(i) / kChimeRate;
-      const float env = std::exp(-tt / 0.012f);
-      const float click = i < at(0.002f) ? noise(rng) * 0.5f : 0.0f;
-      mono[at(start) + i] += gain * env * (std::sin(2.0f * kChimePi * 2350.0f * tt) + click);
-    }
+    mix(start, seconds(0.05f), [&](float t) {
+      const float body = std::exp(-t / 0.008f) * (std::sin(2.0f * kChimePi * 1650.0f * t) +
+                                                   0.6f * std::sin(2.0f * kChimePi * 2900.0f * t));
+      const float click = std::exp(-t / 0.0015f) * noise(rng);
+      return gain * (0.7f * body + 0.6f * click);
+    });
   };
-  pock(0.20f, 0.55f);
-  // Chime notes: bell-like partials with an exponential decay.
-  auto bell = [&](float start, float freq, float gain, float decay) {
-    for (int i = at(start); i < frames; ++i) {
-      const float tt = float(i - at(start)) / kChimeRate;
-      const float env = std::min(1.0f, tt / 0.004f) * std::exp(-tt / decay);
-      if (env < 1e-4f && tt > 0.05f) break;
-      mono[i] += gain * env *
-                 (std::sin(2.0f * kChimePi * freq * tt) + 0.32f * std::sin(2.0f * kChimePi * freq * 2.0f * tt) +
-                  0.10f * std::sin(2.0f * kChimePi * freq * 3.01f * tt));
-    }
+  pock(0.18f, 0.9f);
+  pock(0.30f, 0.7f);
+  // Mallet: fundamental plus a fast-fading 3.9x partial and a tiny strike click.
+  auto mallet = [&](float start, float freq, float gain, float decay) {
+    mix(start, seconds(0.9f), [=](float t) {
+      const float env = std::min(1.0f, t / 0.003f) * std::exp(-t / decay);
+      return gain * env *
+             (std::sin(2.0f * kChimePi * freq * t) +
+              0.25f * std::exp(-t / 0.05f) * std::sin(2.0f * kChimePi * freq * 3.9f * t) +
+              0.08f * std::exp(-t / 0.01f) * std::sin(2.0f * kChimePi * freq * 9.2f * t));
+    });
   };
-  bell(0.38f, 1174.66f, 0.30f, 0.28f);  // D6 with the name
-  bell(0.58f, 1760.00f, 0.34f, 0.65f);  // A6 with the gamerscore
+  const float roll[4] = {392.00f, 493.88f, 587.33f, 783.99f};  // G4 B4 D5 G5
+  for (int i = 0; i < 4; ++i) {
+    mallet(0.40f + i * 0.045f, roll[i], i < 3 ? 0.55f : 0.75f, i < 3 ? 0.30f : 0.45f);
+  }
+  // Low thump under the chord: a 98 Hz tone with a quick downward pitch drop.
+  {
+    float phase = 0.0f;
+    mix(0.40f, seconds(0.25f), [&](float t) {
+      phase += 2.0f * kChimePi * 98.0f * (1.0f + 1.5f * std::exp(-t / 0.02f)) / kChimeRate;
+      return 0.5f * std::exp(-t / 0.07f) * std::sin(phase);
+    });
+  }
 
   float peak = 0.0f;
   for (float v : mono) peak = std::max(peak, std::fabs(v));
