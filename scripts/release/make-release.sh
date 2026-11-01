@@ -1,55 +1,109 @@
 #!/usr/bin/env bash
-# Builds the game-free release assets for the installer's fast path.
+# Builds and signs the game-free release files for the Linux installer.
 #
-#   scripts/release/make-release.sh --out DIR [--version V] [--from-worktree] [--gui FILE]
-#                                   [--jobs N] [--work DIR] [--only toolchain|sdk|package]
+#   scripts/release/make-release.sh --out DIR --version X.Y.Z [--title TEXT] [--notes-file FILE]
+#                                   [--key FILE] [--from-worktree] [--gui FILE] [--jobs N]
+#                                   [--work DIR] [--only toolchain|sources|sdk|package|manifest]
+#   scripts/release/make-release.sh --gen-key [--key FILE]
 #
-# Writes into DIR:
-#   tt-toolchain-<id>.tar.zst                slim Ubuntu 24.04 system with clang 20, lld, CMake,
-#                                            Ninja and Python: enough to generate and compile the
-#                                            game against the prebuilt SDK (<id>: recipe hash)
-#   tt-sdk-<patchset>-x86-64-v3.tar.zst      ReXGlue SDK v0.10.0 with project/sdk-patches, built in
-#                                            Ubuntu 24.04 for x86-64-v3, relocatable
-#   install-table-tennis-linux-x86_64.tar.gz the download for players: source snapshot, the
-#                                            graphical installer and README.txt
-#   manifest.json                            what tt-install.sh reads (see scripts/install/README.md)
+# Writes into DIR (scripts/release/README.md has the release steps and key handling):
+#   tt-toolchain-<id>.tar.zst                slim Ubuntu 24.04 toolchain for the fast path (<id>:
+#                                            hash of toolchain-slim-recipe.sh)
+#   tt-toolchain-sources-<id>.tar            source packages for that toolchain (GPL and other
+#                                            copyleft licenses); listed in the manifest, never
+#                                            downloaded by the installer
+#   tt-sdk-<patchset>-x86-64-v3.tar.zst      ReXGlue SDK v0.10.0 with project/sdk-patches
+#   install-table-tennis-linux-x86_64.tar.gz what players download: source snapshot with a VERSION
+#                                            file, the graphical installer and README.txt
+#   manifest.json, manifest.json.sig         file list with sizes and SHA256s, version, title and
+#                                            notes; detached Ed25519 signature
 #
-# None of these contain anything from the game: the toolchain and SDK are built from public
-# sources only, and the package is a snapshot of tracked files. --from-worktree snapshots the
-# working tree (tracked and untracked, not ignored files) instead of HEAD, for local testing.
-# The build happens in rootless Ubuntu 24.04 systems under --work (default .tools/release).
+# --version takes the plain version (1.0.0); the release tag is linux-v1.0.0. --notes-file holds
+# one note per line (leading "- " is dropped). The manifest is signed with --key (default
+# ~/.config/tt-recomp-release/key), whose public half must be scripts/install/release-public-key.
+# Nothing here contains anything from the game. --from-worktree snapshots the working tree
+# (tracked and untracked, not ignored) instead of HEAD, for local tests. The build happens in
+# rootless Ubuntu 24.04 systems under --work (default .tools/release).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
-out=""; version=""; from_worktree=0; gui=""; jobs="$(nproc)"; work="$root/.tools/release"; only=""
+out=""; version=""; title=""; notes_file=""; from_worktree=0; gui=""; jobs="$(nproc)"
+work="$root/.tools/release"; only=""; gen_key=0
+key="${XDG_CONFIG_HOME:-$HOME/.config}/tt-recomp-release/key"
+pubkey_file="$root/scripts/install/release-public-key"
 while (($#)); do
   case "$1" in
     --out) out="${2:?}"; shift ;;
     --version) version="${2:?}"; shift ;;
+    --title) title="${2:?}"; shift ;;
+    --notes-file) notes_file="${2:?}"; shift ;;
+    --key) key="${2:?}"; shift ;;
+    --gen-key) gen_key=1 ;;
     --from-worktree) from_worktree=1 ;;
     --gui) gui="${2:?}"; shift ;;
     --jobs) jobs="${2:?}"; shift ;;
     --work) work="${2:?}"; shift ;;
     --only) only="${2:?}"; shift ;;
-    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
   shift
 done
+command -v openssl >/dev/null || { echo "missing openssl (signing)" >&2; exit 1; }
+
+# Public key as 64 hex digits from an Ed25519 private key file (PEM).
+public_hex() { openssl pkey -in "$1" -pubout -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n'; }
+
+if ((gen_key)); then
+  [[ -e "$key" ]] && { echo "$key already exists; refusing to overwrite a release key" >&2; exit 1; }
+  mkdir -p "$(dirname "$key")"; chmod 700 "$(dirname "$key")"
+  (umask 077 && openssl genpkey -algorithm ed25519 -out "$key")
+  chmod 600 "$key"
+  {
+    echo "# Ed25519 public key that release manifests (manifest.json.sig) are checked against."
+    echo "# Generated by scripts/release/make-release.sh --gen-key; the private key never enters the repository."
+    public_hex "$key"; echo
+  } > "$pubkey_file"
+  echo "Private key: $key (mode 600; back it up offline)."
+  echo "Public key:  $pubkey_file ($(public_hex "$key"))"
+  exit 0
+fi
+
 [[ -n "$out" ]] || { echo "--out DIR is required" >&2; exit 2; }
+version="${version#linux-}"; version="${version#v}"
+case "$only" in ""|package|manifest)
+  [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]] || { echo "--version X.Y.Z is required (got '$version')" >&2; exit 2; } ;;
+esac
+[[ -z "$notes_file" || -f "$notes_file" ]] || { echo "notes file $notes_file not found" >&2; exit 2; }
 for tool in bwrap zstd tar git python3 sha256sum curl; do
   command -v "$tool" >/dev/null || { echo "missing $tool" >&2; exit 1; }
 done
 mkdir -p "$out" "$work"
 out="$(realpath "$out")"; work="$(realpath "$work")"
-[[ -n "$version" ]] || version="$(git -C "$root" describe --tags --always --dirty 2>/dev/null || date +%Y.%m.%d)"
 patchset="$("$root/scripts/install/sdk-patchset-id.sh")"
 slim_recipe="$here/toolchain-slim-recipe.sh"
 toolchain_id="$(sha256sum "$slim_recipe" | cut -c1-12)"
 toolchain_asset="tt-toolchain-$toolchain_id.tar.zst"
+sources_asset="tt-toolchain-sources-$toolchain_id.tar"
 sdk_asset="tt-sdk-$patchset-x86-64-v3.tar.zst"
 package_asset="install-table-tennis-linux-x86_64.tar.gz"
+tc="$work/toolchain-$toolchain_id"
+llvm_src_url="https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/llvm-project-20.1.8.src.tar.xz"
+llvm_src_sha256="6898f963c8e938981e6c4a302e83ec5beb4630147c7311183cf61069af16333d"
 say() { echo "== $*"; }
+want() { [[ -z "$only" || "$only" == "$1" ]]; }
+
+run_in() {  # rootfs dir, extra bwrap args..., -- command...
+  local dir="$1"; shift
+  local extra=()
+  while [[ "$1" != -- ]]; do extra+=("$1"); shift; done
+  shift
+  bwrap --bind "$dir" / --dev /dev --proc /proc --tmpfs /tmp --unshare-user --uid 0 --gid 0 \
+    --unshare-pid --die-with-parent --clearenv --setenv HOME /root --setenv LANG C.UTF-8 \
+    --setenv DEBIAN_FRONTEND noninteractive \
+    --setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    --ro-bind "$(realpath /etc/resolv.conf)" /etc/resolv.conf "${extra[@]}" "$@"
+}
 
 # Fresh Ubuntu 24.04 base system with a recipe applied, rootless (bubblewrap + user namespace).
 make_rootfs() {  # dir recipe
@@ -69,10 +123,7 @@ make_rootfs() {  # dir recipe
   chmod -R u+rwX "$dir"
   echo 'APT::Sandbox::User "root";' > "$dir/etc/apt/apt.conf.d/99tt-rootless"
   mkdir -p "$dir/opt/tt"; cp "$recipe" "$dir/opt/tt/recipe.sh"
-  bwrap --bind "$dir" / --dev /dev --proc /proc --tmpfs /tmp --unshare-user --uid 0 --gid 0 \
-    --unshare-pid --die-with-parent --clearenv --setenv HOME /root --setenv LANG C.UTF-8 \
-    --setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-    --ro-bind "$(realpath /etc/resolv.conf)" /etc/resolv.conf /bin/bash /opt/tt/recipe.sh
+  run_in "$dir" -- /bin/bash /opt/tt/recipe.sh
   rm -rf "${dir:?}/opt/tt" "${dir:?}/etc/apt/apt.conf.d/99tt-rootless"
   echo "$name $sum" > "$dir/.tt-base"
 }
@@ -83,14 +134,78 @@ pack() {  # source dir, output file
   mv -f "$2.part" "$2"
 }
 
-if [[ -z "$only" || "$only" == toolchain ]]; then
-  say "Slim toolchain $toolchain_id"
-  tc="$work/toolchain-$toolchain_id"
-  [[ -f "$tc/.tt-base" ]] || make_rootfs "$tc" "$slim_recipe"
+if want toolchain || want sources; then
+  [[ -f "$tc/.tt-base" ]] || { say "Building the slim toolchain $toolchain_id"; make_rootfs "$tc" "$slim_recipe"; }
+fi
+
+if want toolchain; then
+  say "Toolchain $toolchain_id"
+  # Where the sources are: shipped with the toolchain so the obligation travels with it.
+  cat > "$tc/SOURCES.txt" <<EOF
+Table Tennis installer build toolchain $toolchain_id (Ubuntu 24.04 base + LLVM clang 20.1.8)
+
+This file system contains Ubuntu packages, some under the GNU GPL or other licenses that require
+offering their source code. The complete corresponding sources of every such package, at the
+exact versions installed here (listed in /var/lib/dpkg/status), are published next to this
+toolchain as the release file
+
+    $sources_asset
+
+of the same release (https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases), and in
+the Ubuntu archive (https://archive.ubuntu.com/ubuntu/pool/, https://launchpad.net/ubuntu/+source/).
+Each package's license is in /usr/share/doc/<package>/copyright.
+
+clang 20.1.8 in /opt/llvm is LLVM's official release build (Apache-2.0 WITH LLVM-exception,
+/opt/llvm/LICENSE.TXT). Its source:
+    $llvm_src_url
+    SHA256 $llvm_src_sha256
+EOF
   pack "$tc" "$out/$toolchain_asset"
 fi
 
-if [[ -z "$only" || "$only" == sdk ]]; then
+if want sources && [[ ! -f "$out/$sources_asset" ]]; then
+  say "Toolchain sources $toolchain_id"
+  sw="$work/sources-rootfs"
+  [[ -e "$sw" ]] && { chmod -R u+rwX "$sw"; rm -rf "${work:?}/sources-rootfs"; }
+  cp -a --reflink=auto "$tc" "$sw"
+  sed -i 's/^Types: deb$/Types: deb deb-src/' "$sw"/etc/apt/sources.list.d/ubuntu.sources
+  echo 'APT::Sandbox::User "root";' > "$sw/etc/apt/apt.conf.d/99tt-rootless"
+  srcdir="$work/sources"
+  [[ -e "$srcdir" ]] && rm -rf "${work:?}/sources"
+  mkdir -p "$srcdir/ubuntu"
+  # Every installed package whose copyright file names a copyleft license contributes its source
+  # package, at the installed version.
+  run_in "$sw" --bind "$srcdir" /out -- /bin/bash -euo pipefail -c '
+    apt-get update -q >/dev/null
+    dpkg-query -W -f "\${source:Package} \${source:Version} \${Package}\n" | sort -u > /tmp/pkgs
+    : > /tmp/wanted
+    while read -r src ver pkg; do
+      f="/usr/share/doc/$pkg/copyright"
+      if [ ! -f "$f" ] || grep -qiE "GPL|General Public License|MPL|Mozilla Public|EPL|CDDL" "$f"; then
+        echo "$src $ver" >> /tmp/wanted
+      fi
+    done < /tmp/pkgs
+    sort -u /tmp/wanted > /out/INDEX.txt
+    cd /out/ubuntu
+    missing=0
+    while read -r src ver; do
+      apt-get source -q --download-only "$src=$ver" >/dev/null 2>&1 || { echo "MISSING $src $ver" >> /out/INDEX.txt; missing=1; }
+    done < /out/INDEX.txt
+    [ "$missing" = 0 ] || echo "some source packages were not found (see INDEX.txt)" >&2'
+  {
+    echo "Sources for $toolchain_asset"
+    echo
+    echo "ubuntu/  Ubuntu source packages (.dsc, .orig, .debian) for every installed package whose"
+    echo "         copyright file names a copyleft license; INDEX.txt lists source package and version."
+    echo "LLVM     $llvm_src_url"
+    echo "         SHA256 $llvm_src_sha256 (the clang in /opt/llvm is LLVM's official 20.1.8 build)"
+  } > "$srcdir/README.txt"
+  tar -C "$work" --numeric-owner --owner=0 --group=0 --sort=name -cf "$out/$sources_asset.part" sources
+  mv -f "$out/$sources_asset.part" "$out/$sources_asset"
+  chmod -R u+rwX "$sw"; rm -rf "${work:?}/sources-rootfs" "${work:?}/sources"
+fi
+
+if want sdk; then
   say "SDK $patchset"
   # The installer's own SDK build (rootless Ubuntu 24.04, clang 20, x86-64-v3), without an ISO.
   "$root/scripts/install/tt-install.sh" --sdk-only --toolchain rootfs --cache "$work/sdk-cache" --jobs "$jobs" \
@@ -112,8 +227,8 @@ if [[ -z "$only" || "$only" == sdk ]]; then
   rm -rf "${work:?}/sdk-stage"
 fi
 
-if [[ -z "$only" || "$only" == package ]]; then
-  say "Player package"
+if want package; then
+  say "Player package $version"
   if [[ -z "$gui" ]]; then
     "$root/tools/installer/build.sh" >/dev/null
     gui="$root/tools/installer/bin/install-table-tennis"
@@ -132,9 +247,10 @@ if [[ -z "$only" || "$only" == package ]]; then
   bad="$(cd "$top" && find . \( -iname '*.iso' -o -iname '*.xex' -o -iname '*.rpf' -o -path '*/generated/*' \
     -o -path './private_work*' -o -path './dist*' -o -path './.tools*' -o -path './logs*' \) -print | head -5)"
   [[ -z "$bad" ]] || { echo "refusing to package game-derived files:"; echo "$bad"; exit 1; } >&2
+  echo "$version" > "$top/VERSION"
   install -m 755 "$gui" "$top/install-table-tennis"
   cat > "$top/README.txt" <<EOF
-Rockstar Games presents Table Tennis - Linux and Steam Deck installer ($version)
+Rockstar Games presents Table Tennis - Linux and Steam Deck installer, version $version
 
 Double-click install-table-tennis, or run it from a terminal:
 
@@ -143,6 +259,7 @@ Double-click install-table-tennis, or run it from a terminal:
 Choose your own Xbox 360 Table Tennis ISO (USA/Europe, Title ID 545407DF) and press Install.
 The game is built on your computer from your disc; nothing from the game is downloaded.
 The first install downloads build tools (about $(( ($(stat -c %s "$out/$toolchain_asset" 2>/dev/null || echo 0) + $(stat -c %s "$out/$sdk_asset" 2>/dev/null || echo 0)) / 1048576 )) MB) once.
+Later versions are offered in the game (OPTIONS > PC SETTINGS > UPDATES) and install themselves.
 
 Command line instead of the window:
 
@@ -155,13 +272,14 @@ EOF
   rm -rf "${work:?}/package"
 fi
 
-say "Manifest"
-python3 -I - "$out" "$version" "$patchset" "$toolchain_id" "$toolchain_asset" "$sdk_asset" "$package_asset" <<'PY'
+say "Manifest $version"
+python3 -I - "$out" "$version" "$patchset" "$toolchain_id" "$title" "$notes_file" \
+  "toolchain=$toolchain_asset" "sources=$sources_asset" "sdk=$sdk_asset" "package=$package_asset" <<'PY'
 import hashlib, json, os, sys, time
-out, version, patchset, toolchain_id, *names = sys.argv[1:]
-kinds = ['toolchain', 'sdk', 'package']
+out, version, patchset, toolchain_id, title, notes_file, *assets = sys.argv[1:]
 files = []
-for kind, name in zip(kinds, names):
+for entry in assets:
+    kind, name = entry.split('=', 1)
     path = os.path.join(out, name)
     if not os.path.exists(path):
         continue
@@ -170,10 +288,23 @@ for kind, name in zip(kinds, names):
         for block in iter(lambda: f.read(1 << 20), b''):
             digest.update(block)
     files.append({'kind': kind, 'name': name, 'size': os.path.getsize(path), 'sha256': digest.hexdigest()})
+notes = []
+if notes_file:
+    for line in open(notes_file, encoding='utf-8'):
+        line = line.strip()
+        if line.startswith(('- ', '* ')):
+            line = line[2:].strip()
+        if line:
+            notes.append(line)
+now = time.gmtime()
 manifest = {
     'format': 1,
     'version': version,
-    'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    'title': title or f'Table Tennis for Linux {version}',
+    'notes': notes,
+    'published': time.strftime('%Y-%m-%d', now),
+    'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', now),
+    'tag': f'linux-v{version}',
     'sdk_patchset': patchset,
     'toolchain_id': toolchain_id,
     'arch': 'x86_64',
@@ -181,7 +312,20 @@ manifest = {
     'files': files,
 }
 with open(os.path.join(out, 'manifest.json'), 'w') as f:
-    json.dump(manifest, f, indent=2)
+    json.dump(manifest, f, indent=2, ensure_ascii=False)
     f.write('\n')
-print(json.dumps(manifest, indent=2))
+print(json.dumps(manifest, indent=2, ensure_ascii=False))
 PY
+
+say "Signature"
+[[ -f "$key" ]] || { echo "signing key $key not found (create it once with --gen-key)" >&2; exit 1; }
+want_hex="$(grep -v '^#' "$pubkey_file" | tr -dc '0-9a-fA-F')"
+have_hex="$(public_hex "$key")"
+if [[ "${TT_RELEASE_PUBKEY_FILE:-}" != "" ]]; then want_hex="$(grep -v '^#' "$TT_RELEASE_PUBKEY_FILE" | tr -dc '0-9a-fA-F')"; fi
+[[ "${want_hex,,}" == "${have_hex,,}" ]] \
+  || { echo "the key $key does not match $pubkey_file; installs would refuse this release" >&2; exit 1; }
+rm -f "$out/manifest.json.sig"
+openssl pkeyutl -sign -inkey "$key" -rawin -in "$out/manifest.json" -out "$out/manifest.json.sig"
+python3 -I -B "$root/scripts/install/tt_install.py" verify-sig "$out/manifest.json" "$out/manifest.json.sig" \
+  "${TT_RELEASE_PUBKEY_FILE:-$pubkey_file}"
+echo "Release files in $out; tag: linux-v$version"

@@ -42,6 +42,7 @@ struct Options {
   std::optional<std::filesystem::path> cache;  // --cache DIR, only when set
   bool steam = true;
   bool desktop = true;
+  std::vector<std::string> args;  // when set, run the backend with exactly these arguments
 };
 
 enum class LineKind { Step, Progress, Log, Warn, Error, Result, Done, Plain };

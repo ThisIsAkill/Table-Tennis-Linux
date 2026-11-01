@@ -657,7 +657,7 @@ void App::DrawDone() {
   dl->AddCircle(badge, br, White(0.4f), 48, 2.0f * s);
   Tick(dl, badge, br * 1.2f, White(), 6.0f * s * std::max(pop, 0.1f));
 
-  HeadlineCentered(f, cx, p.y0 + 136.0f * s, 46.0f * s, "Ready to play");
+  HeadlineCentered(f, cx, p.y0 + 136.0f * s, 46.0f * s, UpdateMode() ? "Update installed" : "Ready to play");
   const fs::path dir = inst.done_dir.empty() ? Prefix() : fs::path(inst.done_dir);
   const std::string where = "Installed to " + dir.string();
   BodyTextCentered(f, cx, p.y0 + 200.0f * s, p.w() - 80.0f * s, where.c_str(), Grey(), 14.5f * s);
@@ -774,7 +774,12 @@ void App::DrawError() {
   if (ui.Button("copy", copy, "Copy log", Style::Secondary)) CopyLog();
   bx = copy.x1 + 12.0f * s;
   const Rect back{bx, y + 4.0f * s, bx + 130.0f * s, y + bh - 4.0f * s};
-  if (ui.Button("back", back, "Options", Style::Quiet)) Enter(Screen::Options);
+  if (UpdateMode()) {
+    const Rect current{bx, y + 4.0f * s, bx + 260.0f * s, y + bh - 4.0f * s};
+    if (ui.Button("back", current, "Play the current version", Style::Quiet)) FinishUpdate(10);
+  } else if (ui.Button("back", back, "Options", Style::Quiet)) {
+    Enter(Screen::Options);
+  }
   y += bh + 12.0f * s;
   if (process && !process->LogFile().empty()) {
     const std::string saved = "Log saved to " + process->LogFile().string();

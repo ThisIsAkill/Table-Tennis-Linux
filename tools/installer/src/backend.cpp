@@ -137,6 +137,11 @@ Process::~Process() {
 }
 
 std::vector<std::string> Process::CommandLine(const Options& o) const {
+  if (!o.args.empty()) {
+    std::vector<std::string> argv = {o.backend.string()};
+    argv.insert(argv.end(), o.args.begin(), o.args.end());
+    return argv;
+  }
   std::vector<std::string> argv = {o.backend.string(), "--iso", o.iso.string(), "--prefix",
                                    o.prefix.string(), "--steam", o.steam ? "yes" : "no",
                                    "--desktop", o.desktop ? "yes" : "no"};

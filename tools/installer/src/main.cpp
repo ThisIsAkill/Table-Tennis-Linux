@@ -1,6 +1,8 @@
 // main.cpp - window, renderer, input and the frame loop of the Table Tennis installer.
 //
 //   install-table-tennis [--iso PATH] [--backend SCRIPT] [--scan-dir DIR]... [--size WxH]
+//   install-table-tennis --update INSTALL_DIR
+//   install-table-tennis --verify-manifest MANIFEST SIGNATURE PUBLIC_KEY
 //
 // The installer finds scripts/install/tt-install.sh by walking up from its own location, so it
 // can live at the root of the unpacked source tree or in tools/installer/bin. --backend points
@@ -22,13 +24,20 @@
 #define STBI_NO_STDIO
 #include <stb_image.h>
 
+#include "../third_party/monocypher/monocypher-ed25519.h"
+
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
+#include <vector>
 
 extern "C" {
 extern const unsigned char tt_icon_data[], tt_icon_end[];
@@ -44,7 +53,45 @@ void Usage() {
       "  --backend SCRIPT  use this setup script instead of scripts/install/tt-install.sh\n"
       "  --scan-dir DIR    also look for disc images here (may be repeated)\n"
       "  --size WxH        initial window size (default 1280x800)\n"
+      "  --update DIR      update the install in DIR with its stored settings (used by the\n"
+      "                    game's launcher; exit code 0 updated, 10 play the current version)\n"
+      "  --verify-manifest MANIFEST SIGNATURE PUBLIC_KEY\n"
+      "                    check a release manifest's Ed25519 signature and exit (0 valid)\n"
       "  --help            this text\n");
+}
+
+// Checks the detached Ed25519 signature (64 raw bytes) of a release manifest against the public
+// key file (64 hex digits; '#' starts a comment). Prints the verdict; exit 0 valid, 1 invalid,
+// 2 unreadable input.
+int VerifyManifest(const char* manifest_path, const char* sig_path, const char* key_path) {
+  auto read = [](const char* path, std::string& out) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    return true;
+  };
+  std::string manifest, sig, key_text;
+  if (!read(manifest_path, manifest) || !read(sig_path, sig) || !read(key_path, key_text)) {
+    std::printf("unreadable input\n");
+    return 2;
+  }
+  std::string hex;
+  bool comment = false;
+  for (char c : key_text) {
+    if (c == '#') comment = true;
+    if (c == '\n') comment = false;
+    if (!comment && std::isxdigit(static_cast<unsigned char>(c))) hex += c;
+  }
+  if (sig.size() != 64 || hex.size() != 64) {
+    std::printf("malformed signature or key\n");
+    return 2;
+  }
+  uint8_t key[32];
+  for (int i = 0; i < 32; ++i) key[i] = uint8_t(std::stoi(hex.substr(size_t(i) * 2, 2), nullptr, 16));
+  const bool valid = crypto_ed25519_check(reinterpret_cast<const uint8_t*>(sig.data()), key,
+                                          reinterpret_cast<const uint8_t*>(manifest.data()), manifest.size()) == 0;
+  std::printf(valid ? "valid\n" : "invalid signature\n");
+  return valid ? 0 : 1;
 }
 
 // Decodes the largest PNG entry of the embedded .ico into RGBA pixels.
@@ -126,6 +173,14 @@ int main(int argc, char** argv) {
     if (arg == "--help" || arg == "-h") {
       Usage();
       return 0;
+    } else if (arg == "--verify-manifest") {
+      if (i + 3 >= argc) {
+        std::fprintf(stderr, "--verify-manifest needs MANIFEST SIGNATURE PUBLIC_KEY\n");
+        return 2;
+      }
+      return VerifyManifest(argv[i + 1], argv[i + 2], argv[i + 3]);
+    } else if (arg == "--update") {
+      config.update_dir = std::filesystem::absolute(value());
     } else if (arg == "--iso") {
       config.iso = value();
     } else if (arg == "--backend") {
@@ -145,7 +200,11 @@ int main(int argc, char** argv) {
   }
 
   const std::filesystem::path exe_dir = tt::sys::ExecutableDir();
-  if (!backend_arg.empty()) {
+  if (config.update_dir && backend_arg.empty()) {
+    // The install keeps its own updater, so updates work after the download folder is gone.
+    config.backend = *config.update_dir / "tools" / "tt-update.sh";
+    config.backend_overridden = true;
+  } else if (!backend_arg.empty()) {
     config.backend = std::filesystem::absolute(backend_arg);
     config.backend_overridden = true;
   } else {
@@ -158,19 +217,19 @@ int main(int argc, char** argv) {
   SDL_SetAppMetadata("Table Tennis Setup", "1.0", "tt-recomp.installer");
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
     std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
-    return 1;
+    return config.update_dir ? 20 : 1;  // 20: no window possible; the launcher updates without one
   }
   SDL_Window* window = SDL_CreateWindow("Table Tennis Setup", config.width, config.height,
                                         SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
   if (!window) {
     std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
-    return 1;
+    return config.update_dir ? 20 : 1;
   }
   SDL_SetWindowMinimumSize(window, 800, 520);
   SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
   if (!renderer) {
     std::fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
-    return 1;
+    return config.update_dir ? 20 : 1;
   }
   SDL_SetRenderVSync(renderer, 1);
   SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
@@ -412,5 +471,5 @@ int main(int argc, char** argv) {
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   SDL_Quit();
-  return 0;
+  return app.exit_code;
 }

@@ -358,6 +358,22 @@ print("release_patchset=%s release_version=%s" % (shlex.quote(m["sdk_patchset"])
 ' "$1" 2>/dev/null)" || return 1
   eval "$vars"
 }
+# Release manifests must carry a valid Ed25519 signature from the project's key
+# (release-public-key). The installer binary checks it with Monocypher when it runs here (exit
+# 0 valid, 1 invalid); otherwise tt_install.py does the same check in Python.
+pubkey="${TT_RELEASE_PUBKEY_FILE:-$here/release-public-key}"
+verify_manifest() {  # manifest sig
+  local gui
+  for gui in "$src/install-table-tennis" "$src/tools/installer/bin/install-table-tennis"; do
+    [[ -x "$gui" ]] || continue
+    "$gui" --verify-manifest "$1" "$2" "$pubkey" >> "$logfile" 2>&1
+    case $? in 0) return 0 ;; 1) return 1 ;; esac
+  done
+  python3 -I -B "$here/tt_install.py" verify-sig "$1" "$2" "$pubkey" >> "$logfile" 2>&1
+}
+refuse_unsigned() {
+  die "The release manifest from $release_url $1, so it cannot be trusted and nothing was installed. If this keeps happening, report it; you can still build everything locally with --no-prebuilt."
+}
 fast_check() {  # can the fast path run? sets fast_reason when not
   ((no_prebuilt)) && { fast_reason="--no-prebuilt"; return 1; }
   ((sdk_only)) && return 1
@@ -367,14 +383,24 @@ fast_check() {  # can the fast path run? sets fast_reason when not
   rootfs_usable || { fast_reason="$(userns_hint)"; return 1; }
   mkdir -p "$fast_dir"
   if ((!offline)); then
-    rm -f "$fast_dir/manifest.json.new"
-    if downloader "$release_url/manifest.json" "$fast_dir/manifest.json.new" >> "$logfile" 2>&1 \
-       && read_manifest "$fast_dir/manifest.json.new"; then
+    rm -f "$fast_dir/manifest.json.new" "$fast_dir/manifest.json.sig.new"
+    if downloader "$release_url/manifest.json" "$fast_dir/manifest.json.new" >> "$logfile" 2>&1; then
+      downloader "$release_url/manifest.json.sig" "$fast_dir/manifest.json.sig.new" >> "$logfile" 2>&1 \
+        || refuse_unsigned "has no signature (manifest.json.sig)"
+      verify_manifest "$fast_dir/manifest.json.new" "$fast_dir/manifest.json.sig.new" \
+        || refuse_unsigned "does not match its signature (it was changed, or not signed with this project's key)"
+      read_manifest "$fast_dir/manifest.json.new" || die "The release manifest from $release_url cannot be read."
+      log "Release manifest signature verified."
+      command mv -f "$fast_dir/manifest.json.sig.new" "$fast_dir/manifest.json.sig"
       command mv -f "$fast_dir/manifest.json.new" "$fast_dir/manifest.json"
     else
       rm -f "$fast_dir/manifest.json.new"
       log "Release manifest not available from $release_url."
     fi
+  fi
+  if [[ -f "$fast_dir/manifest.json" ]]; then
+    { [[ -f "$fast_dir/manifest.json.sig" ]] && verify_manifest "$fast_dir/manifest.json" "$fast_dir/manifest.json.sig"; } \
+      || refuse_unsigned "(cached copy) does not match its signature"
   fi
   [[ -f "$fast_dir/manifest.json" ]] && read_manifest "$fast_dir/manifest.json" \
     || { fast_reason="the prebuilt build tools could not be downloaded$( ((offline)) && echo " (offline)")"; return 1; }
@@ -729,6 +755,26 @@ defaults=("resolution=$res" "framerate=60" "fullscreen=$fs" "show_fps=false" "aa
   done
 } > "$ini.tmp" && command mv -f "$ini.tmp" "$ini"
 log "Settings: $ini ($( [[ $res == 800p ]] && echo "Steam Deck defaults: 800p fullscreen" || echo "defaults: 1080p windowed" ) for new keys; existing choices kept)."
+# Version and stored choices, for updates (tools/tt-update.sh) and the game's UPDATES page.
+# A source tree without a VERSION file is a development build: no .tt-version, no updates.
+if [[ -f "$src/VERSION" ]]; then
+  head -n 1 "$src/VERSION" | tr -d '[:space:]' > "$prefix/.tt-version"; echo >> "$prefix/.tt-version"
+  log "Version $(head -n 1 "$prefix/.tt-version")."
+else
+  rm -f "$prefix/.tt-version"
+fi
+rm -f "$prefix/.tt-update.json"
+python3 -I -c '
+import json, sys
+iso, prefix, cache, steam, desktop, url, version = sys.argv[1:]
+data = {"iso": iso, "prefix": prefix, "cache": cache, "steam": steam == "yes",
+        "desktop": desktop == "yes", "release_url": url, "version": version}
+with open(prefix + "/.tt-install.json.part", "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+' "$iso" "$prefix" "$cache" "$steam" "$desktop" "$release_url" "$(head -n 1 "$prefix/.tt-version" 2>/dev/null)" \
+  && command mv -f "$prefix/.tt-install.json.part" "$prefix/.tt-install.json" \
+  || warn "Could not save the install settings (.tt-install.json); automatic updates will not work."
 {
   echo "installed=$(date -Iseconds)"
   echo "source=$(git -C "$src" describe --always --dirty 2>/dev/null || echo unknown)"

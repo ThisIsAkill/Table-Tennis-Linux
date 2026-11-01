@@ -13,6 +13,8 @@ export DEBIAN_FRONTEND=noninteractive
 llvm_version=20.1.8
 llvm_sha256=1ead36b3dfcb774b57be530df42bec70ab2d239fbce9889447c7a29a4ddc1ae6
 apt-get update
+# Bring the base system to the current archive versions, so every source package is still published.
+apt-get -y upgrade
 # The SDK tools and runtime library link the X11/XCB/Wayland client libraries (SDL).
 apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
   libstdc++-14-dev libgcc-14-dev libc6-dev binutils cmake ninja-build python3 \

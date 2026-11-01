@@ -136,6 +136,34 @@ and exFAT install folders work when the drive allows running programs. The folde
 execute permission is refused with an explanation. Paths may contain spaces; with podman or
 docker they must not contain `:`.
 
+## Versions and updates
+
+A release package carries a `VERSION` file; installing it writes `<install dir>/.tt-version`
+(a source checkout without `VERSION` installs a development build: no `.tt-version`, no
+updates). The install also records the choices it was made with in `.tt-install.json` (ISO,
+install folder, cache, Steam, desktop entry, release URL) and keeps what updates need:
+`install-table-tennis` (the graphical installer), `tools/tt-update.sh`, `tools/tt_install.py` and
+`tools/release-public-key`.
+
+- **Check:** at each start with `check_updates=true` (default) the launcher runs
+  `tools/tt-update.sh <dir> --check-only` in the background, at most every 6 hours
+  (`.tt-update-check`), with 5 s network timeouts. If the signed manifest's version is newer
+  than `.tt-version`, it writes `.tt-update.json` (`version`, `title`, `notes`, `published`),
+  which the game shows in OPTIONS > PC SETTINGS > UPDATES.
+- **Update:** when the game exits after the player chose to update (`.tt-update-requested`), or
+  before starting when `auto_update=true` and an update is known, the launcher runs
+  `install-table-tennis --update <dir>` when a display is available (progress screen; on success
+  it returns 0 and the launcher starts the new version; on failure "Play the current version"
+  returns 10), otherwise `tools/tt-update.sh <dir>` without a window (log in `logs/update.log`).
+- `tt-update.sh` fetches `manifest.json` and `manifest.json.sig`, refuses a manifest whose
+  Ed25519 signature does not match `release-public-key`, downloads the player package, checks its
+  SHA256, unpacks it to `<cache>/update/<version>/` and runs that version's `tt-install.sh` with
+  the stored choices (the ISO path is taken from `tt-recomp.ini`). The install is atomic as
+  always; settings, saves and the Steam shortcut are kept.
+
+`tt-install.sh` also refuses an unsigned or altered manifest (`@@error`) instead of falling back.
+For tests, `TT_RELEASE_PUBKEY_FILE` points both scripts at another public key.
+
 ## Shortcuts
 
 - **Application menu:** `~/.local/share/applications/tt-recomp.desktop` (removed again with

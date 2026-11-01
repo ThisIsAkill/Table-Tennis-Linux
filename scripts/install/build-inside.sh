@@ -154,6 +154,12 @@ install -m 755 "$src/project/launcher/tt-recomp.sh" "$stage/"
 install -m 644 "$src/project/assets/tabletennis.ico" "$stage/"
 install -m 644 "$src"/project/assets/fonts/*.ttf "$stage/fonts/"
 install -m 644 "$src/project/tools/disc_image.py" "$src/project/tools/patch_menu.py" "$stage/tools/"
+# The updater and what it needs, so updates work after the downloaded installer folder is gone.
+install -m 755 "$src/scripts/install/tt-update.sh" "$stage/tools/"
+install -m 644 "$src/scripts/install/tt_install.py" "$src/scripts/install/release-public-key" "$stage/tools/"
+for gui in "$src/install-table-tennis" "$src/tools/installer/bin/install-table-tennis"; do
+  if [[ -x "$gui" ]]; then install -m 755 "$gui" "$stage/install-table-tennis"; break; fi
+done
 cp -r "$src/licenses/." "$stage/licenses/"
 if [[ -d "$sdk/share/licenses" ]]; then
   mkdir -p "$stage/licenses/SDK"

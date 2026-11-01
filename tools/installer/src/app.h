@@ -27,6 +27,7 @@ struct Config {
   bool backend_overridden = false;  // --backend was given (verification asks the script)
   std::vector<std::filesystem::path> extra_scan_dirs;  // --scan-dir, for testing
   std::optional<std::filesystem::path> iso;            // --iso skips the welcome screen
+  std::optional<std::filesystem::path> update_dir;     // --update: update this install
   int width = 1280, height = 800;
 };
 
@@ -91,6 +92,14 @@ struct App {
   Screen screen = Screen::Welcome;
   float screen_entered = 0.0f;
   bool quit = false;
+  // Process exit code. In update mode the launcher reads it: 0 updated (start the new version),
+  // 10 start the current version, 1 do not start the game.
+  int exit_code = 0;
+  bool UpdateMode() const { return config.update_dir.has_value(); }
+  void FinishUpdate(int code) {
+    exit_code = code;
+    quit = true;
+  }
   std::optional<Modal> modal;
 
   // Welcome.
@@ -136,7 +145,10 @@ struct App {
   void StartCheck();
   void BuildLocations();
   const Location& CurrentLocation() const { return locations[size_t(location)]; }
-  std::filesystem::path Prefix() const { return CurrentLocation().prefix; }
+  // The install folder: the one being updated in update mode, else the chosen location.
+  std::filesystem::path Prefix() const {
+    return config.update_dir ? *config.update_dir : CurrentLocation().prefix;
+  }
   std::optional<std::filesystem::path> CacheDir() const;
   bool EnoughSpace(std::string* why = nullptr) const;
   void StartInstall();

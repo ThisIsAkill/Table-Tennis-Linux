@@ -8,6 +8,8 @@
     tt_install.py steam-shortcut --name N --exe PATH --start-dir DIR --icon PNG [--art-dir DIR]
     tt_install.py steam-find --exe PATH --art-dir DIR
     tt_install.py quote TEXT
+    tt_install.py verify-sig MANIFEST SIGNATURE PUBLIC_KEY    (Ed25519; exit 0 valid)
+    tt_install.py manifest-get MANIFEST                       (shell-quoted fields)
 
 The ISO is only ever opened for reading. Nothing here downloads anything.
 """
@@ -404,6 +406,144 @@ def cmd_steam_find(args):
     return 0 if found else 1
 
 
+# --- Ed25519 signature check (RFC 8032), for release manifests ----------------------------------
+# Used when the installer binary (which carries Monocypher) is not at hand. Verification only;
+# timing does not matter because nothing secret is involved.
+_P = 2 ** 255 - 19
+_L = 2 ** 252 + 27742317777372353535851937790883648493
+_D = -121665 * pow(121666, _P - 2, _P) % _P
+_I = pow(2, (_P - 1) // 4, _P)
+
+
+def _inv(x):
+    return pow(x, _P - 2, _P)
+
+
+def _add(a, b):
+    x1, y1, z1, t1 = a
+    x2, y2, z2, t2 = b
+    A = (y1 - x1) * (y2 - x2) % _P
+    B = (y1 + x1) * (y2 + x2) % _P
+    C = 2 * t1 * t2 * _D % _P
+    Dd = 2 * z1 * z2 % _P
+    E, F, G, H = B - A, Dd - C, Dd + C, B + A
+    return (E * F % _P, G * H % _P, F * G % _P, E * H % _P)
+
+
+def _mul(k, point):
+    result = (0, 1, 1, 0)
+    while k:
+        if k & 1:
+            result = _add(result, point)
+        point = _add(point, point)
+        k >>= 1
+    return result
+
+
+def _decode_point(data):
+    if len(data) != 32:
+        return None
+    y = int.from_bytes(data, 'little')
+    sign = y >> 255
+    y &= (1 << 255) - 1
+    if y >= _P:
+        return None
+    x2 = (y * y - 1) * _inv(_D * y * y + 1) % _P
+    x = pow(x2, (_P + 3) // 8, _P)
+    if (x * x - x2) % _P:
+        x = x * _I % _P
+    if (x * x - x2) % _P:
+        return None
+    if x == 0 and sign:
+        return None
+    if x & 1 != sign:
+        x = _P - x
+    return (x, y, 1, x * y % _P)
+
+
+def _point_equal(a, b):
+    return (a[0] * b[2] - b[0] * a[2]) % _P == 0 and (a[1] * b[2] - b[1] * a[2]) % _P == 0
+
+
+_GY = 4 * _inv(5) % _P
+_BASE = _decode_point(_GY.to_bytes(32, 'little'))
+
+
+def ed25519_verify(public, message, signature):
+    if len(public) != 32 or len(signature) != 64:
+        return False
+    A = _decode_point(public)
+    R = _decode_point(signature[:32])
+    if A is None or R is None:
+        return False
+    s = int.from_bytes(signature[32:], 'little')
+    if s >= _L:
+        return False
+    h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), 'little') % _L
+    return _point_equal(_mul(s, _BASE), _add(R, _mul(h, A)))
+
+
+def read_public_key(path):
+    hexdigits = ''.join(line.split('#', 1)[0] for line in Path(path).read_text().splitlines())
+    hexdigits = ''.join(c for c in hexdigits if c in '0123456789abcdefABCDEF')
+    if len(hexdigits) != 64:
+        raise ValueError('malformed public key file')
+    return bytes.fromhex(hexdigits)
+
+
+def cmd_verify_sig(args):
+    ok = ed25519_verify(read_public_key(args.key), Path(args.manifest).read_bytes(), Path(args.sig).read_bytes())
+    print('valid' if ok else 'invalid signature')
+    return 0 if ok else 1
+
+
+def cmd_manifest_get(args):
+    """Prints the manifest fields the shell scripts need, shell-quoted (eval'd by them)."""
+    import json
+    import re
+    import shlex
+    m = json.loads(Path(args.manifest).read_text())
+    out = {'release_version': str(m.get('version', '')), 'release_patchset': str(m.get('sdk_patchset', '')),
+           'release_title': str(m.get('title', '')), 'release_published': str(m.get('published', ''))}
+    for f in m.get('files', []):
+        prefix = {'toolchain': 'tc', 'sdk': 'sdk', 'package': 'pkg'}.get(f.get('kind'))
+        if not prefix:
+            continue
+        if not re.fullmatch(r'[A-Za-z0-9._-]+', f['name']) or not re.fullmatch(r'[0-9a-f]{64}', f['sha256']):
+            raise ValueError('malformed manifest entry')
+        out.update({prefix + '_name': f['name'], prefix + '_size': str(int(f['size'])), prefix + '_sha': f['sha256']})
+    for key, value in out.items():
+        print(f'{key}={shlex.quote(value)}')
+
+
+def cmd_update_json(args):
+    """Writes the game's update notice (.tt-update.json) from a manifest."""
+    import json
+    m = json.loads(Path(args.manifest).read_text())
+    notes = m.get('notes', [])
+    data = {'version': str(m.get('version', '')), 'title': str(m.get('title', '')),
+            'notes': [str(n) for n in notes] if isinstance(notes, list) else [str(notes)],
+            'published': str(m.get('published', ''))}
+    out = Path(args.out)
+    temp = out.with_name(out.name + '.part')
+    temp.write_text(json.dumps(data, indent=2) + '\n')
+    temp.replace(out)
+
+
+def cmd_newer(args):
+    """Exit 0 if version A is newer than B (numeric dotted parts, optional leading v)."""
+    def parts(v):
+        import re
+        v = v.strip().lstrip('vV')
+        m = re.match(r'[0-9]+(\.[0-9]+)*', v)
+        return [int(x) for x in m.group(0).split('.')] if m else []
+    a, b = parts(args.a), parts(args.b)
+    if not a or not b:
+        return 1
+    n = max(len(a), len(b))
+    return 0 if a + [0] * (n - len(a)) > b + [0] * (n - len(b)) else 1
+
+
 def cmd_quote(args):
     from urllib.parse import quote
     print(quote(args.text, safe=''))
@@ -425,6 +565,10 @@ def main():
     s.add_argument('--art-dir')
     s = sub.add_parser('steam-find'); s.add_argument('--exe', required=True); s.add_argument('--art-dir')
     s = sub.add_parser('quote'); s.add_argument('text')
+    s = sub.add_parser('verify-sig'); s.add_argument('manifest'); s.add_argument('sig'); s.add_argument('key')
+    s = sub.add_parser('manifest-get'); s.add_argument('manifest')
+    s = sub.add_parser('update-json'); s.add_argument('manifest'); s.add_argument('out')
+    s = sub.add_parser('newer'); s.add_argument('a'); s.add_argument('b')
     args = p.parse_args()
     try:
         return globals()['cmd_' + args.cmd.replace('-', '_')](args) or 0

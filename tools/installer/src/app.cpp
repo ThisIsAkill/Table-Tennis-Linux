@@ -32,6 +32,12 @@ App::App(Config c) : config(std::move(c)) {
   const fs::path home = sys::HomeDir();
   home_device = sys::DeviceOf(home);
   home_free = sys::FreeBytes(home);
+  if (UpdateMode()) {
+    // Straight to the progress screen: the install's stored choices drive tools/tt-update.sh.
+    exit_code = 10;
+    StartInstall();
+    return;
+  }
   scanner.Start(config.extra_scan_dirs);
   if (config.iso) {
     ChooseIso(*config.iso);
@@ -295,9 +301,15 @@ void App::StartInstall() {
   }
   backend::Options options;
   options.backend = config.backend;
+  if (UpdateMode()) options.args = {config.update_dir->string()};
   options.iso = iso;
-  options.prefix = Prefix();
-  options.cache = CacheDir();
+  if (UpdateMode()) {
+    // No location was chosen (the options screen is skipped); the install updates itself.
+    options.prefix = *config.update_dir;
+  } else {
+    options.prefix = Prefix();
+    options.cache = CacheDir();
+  }
   options.steam = steam;
   options.desktop = desktop;
   std::string error;
@@ -422,6 +434,10 @@ void App::PumpBackend(float dt) {
 
   if (!process->Running()) {
     const std::optional<int> code = process->ExitCode();
+    if (inst.cancelled && UpdateMode()) {
+      FinishUpdate(10);  // the installed version is untouched
+      return;
+    }
     if (inst.cancelled) {
       Notice("Setup cancelled. Nothing was changed that cannot be redone.");
       Enter(Screen::Options);
@@ -452,6 +468,10 @@ void App::CancelInstall() {
 }
 
 void App::Play() {
+  if (UpdateMode()) {
+    FinishUpdate(0);  // the launcher starts the new version
+    return;
+  }
   const fs::path dir = inst.done_dir.empty() ? Prefix() : fs::path(inst.done_dir);
   const fs::path launcher = dir / "tt-recomp.sh";
   if (sys::LaunchDetached({launcher.string()}, dir)) {
@@ -488,6 +508,8 @@ void App::Frame() {
     check_done_at = ui.f.t;
   }
   if (screen == Screen::Install) PumpBackend(ui.f.dt);
+  // An update hands back to the launcher shortly after it finished.
+  if (UpdateMode() && screen == Screen::Done && SinceEnter() > 2.0f) FinishUpdate(0);
 
   // Back (B / Escape) per screen; the modal takes it first.
   if (ui.f.back && !custom_path_editing) {
@@ -512,10 +534,18 @@ void App::Frame() {
                "Stop setup", "Keep going", true, [this] { CancelInstall(); }});
           break;
         case Screen::Done:
+          if (UpdateMode()) {
+            FinishUpdate(0);
+            break;
+          }
           Ask({"Close setup?", "The game is installed. You can start it from Steam or the install folder.", "Close",
                "Stay", false, [this] { quit = true; }});
           break;
         case Screen::Error:
+          if (UpdateMode()) {
+            FinishUpdate(10);
+            break;
+          }
           Enter(Screen::Options);
           break;
       }

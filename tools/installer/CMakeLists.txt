@@ -83,7 +83,12 @@ add_executable(install-table-tennis
   src/backend.cpp
   src/iso_check.cpp
   src/system.cpp
-  src/assets.S)
+  src/assets.S
+  third_party/monocypher/monocypher.c
+  third_party/monocypher/monocypher-ed25519.c)
+# Monocypher (2-clause BSD or CC0; third_party/monocypher) checks release manifest signatures.
+set_source_files_properties(third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c
+  PROPERTIES LANGUAGE C COMPILE_OPTIONS "-w")
 target_include_directories(install-table-tennis PRIVATE "${TT_THIRDPARTY_DIR}/stb")
 target_compile_options(install-table-tennis PRIVATE -Wall -Wextra)
 set_source_files_properties(src/main.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
