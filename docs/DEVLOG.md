@@ -35,3 +35,11 @@ The dark arena turned out to be a bug in the graphics SDK, not in the game code.
 The fix is a few lines, kept as a patch in `project/sdk-patches/` that `build.sh` applies to the pinned SDK source before building it. A second small patch stops the SDK from loading RenderDoc into every run whenever it is installed. The floor is now red and lit with the table's shadow on it, the players' faces and arms are lit, and the character select screen shows the player properly instead of a dark silhouette. Two runs agree.
 
 Getting there needed better tools than screenshots: a way to launch the game under RenderDoc from the test runner and capture a burst of frames in a match, and a few headless RenderDoc scripts that find a draw by its shader, read the vertex shader outputs, and dump a full shader debug trace for a pixel.
+
+## 2026-10-31 — Soak test, Steam Deck package and the PC options
+
+A 20-minute unattended session of back-to-back Exhibition games ran without a crash, with correct lighting throughout. Matches ran at about 47 frames per second in the virtual display, which looked like a problem until a smaller window brought them to a flat 60: the cost is copying frames into the virtual display, not the game. Profiling still turned up three threads that spin instead of sleeping (the audio worker, the frame pacer and a game thread waiting on the GPU), which costs nothing on a desktop but matters on the Steam Deck's smaller CPU.
+
+The Linux build needed glibc 2.44, newer than SteamOS ships, so there is now a portable build made in an Ubuntu 24.04 container with clang 20 and the C++ runtime bundled alongside the game. It needs glibc 2.38, contains nothing from the disc, and a small setup script extracts and patches the menu files from your own ISO on the Deck and picks the new 1280x800 preset. It plays a full match on this PC; the Deck itself is next.
+
+The PC options from the Windows version all work on Linux: 120 FPS and uncapped play at well over 100 frames per second, the 1440p and 4K internal resolutions and both FXAA modes hold 60 with no errors. The exception is AMD FidelityFX (FSR and CAS sharpening): its build runs AMD's Windows shader compiler under Wine, which rejects macro definitions with the current glslang, so Linux keeps bilinear filtering for now.

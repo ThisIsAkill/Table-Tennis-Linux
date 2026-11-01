@@ -62,7 +62,11 @@ stage "Preparing game build support"
 # to the pinned source before it is built. The installed SDK records which set it was built
 # with, so changing the patches triggers a rebuild.
 sdk_patches=("$root"/project/sdk-patches/*.patch)
-patch_stamp="$(cat "${sdk_patches[@]}" 2>/dev/null | sha256sum | cut -c1-16)"
+# FidelityFX (FSR/CAS presentation) stays off on Linux: its build runs AMD's Windows shader
+# compiler under Wine, and that fails with current glslang ("Macro redefined" in the FSR2
+# permutations). Explicit so a reused build tree cannot inherit another setting.
+sdk_options=(-DREXGLUE_ENABLE_FIDELITYFX=OFF)
+patch_stamp="$({ cat "${sdk_patches[@]}" 2>/dev/null; echo "${sdk_options[*]}"; } | sha256sum | cut -c1-16)"
 if [[ -z "$sdk" ]]; then
   sdk="$root/.tools/rexglue-sdk"
   if [[ ! -x "$sdk/bin/rexglue" || "$(cat "$sdk/.tt-sdk-patches" 2>/dev/null)" != "$patch_stamp" ]]; then
@@ -79,7 +83,7 @@ if [[ -z "$sdk" ]]; then
       echo "Applied SDK patch $(basename "$p")."
     done
     echo "Building ReXGlue SDK $rexglue_tag from source (linux-amd64-release)."
-    (cd "$src" && cmake --preset linux-amd64 "-DCMAKE_INSTALL_PREFIX=$sdk" \
+    (cd "$src" && cmake --preset linux-amd64 "-DCMAKE_INSTALL_PREFIX=$sdk" "${sdk_options[@]}" \
       && cmake --build --preset linux-amd64-release --parallel "$jobs" \
       && cmake --install out/build/linux-amd64 --config Release) || die "SDK build failed"
     echo "$patch_stamp" > "$sdk/.tt-sdk-patches"
