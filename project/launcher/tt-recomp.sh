@@ -26,6 +26,7 @@ show_fps="false"
 aa="none"
 post="bilinear"
 aspect="letterbox"
+gamemode="auto"
 engine_flags=""
 save=0
 extra=()
@@ -43,6 +44,7 @@ set_option() {
     aa) aa="$value" ;;
     post) post="$value" ;;
     aspect) aspect="$value" ;;
+    gamemode) gamemode="$value" ;;
     engine_flags) engine_flags="$value" ;;
     *) return 1 ;;
   esac
@@ -85,6 +87,7 @@ case "$show_fps" in true|false) ;; *) die "show_fps must be true or false" ;; es
 case "$aa" in none|fxaa|fxaa_extreme) ;; *) die "unknown aa '$aa' (none, fxaa, fxaa_extreme)" ;; esac
 case "$post" in fsr|cas|bilinear) ;; *) die "unknown post '$post' (fsr, cas, bilinear)" ;; esac
 case "$aspect" in letterbox|fill) ;; *) die "unknown aspect '$aspect' (letterbox, fill)" ;; esac
+case "$gamemode" in auto|off) ;; *) die "gamemode must be auto or off" ;; esac
 
 [[ -n "$iso_path" ]] || die "no ISO set. Add iso_path=/path/to/TableTennis.iso to $config or pass --iso=PATH."
 [[ -f "$iso_path" ]] || die "ISO not found: $iso_path"
@@ -99,6 +102,7 @@ show_fps=$show_fps
 aa=$aa
 post=$post
 aspect=$aspect
+gamemode=$gamemode
 engine_flags=$engine_flags
 EOF
   mv -f "$config.tmp" "$config"
@@ -139,4 +143,11 @@ for flag in "${extra[@]}"; do
 done
 
 cd "$here"
-exec "$here/tabletennis" "${args[@]}" "${extra[@]}"
+# Feral GameMode switches the CPU to its performance profile while the game runs. The GPU
+# command thread is single-threaded and CPU-bound on handhelds such as the Steam Deck, whose
+# balanced profile kept the cores near 2.4 GHz instead of boosting.
+launch=("$here/tabletennis")
+if [[ "$gamemode" == auto ]] && command -v gamemoderun >/dev/null 2>&1; then
+  launch=(gamemoderun "$here/tabletennis")
+fi
+exec "${launch[@]}" "${args[@]}" "${extra[@]}"

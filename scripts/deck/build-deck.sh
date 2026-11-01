@@ -19,7 +19,7 @@ jobs="$(nproc)"
 "$root/scripts/deck/podman.sh" run --rm --userns=keep-id -v "$root:/work:Z" -w /work \
   localhost/tt-recomp-deck:latest bash -euo pipefail -c '
 jobs='"$jobs"'
-flags="-march=x86-64-v2"
+flags="-march=x86-64-v3"
 sdk=/work/.tools/deck/sdk
 if [[ "$(cat "$sdk/.tt-sdk-patches" 2>/dev/null)" != "$(cat /work/.tools/rexglue-sdk/.tt-sdk-patches)" ]]; then
   cmake -S /work/.tools/rexglue-src -B /work/.tools/deck/sdk-build -G Ninja \
