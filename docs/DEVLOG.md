@@ -43,3 +43,11 @@ A 20-minute unattended session of back-to-back Exhibition games ran without a cr
 The Linux build needed glibc 2.44, newer than SteamOS ships, so there is now a portable build made in an Ubuntu 24.04 container with clang 20 and the C++ runtime bundled alongside the game. It needs glibc 2.38, contains nothing from the disc, and a small setup script extracts and patches the menu files from your own ISO on the Deck and picks the new 1280x800 preset. It plays a full match on this PC; the Deck itself is next.
 
 The PC options from the Windows version all work on Linux: 120 FPS and uncapped play at well over 100 frames per second, the 1440p and 4K internal resolutions and both FXAA modes hold 60 with no errors. The exception is AMD FidelityFX (FSR and CAS sharpening): its build runs AMD's Windows shader compiler under Wine, which rejects macro definitions with the current glslang, so Linux keeps bilinear filtering for now.
+
+## 2026-11-01 — Running on the Steam Deck
+
+The game now runs on a Steam Deck (SteamOS 3.8) at a steady 60 frames per second, with the Deck's own controls working as a real gamepad. Launched outside Steam, the Deck's desktop controller layout turns B into Escape, which quit the game on the spot, so on Linux Escape now has to be pressed twice within two seconds. Started as a non-Steam game, Steam presents the controls as an Xbox-style pad and everything works.
+
+The first sessions had occasional hitches. Lining up the frame-rate log with the shader log showed why: every dip came right after a burst of new graphics pipelines being compiled, about nineteen in two seconds against almost none otherwise. The game keeps those pipelines in its cache and builds them at startup next time, and the third session started with 153 of them ready and ran without dips.
+
+Profiling here also turned up the SDK's audio worker spinning a whole CPU core. Waits on Linux are cut into one-millisecond slices, and the remaining time was rounded down to whole milliseconds, so the last fraction became a zero-length sleep and the thread spun instead of sleeping. Sleeping for the real remaining time brought it from 99% of a core to about 5%, which on the Deck's four cores leaves room for the game. On the Deck the processor now sits about 70% idle during a match and the graphics chip at about 40%.
