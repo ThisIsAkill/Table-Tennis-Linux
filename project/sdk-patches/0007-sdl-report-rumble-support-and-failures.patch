@@ -1,0 +1,51 @@
+diff --git a/src/input/sdl/sdl_input_driver.cpp b/src/input/sdl/sdl_input_driver.cpp
+index c7c440d..82f5af7 100644
+--- a/src/input/sdl/sdl_input_driver.cpp
++++ b/src/input/sdl/sdl_input_driver.cpp
+@@ -9,6 +9,7 @@
+  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
+  */
+ 
++#include <atomic>
+ #include <array>
+ #include <filesystem>
+ 
+@@ -239,10 +240,17 @@ X_RESULT SDLInputDriver::SetDeviceVibration(DeviceId id, X_INPUT_VIBRATION* vibr
+   // XInput vibration holds until the guest changes it, but SDL rumble expires,
+   // and a zero duration expires on the next SDL_UpdateJoysticks. Arm it for
+   // SDL's maximum instead; each call cancels the previous effect anyway.
+-  return SDL_RumbleGamepad(controller->sdl, vibration->left_motor_speed,
+-                           vibration->right_motor_speed, kRumbleDurationMs)
+-             ? X_ERROR_SUCCESS
+-             : X_ERROR_FUNCTION_FAILED;
++  if (!SDL_RumbleGamepad(controller->sdl, vibration->left_motor_speed,
++                         vibration->right_motor_speed, kRumbleDurationMs)) {
++    // Report a failing pad once instead of failing silently on every frame.
++    static std::atomic<bool> reported{false};
++    if (!reported.exchange(true)) {
++      REXLOG_WARN("SDL: rumble on \"{}\" failed: {}", SDL_GetGamepadName(controller->sdl),
++                  SDL_GetError());
++    }
++    return X_ERROR_FUNCTION_FAILED;
++  }
++  return X_ERROR_SUCCESS;
+ }
+ 
+ X_RESULT SDLInputDriver::GetDeviceKeystroke(DeviceId id, uint32_t flags,
+@@ -451,11 +459,14 @@ void SDLInputDriver::OnControllerDeviceAddedLocked(const SDL_Event& event) {
+       "JoystickType({}), "
+       "GameControllerType({}), "
+       "VendorID(0x{:04X}), "
+-      "ProductID(0x{:04X})",
++      "ProductID(0x{:04X}), "
++      "Rumble({})",
+       SDL_GetGamepadName(controller),
+       static_cast<int>(SDL_GetJoystickType(SDL_GetGamepadJoystick(controller))),
+       static_cast<int>(SDL_GetGamepadType(controller)), SDL_GetGamepadVendor(controller),
+-      SDL_GetGamepadProduct(controller));
++      SDL_GetGamepadProduct(controller),
++      SDL_GetBooleanProperty(SDL_GetGamepadProperties(controller),
++                             SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false));
+ 
+   // SDL_GetGamepadPlayerIndex is deliberately ignored: on Windows it reports
+   // the XInput user index the OS assigned, which is unrelated to connection
