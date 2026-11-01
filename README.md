@@ -112,7 +112,7 @@ The installer builder validates every embedded source file against the public al
 
 ## Linux (work in progress)
 
-This fork adds a native Linux build (CachyOS first, Steam Deck next) using the Vulkan backend of ReXGlue SDK v0.10.0. It currently boots through the copyright screen into the Rockstar logo intro; gameplay, audio, controller and saves are not yet verified on Linux.
+This fork adds a native Linux build (CachyOS first, Steam Deck next) using the Vulkan backend of ReXGlue SDK v0.10.0. Matches play with correct lighting, audio and saves; a 20-minute unattended session ran without problems. Real gamepad and Steam Deck tests are still in progress.
 
 Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer.
 
@@ -121,9 +121,13 @@ Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and
 ./dist/tt-recomp.sh
 ```
 
-`build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (pass `--sdk PATH` to use an existing one), runs code generation, applies the verified native edits and compiles the game into `dist/`.
+`build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (pass `--sdk PATH` to use an existing one), runs code generation, applies the verified native edits and compiles the game into `dist/`. Before building the SDK it applies the fixes in `project/sdk-patches/`: the Vulkan shader translator read each texture's exponent adjustment from the wrong word of the texture descriptor, which turned the arena floor and the players' skin nearly black (upstream PR rexglue/rexglue-sdk#490), and an installed RenderDoc was loaded into every run (rexglue/rexglue-sdk#522).
 
 `dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --framerate=120 --fullscreen=true`. Add `--save` to write the options back to the file; anything after `--` goes straight to the engine. FSR and CAS presentation need an SDK built with FidelityFX and are not enabled on Linux yet, so `post` defaults to `bilinear`. See [the devlog](docs/DEVLOG.md) for progress.
+
+### Steam Deck and older distributions
+
+A build made on a rolling distribution needs its newer system libraries. `scripts/deck/build-deck.sh` (after a normal `./build.sh`) rebuilds the SDK and the game in an Ubuntu 24.04 container with clang 20 (`scripts/deck/make-image.sh` creates it, rootless podman), bundles the C++ runtime and writes a private package to `logs/build/tt-recomp-deck.tar.gz`. It needs glibc 2.38 or newer and contains nothing from the disc. On the target, unpack it and run `./setup-deck.sh /path/to/TableTennis.iso` once; it extracts and patches the menu archive from your own ISO and selects 1280x800 fullscreen (`resolution=800p`). Then start `./tt-recomp.sh`, or add it to Steam as a non-Steam game. Like every local build, keep the package to yourself.
 
 ## License and rights
 

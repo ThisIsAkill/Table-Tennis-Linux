@@ -1,0 +1,6 @@
+# Soak test: Exhibition, then A (Space) every 3 s for 20 minutes - matches, results, rematches.
+menu 3 shift+Down
+menu 5 space
+every 3 space
+stop 1200
+timeout 1320

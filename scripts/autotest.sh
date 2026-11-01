@@ -6,11 +6,14 @@
 # Output goes to logs/runs/NAME/ (frames, inputs.log, engine log, summary.txt).
 # SCENARIO is a file in scripts/scenarios/ (or a path). Lines:
 #   menu <seconds> <key>   press <key> this long after the main menu is reached
+#   every <period> <key>   press <key> every <period> seconds after the main menu
 #   stop <seconds>         end the run this long after the main menu is reached
 #   timeout <seconds>      hard limit for the whole run (default 300)
 # Until the main menu appears, Return is pressed every 4 s to skip the intro.
 #
 # TT_DIST=DIR runs another build folder (default dist/).
+# TT_PAD=1 sends presses to a virtual Xbox 360 pad (scripts/vpad.py, needs write access to
+# /dev/uinput) instead of the keyboard: space=A, BackSpace=B, Return=Start, shift+arrows=D-pad.
 # The window is 960x540 by default (TT_WINDOW=WxH to change). Under Xvfb a
 # 1080p window drops to ~15 FPS, and game time follows frames, so a large
 # window makes every run about four times slower.
@@ -35,10 +38,11 @@ fi
 mkdir -p "$out"
 pgrep -x tabletennis >/dev/null && { echo "tabletennis already running"; exit 1; }
 
-hard=300; stop=""; events=()
+hard=300; stop=""; events=(); repeats=()
 while read -r kind a b; do
   case "$kind" in
     menu) events+=("$a $b") ;;
+    every) repeats+=("$a $b") ;;
     stop) stop="$a" ;;
     timeout) hard="$a" ;;
   esac
@@ -62,11 +66,30 @@ wrap=()
 ro=()
 [[ -n "${TT_RO_BIND:-}" ]] && ro=(--ro-bind "$TT_RO_BIND" "$TT_RO_BIND")
 timeout "$hard" bwrap --bind / / --dev-bind /dev /dev "${ro[@]}" --die-with-parent \
-  "${wrap[@]}" "$dist/tt-recomp.sh" -- --mnk_mode=true \
+  "${wrap[@]}" "$dist/tt-recomp.sh" -- "--mnk_mode=$([[ -n "${TT_PAD:-}" ]] && echo false || echo true)" \
   "--window_width=${window%x*}" "--window_height=${window#*x}" "$@" > "$out/game.log" 2>&1 &
 gpid=$!
 
+pad_fifo=""
+if [[ -n "${TT_PAD:-}" ]]; then
+  pad_fifo="$out/vpad.fifo"; mkfifo "$pad_fifo"
+  python3 -I "$root/scripts/vpad.py" "$pad_fifo" > "$out/vpad.log" 2>&1 &
+  padpid=$!
+  exec 7<>"$pad_fifo"
+  sleep 1
+fi
 press() {
+  if [[ -n "$pad_fifo" ]]; then
+    local b
+    case "$1" in
+      space) b=A ;; BackSpace) b=B ;; Return) b=START ;; Escape|Tab) b=BACK ;;
+      shift+Up) b=UP ;; shift+Down) b=DOWN ;; shift+Left) b=LEFT ;; shift+Right) b=RIGHT ;;
+      *) b="$1" ;;
+    esac
+    echo "$b" >&7
+    echo "[$(( $(date +%s) - start )) s] pad $b" >> "$out/inputs.log"
+    return
+  fi
   local wid
   wid=$(xdotool search --onlyvisible --name '.' 2>/dev/null | head -1)
   [[ -n "$wid" ]] && xdotool windowfocus --sync "$wid" 2>/dev/null
@@ -74,7 +97,7 @@ press() {
   echo "[$(( $(date +%s) - start )) s] key $1" >> "$out/inputs.log"
 }
 
-ei=0; last=""; kept=0; menu=""; next_skip=0
+ei=0; last=""; kept=0; menu=""; next_skip=0; declare -A rnext
 while kill -0 $gpid 2>/dev/null; do
   now=$(( $(date +%s) - start ))
   if [[ -z "$menu" ]]; then
@@ -86,6 +109,11 @@ while kill -0 $gpid 2>/dev/null; do
   else
     while (( ei < ${#events[@]} )) && (( menu + ${events[ei]%% *} <= now )); do
       press "${events[ei]#* }"; ei=$((ei + 1))
+    done
+    for ri in "${!repeats[@]}"; do
+      period="${repeats[ri]%% *}"
+      (( (now - menu) / period > ${rnext[ri]:-0} )) || continue
+      rnext[ri]=$(( (now - menu) / period )); press "${repeats[ri]#* }"
     done
     if [[ -n "$stop" ]] && (( now >= menu + stop )); then
       import -window root "$out/final.png" 2>/dev/null
@@ -99,6 +127,7 @@ while kill -0 $gpid 2>/dev/null; do
   sleep 2
 done
 wait $gpid 2>/dev/null; code=$?
+if [[ -n "$pad_fifo" ]]; then echo QUIT >&7; exec 7>&-; wait "$padpid" 2>/dev/null; rm -f "$pad_fifo"; fi
 sleep 1
 for f in /dev/shm/xenia_memory_*; do
   [[ -e "$f" ]] || continue

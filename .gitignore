@@ -38,3 +38,4 @@ private_backups/
 generated/
 tt-recomp.ini
 scripts/autotest.local
+dist-deck/

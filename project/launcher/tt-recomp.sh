@@ -5,7 +5,7 @@
 # settings.ini), lets command-line flags override it, and starts the game with
 # the same engine options the Windows launcher passes.
 #
-#   ./tt-recomp.sh [--iso=PATH] [--resolution=720p|1080p|1440p|4k]
+#   ./tt-recomp.sh [--iso=PATH] [--resolution=720p|800p|1080p|1440p|4k]
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
 #                  [--post=fsr|cas|bilinear] [--save] [-- extra engine flags...]
@@ -67,10 +67,11 @@ done
 
 case "$resolution" in
   720p) width=1280; height=720; scale=1 ;;
+  800p) width=1280; height=800; scale=1 ;;
   1080p) width=1920; height=1080; scale=1 ;;
   1440p) width=2560; height=1440; scale=2 ;;
   4k|2160p) width=3840; height=2160; scale=3 ;;
-  *) die "unknown resolution '$resolution' (720p, 1080p, 1440p, 4k)" ;;
+  *) die "unknown resolution '$resolution' (720p, 800p, 1080p, 1440p, 4k)" ;;
 esac
 case "$framerate" in 0|60|120|144|240) ;; *) die "unknown framerate '$framerate' (60, 120, 144, 240, 0)" ;; esac
 case "$fullscreen" in true|false) ;; *) die "fullscreen must be true or false" ;; esac
