@@ -14,7 +14,6 @@
 # The window is 960x540 by default (TT_WINDOW=WxH to change). Under Xvfb a
 # 1080p window drops to ~15 FPS, and game time follows frames, so a large
 # window makes every run about four times slower.
-# GPU runs share a lock with other projects; this script takes it itself.
 set -u
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 name="${1:?run name}"; scenario="${2:?scenario}"; shift 2
@@ -24,10 +23,15 @@ out="$root/logs/runs/$name"
 window="${TT_WINDOW:-960x540}"
 dist="${TT_DIST:-$root/dist}"
 
-if [[ -z "${TT_LOCKED:-}" ]]; then
+# Machine-specific settings live in scripts/autotest.local (not tracked), e.g.
+#   TT_GPU_LOCK=/path/to/gpu.lock   take this flock for the whole run (shared GPU)
+#   TT_RO_BIND=/mnt/games           mount this path read-only for the game
+[[ -f "$root/scripts/autotest.local" ]] && source "$root/scripts/autotest.local"
+if [[ -z "${TT_LOCKED:-}" && -n "${TT_GPU_LOCK:-}" ]]; then
   [[ -e "$out" ]] && { echo "$out exists; pick another name"; exit 2; }
-  exec env TT_LOCKED=1 flock -w 1800 /mnt/sdb1/bb/gpu.lock "$0" "$name" "$scenario" "$@"
+  exec env TT_LOCKED=1 flock -w 1800 "$TT_GPU_LOCK" "$0" "$name" "$scenario" "$@"
 fi
+[[ -z "${TT_LOCKED:-}" && -e "$out" ]] && { echo "$out exists; pick another name"; exit 2; }
 mkdir -p "$out"
 pgrep -x tabletennis >/dev/null && { echo "tabletennis already running"; exit 1; }
 
@@ -55,7 +59,9 @@ start=$(date +%s)
 # (captures land in logs/runs/NAME/capture_frameN.rdc).
 wrap=()
 [[ -n "${TT_RENDERDOC:-}" ]] && wrap=(renderdoccmd capture -c "$out/capture" -w)
-timeout "$hard" bwrap --bind / / --dev-bind /dev /dev --ro-bind /mnt/sdb1 /mnt/sdb1 --die-with-parent \
+ro=()
+[[ -n "${TT_RO_BIND:-}" ]] && ro=(--ro-bind "$TT_RO_BIND" "$TT_RO_BIND")
+timeout "$hard" bwrap --bind / / --dev-bind /dev /dev "${ro[@]}" --die-with-parent \
   "${wrap[@]}" "$dist/tt-recomp.sh" -- --mnk_mode=true \
   "--window_width=${window%x*}" "--window_height=${window#*x}" "$@" > "$out/game.log" 2>&1 &
 gpid=$!

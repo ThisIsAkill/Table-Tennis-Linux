@@ -37,3 +37,4 @@ private_backups/
 # Linux port: local-only files.
 generated/
 tt-recomp.ini
+scripts/autotest.local
