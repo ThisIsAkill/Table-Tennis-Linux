@@ -14,7 +14,7 @@ build the game from their own disc.
 | `manifest.json.sig` | detached Ed25519 signature of `manifest.json` |
 
 Installs and updates fetch `manifest.json` and `manifest.json.sig` from
-`https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest/download/`, refuse a
+`https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest/download/`, refuse a
 manifest whose signature does not verify against `scripts/install/release-public-key`, and then
 check each downloaded file against the manifest's SHA256. The newest `linux-v*` release must
 therefore be marked as the repository's latest release.
@@ -36,7 +36,7 @@ scripts/release/make-release.sh --out /tmp/tt-release --version 1.0.0 \
   --title "Table Tennis for Linux 1.0.0" --notes-file /tmp/notes.txt
 
 git tag -a linux-v1.0.0 -m "Table Tennis for Linux 1.0.0" && git push origin linux-v1.0.0
-gh release create linux-v1.0.0 --repo ThisIsAkill/Table-Tennis-Rockstar-PC --latest \
+gh release create linux-v1.0.0 --repo ThisIsAkill/Table-Tennis-Linux --latest \
   --title "Table Tennis for Linux 1.0.0" --notes-file /tmp/notes.txt \
   /tmp/tt-release/install-table-tennis-linux-x86_64.tar.gz \
   /tmp/tt-release/tt-toolchain-*.tar.zst /tmp/tt-release/tt-toolchain-sources-*.tar \

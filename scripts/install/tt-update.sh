@@ -50,7 +50,7 @@ for k in ("iso", "cache", "steam", "desktop", "release_url"):
 fi
 ini_iso="$(sed -n 's/^[[:space:]]*iso_path[[:space:]]*=[[:space:]]*//p' "$install/tt-recomp.ini" 2>/dev/null | tail -1)"
 [[ -n "$ini_iso" ]] && iso="${ini_iso%$'\r'}"
-release_url="${release_url:-${TT_RELEASE_URL:-${stored_url:-https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest/download}}}"
+release_url="${release_url:-${TT_RELEASE_URL:-${stored_url:-https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest/download}}}"
 cache="${cache:-${XDG_CACHE_HOME:-$HOME/.cache}/tt-recomp}"
 installed="$(head -n 1 "$install/.tt-version" 2>/dev/null | tr -d '[:space:]')"
 [[ -n "$installed" ]] || die "This install has no version (a development build); update it with tt-install.sh."

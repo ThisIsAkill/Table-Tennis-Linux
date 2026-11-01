@@ -9,7 +9,7 @@ A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows r
 
 ## Install
 
-1. Download **[install-table-tennis-linux-x86_64.tar.gz](https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest/download/install-table-tennis-linux-x86_64.tar.gz)** from the [latest release](https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest) and unpack it (on a Steam Deck, do this in Desktop Mode).
+1. Download **[install-table-tennis-linux-x86_64.tar.gz](https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest/download/install-table-tennis-linux-x86_64.tar.gz)** from the [latest release](https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest) and unpack it (on a Steam Deck, do this in Desktop Mode).
 2. Open the `TableTennis-Installer` folder and double-click **install-table-tennis** (or run `./install-table-tennis` in a terminal).
 3. Drop your Table Tennis ISO on the window, press **BROWSE...**, or pick one of the ISOs it found in your Downloads, Desktop, Games folder or on an SD card. It checks that it is the right disc.
 4. Choose where to install (internal storage is recommended; SD cards and any other folder work too), whether to **add the game to Steam as a non-Steam game** (so it shows up in your library and in Game Mode on the Steam Deck) and whether to add a desktop shortcut, then press **INSTALL**.

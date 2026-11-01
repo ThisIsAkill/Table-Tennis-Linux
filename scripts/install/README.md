@@ -242,7 +242,7 @@ files, generated code or build output. `manifest.json`:
 ```
 
 The installer fetches `<release-url>/manifest.json` and `<release-url>/<name>`; with the default
-URL (`https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest/download`) all four
+URL (`https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest/download`) all four
 files must be assets of the latest release. Upload a new SDK file whenever
 `project/sdk-patches/` changes; installs from an older source tree then fall back to the slow
 path instead of using a mismatched SDK.

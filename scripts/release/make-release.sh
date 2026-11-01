@@ -151,7 +151,7 @@ toolchain as the release file
 
     $sources_asset
 
-of the same release (https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases), and in
+of the same release (https://github.com/ThisIsAkill/Table-Tennis-Linux/releases), and in
 the Ubuntu archive (https://archive.ubuntu.com/ubuntu/pool/, https://launchpad.net/ubuntu/+source/).
 Each package's license is in /usr/share/doc/<package>/copyright.
 
