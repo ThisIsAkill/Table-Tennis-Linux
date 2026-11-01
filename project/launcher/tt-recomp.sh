@@ -9,7 +9,8 @@
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
 #                  [--post=fsr|cas|bilinear] [--aspect=letterbox|fill]
-#                  [--achievement_sound=true|false] [--haptics=true|false] [--save]
+#                  [--achievement_sound=true|false] [--haptics=true|false]
+#                  [--render_scale=auto|1|2|3] [--save]
 #                  [-- extra engine flags...]
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
@@ -29,6 +30,7 @@ post="bilinear"
 aspect="letterbox"
 achievement_sound="true"
 haptics="true"
+render_scale="auto"
 gamemode="auto"
 engine_flags=""
 save=0
@@ -49,6 +51,7 @@ set_option() {
     aspect) aspect="$value" ;;
     achievement_sound) achievement_sound="$value" ;;
     haptics) haptics="$value" ;;
+    render_scale) render_scale="$value" ;;
     gamemode) gamemode="$value" ;;
     engine_flags) engine_flags="$value" ;;
     *) return 1 ;;
@@ -86,6 +89,13 @@ case "$resolution" in
   4k|2160p) width=3840; height=2160; scale=3 ;;
   *) die "unknown resolution '$resolution' (720p, 800p, 1080p, 1440p, 4k)" ;;
 esac
+# The 3D view renders at the game's 1280x720 times this factor; auto follows the resolution.
+# A higher factor than the screen needs supersamples (sharper, more GPU work).
+case "$render_scale" in
+  auto) ;;
+  1|2|3) scale="$render_scale" ;;
+  *) die "render_scale must be auto, 1, 2 or 3" ;;
+esac
 case "$framerate" in 0|60|120|144|240) ;; *) die "unknown framerate '$framerate' (60, 120, 144, 240, 0)" ;; esac
 case "$fullscreen" in true|false) ;; *) die "fullscreen must be true or false" ;; esac
 case "$show_fps" in true|false) ;; *) die "show_fps must be true or false" ;; esac
@@ -111,6 +121,7 @@ post=$post
 aspect=$aspect
 achievement_sound=$achievement_sound
 haptics=$haptics
+render_scale=$render_scale
 gamemode=$gamemode
 engine_flags=$engine_flags
 EOF
