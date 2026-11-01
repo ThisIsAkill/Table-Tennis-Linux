@@ -107,8 +107,12 @@ while kill -0 $gpid 2>/dev/null; do
       press Return; next_skip=$((now + 4))
     fi
   else
+    # Events that fall due in the same pass are pressed 0.7 s apart: the menus drop presses
+    # that arrive back to back.
+    pressed=0
     while (( ei < ${#events[@]} )) && (( menu + ${events[ei]%% *} <= now )); do
-      press "${events[ei]#* }"; ei=$((ei + 1))
+      (( pressed )) && sleep 0.7
+      press "${events[ei]#* }"; ei=$((ei + 1)); pressed=1
     done
     for ri in "${!repeats[@]}"; do
       period="${repeats[ri]%% *}"
