@@ -1,0 +1,39 @@
+diff --git a/cmake/rexglue_fidelityfx.cmake b/cmake/rexglue_fidelityfx.cmake
+index af35fa8..a4fd252 100644
+--- a/cmake/rexglue_fidelityfx.cmake
++++ b/cmake/rexglue_fidelityfx.cmake
+@@ -8,8 +8,21 @@ if(NOT REXGLUE_ENABLE_FIDELITYFX)
+     return()
+ endif()
+ 
++# FSR 1 (EASU/RCAS) and CAS run from prebuilt SPIR-V/DXIL in src/ui/shaders and only need the
++# FidelityFX headers. The ffx-api runtime is needed only for the temporal FSR 2/3 upscaler, and
++# its shaders are compiled with FidelityFX_SC.exe, which on Linux runs under Wine and fails with
++# current glslang. Off by default outside Windows: FSR 1 and CAS still work.
++if(WIN32)
++    set(_rexglue_ffx_runtime_default ON)
++else()
++    set(_rexglue_ffx_runtime_default OFF)
++endif()
++option(REXGLUE_FIDELITYFX_RUNTIME
++    "Build the FidelityFX ffx-api runtime (temporal FSR 2/3); FSR 1 and CAS do not need it"
++    ${_rexglue_ffx_runtime_default})
++
+ # ── Dependency validation ────────────────────────────────────────────────
+-if(NOT WIN32)
++if(NOT WIN32 AND REXGLUE_FIDELITYFX_RUNTIME)
+     find_package(Vulkan QUIET)
+     if(NOT Vulkan_FOUND)
+         message(WARNING
+@@ -61,6 +74,11 @@ endif()
+ set(REXGLUE_FIDELITYFX_SOURCE_DIR "${fidelityfx_SOURCE_DIR}" CACHE INTERNAL
+     "Root of the fetched FidelityFX SDK source tree")
+ 
++if(NOT REXGLUE_FIDELITYFX_RUNTIME)
++    message(STATUS "FidelityFX: headers only (FSR 1 and CAS); temporal FSR 2/3 runtime not built")
++    return()
++endif()
++
+ # ── Backend selection ────────────────────────────────────────────────────
+ set(REXGLUE_FIDELITYFX_BACKEND "auto" CACHE STRING
+     "FidelityFX backend to build (auto, vk, dx12)")

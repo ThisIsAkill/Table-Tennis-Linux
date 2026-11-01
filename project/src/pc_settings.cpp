@@ -64,7 +64,8 @@ struct Row {
 };
 
 enum RowId {
-  kResolution, kFullscreen, kPicture, kAntiAliasing, kShowFps, kHaptics, kAchievementSound,
+  kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kShowFps, kHaptics,
+  kAchievementSound,
   // UPDATES section
   kCheckUpdates, kAutoUpdate, kVersion,
 };
@@ -84,6 +85,10 @@ std::vector<Row> MakeRows() {
        0},
       {"aa", "ANTI-ALIASING", "Smooths jagged edges with FXAA after each frame.", Apply::kRestart,
        {{"none", "OFF"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
+       0},
+      {"post", "SHARPENING", "CAS sharpens the picture (best on the Steam Deck); FSR upscales "
+       "it to large screens and sharpens it.", Apply::kRestart,
+       {{"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
        0},
       {"show_fps", "SHOW FPS", "Frame rate counter in the top left corner (F10).", Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},

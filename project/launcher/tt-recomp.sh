@@ -182,7 +182,8 @@ done
 cd "$here"
 
 # --- Updates -----------------------------------------------------------------------------------
-installed_version="$(head -n 1 "$here/.tt-version" 2>/dev/null | tr -d '[:space:]')"
+installed_version=""  # empty: a development build, which never updates
+[[ -f "$here/.tt-version" ]] && installed_version="$(head -n 1 "$here/.tt-version" | tr -d '[:space:]')"
 updater="$here/tools/tt-update.sh"
 update_log="$here/logs/update.log"
 # Runs the update. Returns 0 when the (new or current) game should start, 1 when not.

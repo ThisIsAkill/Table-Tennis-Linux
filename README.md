@@ -63,6 +63,7 @@ The game's **OPTIONS** menu, both in the main menu and in the pause menu during 
 | Fullscreen | on / off | at once |
 | Picture | letterbox (the original 16:9) / fill screen (experimental) | after a restart |
 | Anti-aliasing | off / FXAA / FXAA extreme | after a restart |
+| Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) | after a restart |
 | Show FPS | on / off | at once |
 | Haptics | on / off | at once |
 | Achievement sound | on / off | at once |
@@ -121,7 +122,9 @@ The SDK's Vulkan backend had not been used for this game before. The fixes are s
 5. **Controller rumble.** Gamepads now report whether they can rumble, and a failing rumble request is logged instead of being dropped silently.
 6. **RenderDoc.** An installed RenderDoc was injected into every run. (Upstream PR rexglue/rexglue-sdk#522.)
 
-All PC options from the Windows version work except FSR and CAS sharpening: AMD's FidelityFX build runs a Windows shader compiler under Wine that fails with current glslang, so Linux uses bilinear scaling. The [devlog](docs/DEVLOG.md) tells the story of the port.
+7. **FSR and CAS.** AMD's FSR 1 upscaling and CAS sharpening use shaders that ship prebuilt with the SDK and only need AMD's headers, but the SDK only enabled them together with the FidelityFX runtime for temporal FSR 2/3, whose shader build runs a Windows compiler under Wine and fails on Linux. The runtime is now left out on Linux, so FSR and CAS work; temporal FSR 2/3 is not available.
+
+All PC options from the Windows version work. The [devlog](docs/DEVLOG.md) tells the story of the port.
 
 ## For developers
 

@@ -52,7 +52,7 @@ else
 step sdk "Building the ReXGlue SDK"
 # Fixes to the SDK live in project/sdk-patches; a changed set (or toolchain) rebuilds the SDK.
 patches=("$src"/project/sdk-patches/*.patch)
-sdk_options=(-DREXGLUE_ENABLE_FIDELITYFX=OFF -DCMAKE_CXX_STANDARD=23)
+sdk_options=(-DREXGLUE_ENABLE_FIDELITYFX=ON -DCMAKE_CXX_STANDARD=23)
 stamp="$({ cat "${patches[@]}"; echo "${sdk_options[*]} $flags $kind"; clang++ --version | head -1; } \
   | sha256sum | cut -c1-16)"
 if [[ -x "$sdk/bin/rexglue" && "$(cat "$sdk/.tt-sdk-stamp" 2>/dev/null)" == "$stamp" ]]; then

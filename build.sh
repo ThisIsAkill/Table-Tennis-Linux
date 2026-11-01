@@ -62,10 +62,11 @@ stage "Preparing game build support"
 # to the pinned source before it is built. The installed SDK records which set it was built
 # with, so changing the patches triggers a rebuild.
 sdk_patches=("$root"/project/sdk-patches/*.patch)
-# FidelityFX (FSR/CAS presentation) stays off on Linux: its build runs AMD's Windows shader
-# compiler under Wine, and that fails with current glslang ("Macro redefined" in the FSR2
-# permutations). Explicit so a reused build tree cannot inherit another setting.
-sdk_options=(-DREXGLUE_ENABLE_FIDELITYFX=OFF)
+# FidelityFX on: FSR 1 and CAS presentation use prebuilt shaders and only need AMD's headers.
+# SDK patch 0008 leaves out the ffx-api runtime (temporal FSR 2/3) on Linux, whose shader build
+# runs AMD's Windows compiler under Wine and fails with current glslang. Explicit so a reused
+# build tree cannot inherit another setting.
+sdk_options=(-DREXGLUE_ENABLE_FIDELITYFX=ON)
 patch_stamp="$({ cat "${sdk_patches[@]}" 2>/dev/null; echo "${sdk_options[*]}"; } | sha256sum | cut -c1-16)"
 if [[ -z "$sdk" ]]; then
   sdk="$root/.tools/rexglue-sdk"

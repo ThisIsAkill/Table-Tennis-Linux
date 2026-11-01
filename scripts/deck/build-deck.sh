@@ -25,7 +25,7 @@ if [[ "$(cat "$sdk/.tt-sdk-patches" 2>/dev/null)" != "$(cat /work/.tools/rexglue
   cmake -S /work/.tools/rexglue-src -B /work/.tools/deck/sdk-build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_C_FLAGS="$flags" -DCMAKE_CXX_FLAGS="$flags" -DCMAKE_CXX_STANDARD=23 \
-    -DCMAKE_INSTALL_PREFIX="$sdk"
+    -DREXGLUE_ENABLE_FIDELITYFX=ON -DCMAKE_INSTALL_PREFIX="$sdk"
   cmake --build /work/.tools/deck/sdk-build --parallel "$jobs"
   cmake --install /work/.tools/deck/sdk-build
   cp /work/.tools/rexglue-sdk/.tt-sdk-patches "$sdk/.tt-sdk-patches"
