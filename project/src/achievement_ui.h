@@ -48,11 +48,13 @@ struct ToastConfig {
   // Bottom right, sliding up from the screen edge like a desktop achievement popup. It can
   // briefly cover the in-match rally counter; top center is the spot that clears all HUD.
   ToastAnchor anchor = ToastAnchor::kBottomRight;
-  float margin = 26.0f;         // distance from the screen edge
+  float scale = 0.68f;          // overall size (1.0 = 86 px tall at 720p)
+  float margin = 30.0f;         // distance from the edge of the game picture, before scale
   float enter_seconds = 0.55f;  // slide/scale in, with the highlight sweep
   float hold_seconds = 4.2f;    // fully visible, measured from the end of the entry
   float exit_seconds = 0.45f;   // slide/fade out
   float gap_seconds = 0.25f;    // pause between queued notifications
+  float sound_volume = 0.45f;   // unlock chime peak level, 0 = silent (also cvar achievement_sound)
 };
 inline constexpr ToastConfig kToast{};
 

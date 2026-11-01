@@ -3,7 +3,9 @@
 #include "achievement_ui.h"
 #include "intro_skip.h"
 
+#include <SDL3/SDL.h>
 #include <imgui.h>
+#include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/runtime.h>
 #include <rex/ui/immediate_drawer.h>
@@ -19,11 +21,117 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <ctime>
 #include <string_view>
 
+REXCVAR_DECLARE(double, display_aspect);
+REXCVAR_DEFINE_BOOL(achievement_sound, true, "UI", "Play a chime when an achievement unlocks");
+
 namespace tabletennis::achievement_ui {
 namespace {
+
+// ---------------------------------------------------------------------------------------------
+// Unlock chime, synthesized here (nothing comes from the game): a soft whoosh while the pill
+// slides in, a ping-pong "pock" as it lands, then a bright two-note chime with the name and
+// the gamerscore. Timed to the default animation and panned towards the popup's side.
+// ---------------------------------------------------------------------------------------------
+constexpr int kChimeRate = 48000;
+constexpr float kChimePi = 3.14159265f;
+
+std::vector<float> SynthesizeChime(float pan) {
+  constexpr float kLength = 1.6f;
+  const int frames = int(kLength * kChimeRate);
+  std::vector<float> mono(frames, 0.0f);
+  auto at = [](float seconds) { return int(seconds * kChimeRate); };
+
+  // Whoosh: noise through a low-pass whose cutoff rises while the pill moves.
+  std::minstd_rand rng(0x7AB1E);
+  std::uniform_real_distribution<float> noise(-1.0f, 1.0f);
+  float low = 0.0f;
+  for (int i = 0; i < at(0.32f); ++i) {
+    const float u = float(i) / float(at(0.32f));
+    const float cutoff = 500.0f + 5500.0f * u;
+    const float k = 1.0f - std::exp(-2.0f * kChimePi * cutoff / kChimeRate);
+    low += k * (noise(rng) - low);
+    mono[i] += 0.16f * std::sin(kChimePi * u) * std::sin(kChimePi * u) * low;
+  }
+  // Pock: a short, high, fast-decaying tone with a click, like a ball on a table.
+  auto pock = [&](float start, float gain) {
+    for (int i = 0; i < at(0.06f); ++i) {
+      const float tt = float(i) / kChimeRate;
+      const float env = std::exp(-tt / 0.012f);
+      const float click = i < at(0.002f) ? noise(rng) * 0.5f : 0.0f;
+      mono[at(start) + i] += gain * env * (std::sin(2.0f * kChimePi * 2350.0f * tt) + click);
+    }
+  };
+  pock(0.20f, 0.55f);
+  // Chime notes: bell-like partials with an exponential decay.
+  auto bell = [&](float start, float freq, float gain, float decay) {
+    for (int i = at(start); i < frames; ++i) {
+      const float tt = float(i - at(start)) / kChimeRate;
+      const float env = std::min(1.0f, tt / 0.004f) * std::exp(-tt / decay);
+      if (env < 1e-4f && tt > 0.05f) break;
+      mono[i] += gain * env *
+                 (std::sin(2.0f * kChimePi * freq * tt) + 0.32f * std::sin(2.0f * kChimePi * freq * 2.0f * tt) +
+                  0.10f * std::sin(2.0f * kChimePi * freq * 3.01f * tt));
+    }
+  };
+  bell(0.38f, 1174.66f, 0.30f, 0.22f);  // D6 with the name
+  bell(0.58f, 1760.00f, 0.32f, 0.45f);  // A6 with the gamerscore
+
+  float peak = 0.0f;
+  for (float v : mono) peak = std::max(peak, std::fabs(v));
+  const float gain = peak > 0.0f ? kToast.sound_volume / peak : 0.0f;
+  const float left = std::sqrt(0.5f * (1.0f - pan)), right = std::sqrt(0.5f * (1.0f + pan));
+  std::vector<float> stereo(frames * 2);
+  for (int i = 0; i < frames; ++i) {
+    stereo[2 * i] = mono[i] * gain * left;
+    stereo[2 * i + 1] = mono[i] * gain * right;
+  }
+  return stereo;
+}
+
+void PlayUnlockChime() {
+  if (!REXCVAR_GET(achievement_sound) || kToast.sound_volume <= 0.0f) return;
+  static SDL_AudioStream* stream = nullptr;
+  static bool failed = false;
+  if (failed) return;
+  if (!stream) {
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+      REXLOG_WARN("Tabletennis: achievement chime disabled, no audio: {}", SDL_GetError());
+      failed = true;
+      return;
+    }
+    const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, kChimeRate};
+    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    if (!stream) {
+      REXLOG_WARN("Tabletennis: achievement chime disabled, cannot open audio: {}", SDL_GetError());
+      failed = true;
+      return;
+    }
+    SDL_ResumeAudioStreamDevice(stream);
+  }
+  const bool right_side = kToast.anchor == ToastAnchor::kTopRight ||
+                          kToast.anchor == ToastAnchor::kBottomRight;
+  const bool left_side = kToast.anchor == ToastAnchor::kTopLeft ||
+                         kToast.anchor == ToastAnchor::kBottomLeft;
+  static const std::vector<float> chime = SynthesizeChime(right_side ? 0.3f : left_side ? -0.3f : 0.0f);
+  SDL_PutAudioStreamData(stream, chime.data(), int(chime.size() * sizeof(float)));
+}
+
+// The rectangle the game picture occupies in the window: the presenter letterboxes the
+// game's 16:9 frame (or the display_aspect shape when filling the screen) into the window.
+struct PictureRect {
+  float x, y, w, h;
+};
+PictureRect GamePicture(const ImGuiIO& io) {
+  const double configured = REXCVAR_GET(display_aspect);
+  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  const float w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
+  const float h = w / aspect;
+  return {(io.DisplaySize.x - w) * 0.5f, (io.DisplaySize.y - h) * 0.5f, w, h};
+}
 
 using Clock = std::chrono::steady_clock;
 constexpr float kPi = 3.14159265f;
@@ -513,6 +621,7 @@ void AchievementToast::OnDraw(ImGuiIO& io) {
             std::chrono::duration<float>(now - last_finished_).count() >= kToast.gap_seconds;
         if (!gap_over || IsPanelOpen()) break;
         front.shown_at = now;
+        PlayUnlockChime();
       }
       t = std::chrono::duration<float>(now - *front.shown_at).count();
       if (t >= total) {
@@ -529,7 +638,8 @@ void AchievementToast::OnDraw(ImGuiIO& io) {
 
 void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo& info,
                                  float t, float total) {
-  const float s = io.DisplaySize.y / 720.0f;
+  const PictureRect pic = GamePicture(io);
+  const float s = pic.h / 720.0f * kToast.scale;
   const float enter = kToast.enter_seconds;
   const float exit_start = total - kToast.exit_seconds;
   const float in = Stage(t, 0.0f, enter);
@@ -541,7 +651,7 @@ void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo
   const float pad = 13.0f * s;
   const float icon = 60.0f * s;
   const float name_px = 27.0f * s;
-  const float caption_px = 12.5f * s;
+  const float caption_px = 15.0f * s;
   const float score_px = 27.0f * s;
   const float margin = kToast.margin * s;
 
@@ -550,15 +660,20 @@ void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo
   ImFont* name_font = Heavy(name_px);
   ImFont* caption_font = Heavy(caption_px);
   const float badge_w = GamerscoreBadge(nullptr, 0, 0, score_px, int(info.gamerscore), 1.0f, false);
-  const float text_x_offset = pad + icon + pad * 1.15f;
-  const float dots_w = h * 0.95f;  // halftone tail at the right end, after the gamerscore
-  const float right_block = pad * 1.6f + badge_w + pad * 0.8f + dots_w;
-  const float max_w = std::min(700.0f * s, io.DisplaySize.x - 2.0f * margin);
-  const float text_room = max_w - text_x_offset - right_block;
+  // Contents (icon, text, gamerscore) form one block centered in the pill; the halftone
+  // dots are background decoration and take no room.
+  const float side = pad * 1.6f;              // space between the pill ends and the contents
+  const float icon_gap = pad * 1.15f;         // icon to text
+  const float badge_gap = pad * 1.6f;         // text to gamerscore
+  const float dots_w = h * 0.95f;
+  const float max_w = std::min(700.0f * s, pic.w - 2.0f * margin);
+  const float text_room = max_w - 2.0f * side - icon - icon_gap - badge_gap - badge_w;
   const std::string shown_name = Fit(name_font, name_px, kCondensed, text_room, name);
   const float name_w = TextWidth(name_font, name_px, shown_name.c_str(), kCondensed);
   const float caption_w = TextWidth(caption_font, caption_px, caption);
-  float w = text_x_offset + std::max(name_w, caption_w) + right_block;
+  const float text_w = std::max(name_w, caption_w);
+  const float content_w = icon + icon_gap + text_w + badge_gap + badge_w;
+  float w = content_w + 2.0f * side;
   w = std::clamp(w, 400.0f * s, max_w);
 
   const bool top = kToast.anchor == ToastAnchor::kTopCenter ||
@@ -568,17 +683,17 @@ void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo
   switch (kToast.anchor) {
     case ToastAnchor::kTopLeft:
     case ToastAnchor::kBottomLeft:
-      x0 = margin;
+      x0 = pic.x + margin;
       break;
     case ToastAnchor::kTopRight:
     case ToastAnchor::kBottomRight:
-      x0 = io.DisplaySize.x - margin - w;
+      x0 = pic.x + pic.w - margin - w;
       break;
     default:
-      x0 = (io.DisplaySize.x - w) * 0.5f;
+      x0 = pic.x + (pic.w - w) * 0.5f;
       break;
   }
-  const float rest_y = top ? margin : io.DisplaySize.y - margin - h;
+  const float rest_y = top ? pic.y + margin : pic.y + pic.h - margin - h;
   const float travel = (h + margin) * (top ? -1.0f : 1.0f);
 
   // --- Motion: eased slide in with a small overshoot, eased slide out ---
@@ -621,10 +736,12 @@ void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo
   dl->AddRect(ImVec2(p0.x + 2.5f * s, p0.y + 2.5f * s), ImVec2(p1.x - 2.5f * s, p1.y - 2.5f * s),
               BlueLight(0.18f * alpha), r - 2.5f * s, 0, 1.0f * s);
 
+  const float content_x = center.x - content_w * 0.5f;
+
   // --- Icon: pops in once the panel has landed ---
   const float icon_stage = EaseOutBack(Stage(t, enter * 0.4f, 0.4f));
   if (icon_stage > 0.0f) {
-    const ImVec2 icon_center(p0.x + pad + icon * 0.5f, cy);
+    const ImVec2 icon_center(content_x + icon * 0.5f, cy);
     const float half = icon * 0.5f * icon_stage;
     const ImVec2 i0(icon_center.x - half, icon_center.y - half);
     const ImVec2 i1(icon_center.x + half, icon_center.y + half);
@@ -640,7 +757,7 @@ void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo
   }
 
   // --- Text: caption, then the name slides in, then its underline draws ---
-  const float text_x = p0.x + text_x_offset;
+  const float text_x = content_x + icon + icon_gap;
   const float caption_stage = EaseOutCubic(Stage(t, enter * 0.55f, 0.3f));
   if (caption_stage > 0.0f) {
     AddText(dl, caption_font, caption_px,
@@ -666,7 +783,7 @@ void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo
   if (badge_stage > 0.0f) {
     const float pop = EaseOutBack(badge_stage);
     const int shown = int(std::lround(info.gamerscore * EaseOutCubic(Stage(t, enter * 1.05f, 0.6f))));
-    GamerscoreBadge(dl, p1.x - dots_w - pad * 0.8f, cy, score_px * pop, shown,
+    GamerscoreBadge(dl, content_x + content_w, cy, score_px * pop, shown,
                     alpha * Clamp01(badge_stage * 3.0f));
   }
 }
