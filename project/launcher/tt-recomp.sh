@@ -9,7 +9,7 @@
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
 #                  [--post=fsr|cas|bilinear] [--aspect=letterbox|fill]
-#                  [--achievement_sound=true|false] [--save]
+#                  [--achievement_sound=true|false] [--haptics=true|false] [--save]
 #                  [-- extra engine flags...]
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
@@ -28,6 +28,7 @@ aa="none"
 post="bilinear"
 aspect="letterbox"
 achievement_sound="true"
+haptics="true"
 gamemode="auto"
 engine_flags=""
 save=0
@@ -47,6 +48,7 @@ set_option() {
     post) post="$value" ;;
     aspect) aspect="$value" ;;
     achievement_sound) achievement_sound="$value" ;;
+    haptics) haptics="$value" ;;
     gamemode) gamemode="$value" ;;
     engine_flags) engine_flags="$value" ;;
     *) return 1 ;;
@@ -91,6 +93,7 @@ case "$aa" in none|fxaa|fxaa_extreme) ;; *) die "unknown aa '$aa' (none, fxaa, f
 case "$post" in fsr|cas|bilinear) ;; *) die "unknown post '$post' (fsr, cas, bilinear)" ;; esac
 case "$aspect" in letterbox|fill) ;; *) die "unknown aspect '$aspect' (letterbox, fill)" ;; esac
 case "$achievement_sound" in true|false) ;; *) die "achievement_sound must be true or false" ;; esac
+case "$haptics" in true|false) ;; *) die "haptics must be true or false" ;; esac
 case "$gamemode" in auto|off) ;; *) die "gamemode must be auto or off" ;; esac
 
 [[ -n "$iso_path" ]] || die "no ISO set. Add iso_path=/path/to/TableTennis.iso to $config or pass --iso=PATH."
@@ -107,6 +110,7 @@ aa=$aa
 post=$post
 aspect=$aspect
 achievement_sound=$achievement_sound
+haptics=$haptics
 gamemode=$gamemode
 engine_flags=$engine_flags
 EOF
@@ -118,7 +122,7 @@ args=(
   "--resolution_scale=$scale" "--draw_resolution_scale_x=$scale" "--draw_resolution_scale_y=$scale"
   "--window_width=$width" "--window_height=$height" "--fullscreen=$fullscreen"
   "--swap_post_effect=$aa" "--present_effect=$post"
-  "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound"
+  "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound" "--haptics=$haptics"
   --protect_zero=false --gpu_allow_invalid_fetch_constants=true
   # Letterbox other screen shapes (Steam Deck 16:10) instead of cropping up to 10% of the
   # edges as TV overscan. (SDK patch 0005 keeps the game's TV mode at 1280x720.)

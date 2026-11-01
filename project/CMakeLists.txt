@@ -16,6 +16,7 @@ set(TABLETENNIS_SOURCES
     src/intro_skip.cpp
     src/achievement_ui.cpp
     src/pc_settings.cpp
+    src/haptics.cpp
 )
 
 if(WIN32)

@@ -17,6 +17,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +28,7 @@
 #include <vector>
 
 REXCVAR_DECLARE(bool, achievement_sound);
+REXCVAR_DECLARE(bool, haptics);
 REXCVAR_DECLARE(bool, show_fps);
 REXCVAR_DECLARE(double, display_aspect);
 
@@ -52,7 +54,7 @@ struct Row {
   int running = 0;  // value this session started with (restart rows)
 };
 
-enum RowId { kResolution, kFullscreen, kPicture, kAntiAliasing, kShowFps, kAchievementSound };
+enum RowId { kResolution, kFullscreen, kPicture, kAntiAliasing, kShowFps, kHaptics, kAchievementSound };
 
 std::vector<Row> MakeRows() {
   return {
@@ -73,6 +75,10 @@ std::vector<Row> MakeRows() {
       {"show_fps", "SHOW FPS", "Frame rate counter in the top left corner (F10).", Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        0},
+      {"haptics", "HAPTICS", "Controller pulse on every ball hit and a light tick in menus.",
+       Apply::kLive,
+       {{"false", "OFF"}, {"true", "ON"}},
+       1},
       {"achievement_sound", "ACHIEVEMENT SOUND", "Play a chime when an achievement unlocks.",
        Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
@@ -244,6 +250,12 @@ void Rotate(ImDrawList* dl, int first_vertex, ImVec2 pivot, float radians) {
 // ==============================================================================================
 void PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t movie) {
   if (!movie) return;
+  // Test hook: TT_TEST_OPEN_PC_SETTINGS=1 opens the page a few seconds after the main menu.
+  static const bool test_open = std::getenv("TT_TEST_OPEN_PC_SETTINGS") != nullptr;
+  if (test_open) {
+    static int frames = 0;
+    if (++frames == 240) SetOpen(true);
+  }
   // The Flash lookup takes a guest string; keep one copy of the flag's name in guest memory.
   static uint32_t name = 0;
   if (!name) {
@@ -332,6 +344,7 @@ void SettingsPage::Open() {
   // Live rows show the state in effect now (F10 and other paths can change it).
   g_rows[kShowFps].current = hooks_.get_show_fps && hooks_.get_show_fps() ? 1 : 0;
   g_rows[kAchievementSound].current = REXCVAR_GET(achievement_sound) ? 1 : 0;
+  g_rows[kHaptics].current = REXCVAR_GET(haptics) ? 1 : 0;
   if (window_) g_rows[kFullscreen].current = window_->IsFullscreen() ? 1 : 0;
   selected_ = 0;
   held_direction_ = 0;
@@ -355,6 +368,9 @@ void SettingsPage::Change(int row_index, int delta) {
       break;
     case kAchievementSound:
       REXCVAR_SET(achievement_sound, on);
+      break;
+    case kHaptics:
+      REXCVAR_SET(haptics, on);
       break;
     default:
       break;
