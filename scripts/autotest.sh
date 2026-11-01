@@ -51,8 +51,12 @@ rm -f "$dist"/logs/*.log 2>/dev/null
 # is killed, so remember what exists now and delete whatever this run adds.
 shm_before=$(ls /dev/shm/xenia_memory_* 2>/dev/null)
 start=$(date +%s)
+# TT_RENDERDOC=1 launches under renderdoccmd; press F12 in the scenario to capture a frame
+# (captures land in logs/runs/NAME/capture_frameN.rdc).
+wrap=()
+[[ -n "${TT_RENDERDOC:-}" ]] && wrap=(renderdoccmd capture -c "$out/capture" -w)
 timeout "$hard" bwrap --bind / / --dev-bind /dev /dev --ro-bind /mnt/sdb1 /mnt/sdb1 --die-with-parent \
-  "$dist/tt-recomp.sh" -- --mnk_mode=true \
+  "${wrap[@]}" "$dist/tt-recomp.sh" -- --mnk_mode=true \
   "--window_width=${window%x*}" "--window_height=${window#*x}" "$@" > "$out/game.log" 2>&1 &
 gpid=$!
 

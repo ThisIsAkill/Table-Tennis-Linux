@@ -1,0 +1,30 @@
+menu 1 Return
+menu 7 Return
+menu 15 space
+menu 23 space
+menu 31 space
+menu 41 space
+menu 49 space
+menu 57 space
+menu 65 space
+menu 73 space
+menu 81 space
+menu 89 space
+menu 97 space
+menu 105 space
+menu 113 space
+menu 121 space
+menu 126 F12
+menu 126 F12
+menu 126 F12
+menu 126 F12
+menu 126 F12
+menu 126 F12
+menu 128 F12
+menu 128 F12
+menu 128 F12
+menu 128 F12
+menu 128 F12
+menu 128 F12
+stop 135
+timeout 360

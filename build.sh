@@ -58,19 +58,31 @@ run_tools "from disc_image import extract; extract(sys.argv[2], sys.argv[3])" "$
 run_tools "from patch_menu import patch; patch(sys.argv[2])" "$root/dist/assets/resource/flash/flash.rpf"
 
 stage "Preparing game build support"
+# Fixes to the SDK itself (not to generated code) live in project/sdk-patches and are applied
+# to the pinned source before it is built. The installed SDK records which set it was built
+# with, so changing the patches triggers a rebuild.
+sdk_patches=("$root"/project/sdk-patches/*.patch)
+patch_stamp="$(cat "${sdk_patches[@]}" 2>/dev/null | sha256sum | cut -c1-16)"
 if [[ -z "$sdk" ]]; then
   sdk="$root/.tools/rexglue-sdk"
-  if [[ ! -x "$sdk/bin/rexglue" ]]; then
+  if [[ ! -x "$sdk/bin/rexglue" || "$(cat "$sdk/.tt-sdk-patches" 2>/dev/null)" != "$patch_stamp" ]]; then
     src="$root/.tools/rexglue-src"
     if [[ ! -d "$src/.git" ]]; then
       git clone --recursive --depth 1 --branch "$rexglue_tag" "$rexglue_repo" "$src"
     fi
     [[ "$(git -C "$src" rev-parse HEAD)" == "$rexglue_commit" ]] \
       || die "$src is not ReXGlue $rexglue_tag ($rexglue_commit)"
+    git -C "$src" checkout -q -- .
+    for p in "${sdk_patches[@]}"; do
+      [[ -f "$p" ]] || continue
+      git -C "$src" apply "$p" || die "SDK patch does not apply: $p"
+      echo "Applied SDK patch $(basename "$p")."
+    done
     echo "Building ReXGlue SDK $rexglue_tag from source (linux-amd64-release)."
     (cd "$src" && cmake --preset linux-amd64 "-DCMAKE_INSTALL_PREFIX=$sdk" \
       && cmake --build --preset linux-amd64-release --parallel "$jobs" \
-      && cmake --install out/build/linux-amd64 --config Release)
+      && cmake --install out/build/linux-amd64 --config Release) || die "SDK build failed"
+    echo "$patch_stamp" > "$sdk/.tt-sdk-patches"
   fi
 fi
 sdk="$(realpath -e "$sdk")" || die "SDK path not found"
