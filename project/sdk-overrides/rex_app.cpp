@@ -204,18 +204,29 @@ bool ReXApp::SetupEnvironment() {
   return true;
 }
 
+#if defined(_WIN32)
+#define TABLETENNIS_SELECT_ISO_HINT "Open tabletennis_launcher.exe and select the ISO again using Browse."
+#else
+#define TABLETENNIS_SELECT_ISO_HINT \
+  "Set iso_path in tt-recomp.ini next to the game, or pass --iso=/path/to/TableTennis.iso."
+#endif
+
 bool ReXApp::ConstructRuntime(const PathConfig& paths) {
   if (paths.game_data_root.empty()) {
+#if defined(_WIN32)
     auto msg = std::string("No game disc selected. Open tabletennis_launcher.exe, "
                            "click Browse and select your Table Tennis ISO.");
+#else
+    auto msg = std::string("No game disc selected. " TABLETENNIS_SELECT_ISO_HINT);
+#endif
     REXLOG_ERROR("{}", msg);
     rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
     return false;
   }
   if (!std::filesystem::is_directory(paths.game_data_root) &&
       !std::filesystem::is_regular_file(paths.game_data_root)) {
-    auto msg = fmt::format("Game disc not found: {}\nOpen tabletennis_launcher.exe "
-                           "and select the ISO again using Browse.", paths.game_data_root.string());
+    auto msg = fmt::format("Game disc not found: {}\n" TABLETENNIS_SELECT_ISO_HINT,
+                           paths.game_data_root.string());
     REXLOG_ERROR("{}", msg);
     rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
     return false;

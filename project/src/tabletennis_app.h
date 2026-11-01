@@ -6,10 +6,12 @@
 #include <rex/filesystem.h>
 #include "offline_menu_device.h"
 #include "intro_skip.h"
+#if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#endif
 #include <rex/logging.h>
 #include <rex/memory.h>
 #include <rex/rex_app.h>
@@ -24,6 +26,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <vector>
 
 REXCVAR_DECLARE(bool, show_fps);
 REXCVAR_DECLARE(int32_t, framerate);
@@ -239,9 +242,12 @@ class TabletennisApp : public rex::ReXApp {
 
     int32_t target_hz = REXCVAR_GET(framerate);
     if (target_hz != 60) {
-      // High refresh rate / uncapped presentation via D3D12 tearing
+      // High refresh rate / uncapped presentation. D3D12 needs tearing enabled
+      // explicitly; Vulkan picks mailbox or immediate when vsync is off.
       rex::cvar::SetFlagByName("vsync", "false");
+#if defined(_WIN32)
       rex::cvar::SetFlagByName("d3d12_allow_variable_refresh_rate_and_tearing", "true");
+#endif
       REXLOG_INFO("TabletennisApp::OnPreSetup - High Framerate Mode: target {} FPS (vsync=false, guest_vblank=60Hz)", target_hz);
     } else {
       rex::cvar::SetFlagByName("vsync", "true");
@@ -256,9 +262,7 @@ class TabletennisApp : public rex::ReXApp {
     if (vfs) {
       vfs->RegisterSymbolicLink("cache:", "\\Device\\Harddisk0\\Cache0");
 
-      wchar_t exe_path_buf[MAX_PATH];
-      GetModuleFileNameW(NULL, exe_path_buf, MAX_PATH);
-      std::filesystem::path exe_dir = std::filesystem::path(exe_path_buf).parent_path();
+      std::filesystem::path exe_dir = rex::filesystem::GetExecutableFolder();
       std::filesystem::path flash_override = exe_dir / "assets" / "resource" / "flash";
       if (std::filesystem::exists(flash_override / "flash.rpf")) {
         if (auto* root = vfs->ResolvePath("game:")) {
@@ -283,16 +287,13 @@ class TabletennisApp : public rex::ReXApp {
     // Keep the regular overlay font first. The loading message gets its own
     // TrueType face baked at 3x size, with extra raster resolution for DPI.
     if (atlas->Fonts.empty()) atlas->AddFontDefault();
-    wchar_t windows_dir[MAX_PATH]{};
-    if (!GetWindowsDirectoryW(windows_dir, MAX_PATH)) return;
     ImFontConfig config;
     config.OversampleH = 2;
     config.OversampleV = 2;
     config.PixelSnapH = false;
     config.RasterizerDensity = 2.0f;
     static const ImWchar ranges[] = {0x20, 0x7E, 0};
-    for (const auto* filename : {L"seguisb.ttf", L"segoeui.ttf", L"arial.ttf"}) {
-      const auto path = std::filesystem::path(windows_dir) / L"Fonts" / filename;
+    for (const auto& path : LoadingFontCandidates()) {
       if (!std::filesystem::exists(path)) continue;
       loading_font_ = atlas->AddFontFromFileTTF(path.string().c_str(), 39.0f, &config, ranges);
       if (loading_font_) {
@@ -321,8 +322,8 @@ class TabletennisApp : public rex::ReXApp {
     });
 
     // Hotkey ESC quits game cleanly to Windows
-    rex::ui::RegisterBind("bind_quit_game", "Escape", "Quit Game to Windows", [this] {
-      REXLOG_INFO("ESC pressed. Exiting cleanly to Windows...");
+    rex::ui::RegisterBind("bind_quit_game", "Escape", "Quit Game", [this] {
+      REXLOG_INFO("ESC pressed. Exiting cleanly...");
       if (window()) {
         window()->RequestClose();
       } else {
@@ -339,6 +340,25 @@ class TabletennisApp : public rex::ReXApp {
   }
 
  private:
+  static std::vector<std::filesystem::path> LoadingFontCandidates() {
+#if defined(_WIN32)
+    wchar_t windows_dir[MAX_PATH]{};
+    if (!GetWindowsDirectoryW(windows_dir, MAX_PATH)) return {};
+    const auto fonts = std::filesystem::path(windows_dir) / L"Fonts";
+    return {fonts / L"seguisb.ttf", fonts / L"segoeui.ttf", fonts / L"arial.ttf"};
+#else
+    // Common locations on Arch/CachyOS, Debian/Ubuntu, Fedora and SteamOS.
+    return {"/usr/share/fonts/noto/NotoSans-SemiBold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-SemiBold.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-SemiBold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/TTF/LiberationSans-Bold.ttf"};
+#endif
+  }
+
   void ValidateIsoSource(const std::filesystem::path& iso_path) {
     std::ifstream f(iso_path, std::ios::binary);
     if (!f.is_open()) {

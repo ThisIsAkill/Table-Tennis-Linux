@@ -6,11 +6,13 @@ import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
-ROOT_FILES = {'README.md', 'LICENSE', 'CHANGELOG.md', '.gitignore', 'setup.cmd', 'setup.ps1'}
+ROOT_FILES = {'README.md', 'LICENSE', 'CHANGELOG.md', '.gitignore', 'setup.cmd', 'setup.ps1',
+              'build.sh'}
 FIXED_FILES = {
     'project/assets/tabletennis.ico', 'licenses/Icon/CREDITS.txt',
     'project/CMakeLists.txt', 'project/tabletennis_manifest.toml', 'project/overrides.toml',
-    'project/cmake/rexglue.cmake', 'project/launcher/Launcher.cs',
+    'project/cmake/rexglue.cmake', 'project/launcher/Launcher.cs', 'project/launcher/tt-recomp.sh',
+    'docs/DEVLOG.md',
     'project/src/main.cpp', 'project/src/tabletennis_app.h', 'project/src/offline_menu_device.h',
     'project/src/intro_skip.cpp', 'project/src/intro_skip.h',
     'project/sdk-overrides/rex/platform/fpscr.h', 'project/sdk-overrides/rex/ppc/context.h',

@@ -34,3 +34,6 @@ private_backups/
 /project/CMakePresets.json
 /project/tools/patch_offline_menu.py
 /project/tools/patch_intro_timing.py
+# Linux port: local-only files.
+generated/
+tt-recomp.ini

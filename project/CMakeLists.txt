@@ -40,3 +40,14 @@ target_include_directories(tabletennis BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DI
 if(TARGET tabletennis_recomp)
     target_include_directories(tabletennis_recomp BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sdk-overrides")
 endif()
+
+# Linux: the host loads librexruntime.so through its $ORIGIN rpath and dlopens
+# librexgpu-xenos.so (Vulkan backend) from its own folder, so stage both next to it.
+if(UNIX AND NOT APPLE)
+    add_custom_command(TARGET tabletennis POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:rex::runtime>
+            $<TARGET_FILE:rex::gpu-xenos>
+            $<TARGET_FILE_DIR:tabletennis>
+        COMMENT "Staging ReXGlue runtime and Vulkan GPU plugin next to tabletennis")
+endif()

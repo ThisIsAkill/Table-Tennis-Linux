@@ -110,6 +110,21 @@ The installer builder validates every embedded source file against the public al
 
 </details>
 
+## Linux (work in progress)
+
+This fork adds a native Linux build (CachyOS first, Steam Deck next) using the Vulkan backend of ReXGlue SDK v0.10.0. It currently boots through the copyright screen into the Rockstar logo intro; gameplay, audio, controller and saves are not yet verified on Linux.
+
+Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer.
+
+```sh
+./build.sh --iso /path/to/TableTennis.iso
+./dist/tt-recomp.sh
+```
+
+`build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (pass `--sdk PATH` to use an existing one), runs code generation, applies the verified native edits and compiles the game into `dist/`.
+
+`dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --framerate=120 --fullscreen=true`. Add `--save` to write the options back to the file; anything after `--` goes straight to the engine. FSR and CAS presentation need an SDK built with FidelityFX and are not enabled on Linux yet, so `post` defaults to `bilinear`. See [the devlog](docs/DEVLOG.md) for progress.
+
 ## License and rights
 
 ### Desktop icon credit
