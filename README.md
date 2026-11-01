@@ -7,6 +7,15 @@ A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows r
   <img src="docs/images/linux-match.jpg" width="49%" alt="A match in the National TT Auditorium on Linux">
 </p>
 
+## Easy install (Linux and Steam Deck)
+
+Run `tools/installer/bin/install-table-tennis` (build it once with `tools/installer/build.sh`), drop your ISO on the window or pick one it found, choose where to install and whether to add the game to Steam as a non-Steam game (for Game Mode on the Steam Deck), and press INSTALL. It builds the game on your machine from your own disc and ends with a PLAY button. Missing build tools are downloaded automatically, once: it uses podman or docker when present (the Steam Deck has podman), otherwise this machine's compilers, otherwise an official Ubuntu base system in your cache folder, with no admin rights needed. The first install takes about 5-10 minutes on a desktop PC (longer on a Steam Deck) and needs a few GB of temporary space; later updates take seconds. Settings, desktop entry and Steam shortcut are set up for you, and saves live in `~/.local/share/tabletennis`, so reinstalling keeps them. The same steps run without a window with `scripts/install/tt-install.sh --iso PATH` (see `scripts/install/README.md`).
+
+<p align="center">
+  <img src="docs/images/installer-welcome.jpg" width="49%" alt="Installer: drop your ISO">
+  <img src="docs/images/installer-building.jpg" width="49%" alt="Installer: building the game">
+</p>
+
 ## Play on Linux
 
 Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer, plus your own USA/Europe retail ISO (Title ID `545407DF`).
@@ -34,7 +43,7 @@ The original game only rumbles on some shots. This port adds a pulse on every ba
 
 ### Achievements
 
-All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded. Progress is saved in `user_data/achievements/`. The online-only achievements can no longer be earned.
+All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded. Progress is saved with your saves (`~/.local/share/tabletennis/achievements/` for an installed game). The online-only achievements can no longer be earned.
 
 - **Unlock popup:** slides up into the bottom right corner of the picture, with a highlight sweep, the icon popping in, the gamerscore counting up and an eased exit. Several unlocks play one after another.
 - **Sound:** a short ping-pong sound plays with it: a whoosh, two ball bounces and a marimba roll, synthesized by the game build itself. Turn it off with `engine_flags=--achievement_sound=false`.
