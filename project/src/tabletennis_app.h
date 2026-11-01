@@ -16,6 +16,7 @@
 #include "offline_menu_device.h"
 #include "intro_skip.h"
 #include "achievement_ui.h"
+#include "pc_settings.h"
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -158,6 +159,10 @@ class TabletennisApp : public rex::ReXApp {
     if (imgui_drawer_ && fps_overlay_) {
       imgui_drawer_->RemoveDialog(fps_overlay_.get());
     }
+    if (imgui_drawer_ && pc_settings_) {
+      imgui_drawer_->RemoveDialog(pc_settings_.get());
+    }
+    pc_settings_.reset();
     fps_overlay_.reset();
   }
 
@@ -403,6 +408,16 @@ class TabletennisApp : public rex::ReXApp {
       fps_overlay_->SetVisible(initial_visible);
       drawer->AddDialog(fps_overlay_.get());
       REXLOG_INFO("TabletennisApp: FPS overlay created (initial state: {})", initial_visible ? "ON" : "OFF");
+
+      // OPTIONS > PC SETTINGS (pc_settings.h).
+      tabletennis::pc_settings::LiveHooks hooks;
+      hooks.get_show_fps = [this] { return fps_overlay_ && fps_overlay_->IsVisible(); };
+      hooks.set_show_fps = [this](bool on) {
+        if (fps_overlay_) fps_overlay_->SetVisible(on);
+      };
+      pc_settings_ = std::make_unique<tabletennis::pc_settings::SettingsPage>(drawer, window(),
+                                                                             std::move(hooks));
+      drawer->AddDialog(pc_settings_.get());
     }
 
     // Hotkey F10 toggles FPS overlay during gameplay
@@ -482,5 +497,6 @@ class TabletennisApp : public rex::ReXApp {
 
   ImFont* loading_font_ = nullptr;
   std::unique_ptr<FpsOverlayDialog> fps_overlay_;
+  std::unique_ptr<tabletennis::pc_settings::SettingsPage> pc_settings_;
   rex::ui::ImGuiDrawer* imgui_drawer_ = nullptr;
 };

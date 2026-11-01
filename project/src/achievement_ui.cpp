@@ -479,6 +479,9 @@ void ConfigureFonts(ImFontAtlas* atlas, const std::filesystem::path& font_dir) {
   g_fonts.body = LoadFirst(atlas, body, kBodyPx, "body");
 }
 
+ImFont* HeadlineFont(float px) { return Heavy(px); }
+ImFont* BodyFont() { return Body(); }
+
 bool IsPanelOpen() { return g_panel_open.load(std::memory_order_relaxed); }
 
 bool FilterInput(uint32_t user, PadSample& pad) {

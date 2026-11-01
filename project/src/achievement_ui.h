@@ -68,6 +68,11 @@ inline constexpr float kPanelOpenHoldSeconds = 0.8f;
 // ---------------------------------------------------------------------------------------------
 void ConfigureFonts(ImFontAtlas* atlas, const std::filesystem::path& font_dir);
 
+// The loaded faces, shared with the PC settings page: the heavy face baked nearest to `px`,
+// and the regular face.
+ImFont* HeadlineFont(float px);
+ImFont* BodyFont();
+
 // ---------------------------------------------------------------------------------------------
 // Controller access. The game polls its pads through one XamInputGetState call site; that
 // site hands every sample through FilterInput before the game sees it.

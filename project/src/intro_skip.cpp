@@ -1,6 +1,7 @@
 #include "generated/default/tabletennis_init.h"
 #include "intro_skip.h"
 #include "achievement_ui.h"
+#include "pc_settings.h"
 
 #include <SDL3/SDL.h>
 #include <array>
@@ -198,8 +199,9 @@ namespace {
 void FilterIntroInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state);
 }
 
-// The game's only pad poll passes through here: first the intro mapping, then the
-// achievement list's Back/View hold and navigation.
+// The game's only pad poll passes through here: first the intro mapping, then the PC
+// settings page (which owns the pad while open), then the achievement list's Back/View hold
+// and navigation.
 void FilterInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state) {
   if (user >= 4 || !state || ctx.r3.u32 != 0) return;
   FilterIntroInput(ctx, base, user, state);
@@ -211,7 +213,7 @@ void FilterInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state) 
   pad.thumb_ly = static_cast<int16_t>(REX_LOAD_U16(state + 10));
   pad.thumb_rx = static_cast<int16_t>(REX_LOAD_U16(state + 12));
   pad.thumb_ry = static_cast<int16_t>(REX_LOAD_U16(state + 14));
-  if (achievement_ui::FilterInput(user, pad)) {
+  if (pc_settings::FilterInput(user, pad) || achievement_ui::FilterInput(user, pad)) {
     REX_STORE_U16(state + 4, pad.buttons);
     REX_STORE_U8(state + 6, pad.left_trigger);
     REX_STORE_U8(state + 7, pad.right_trigger);
@@ -257,8 +259,11 @@ void FilterIntroInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t st
 
 void ObserveFrontend(PPCContext& ctx, uint8_t* base) {
   frontend_started.store(true);
-  if (phase.load() == Phase::Done || phase.load() == Phase::Drain) return;
   const auto movie = REX_LOAD_U32(ctx.r4.u32 + 92);
+  if (phase.load() == Phase::Done || phase.load() == Phase::Drain) {
+    pc_settings::PollFrontend(ctx, base, movie);
+    return;
+  }
   if (!movie) return;
   frontend_movie.store(movie);
   PPCContext lookup = ctx;

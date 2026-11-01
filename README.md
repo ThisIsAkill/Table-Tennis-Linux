@@ -20,6 +20,14 @@ Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and
 
 `dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as the Windows `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, plus `aspect`, `gamemode` and `engine_flags`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`. Add `--save` to write the options back; anything after `--` goes straight to the engine. Press Escape twice within two seconds to quit; F10 toggles the FPS counter.
 
+### PC settings in the game's menu
+
+The game's **OPTIONS** menu gets an extra entry, **PC SETTINGS**, added to your own menu file by the build's menu patch. It opens a page in the game's menu style for resolution, fullscreen, picture mode (letterbox or the experimental fill), anti-aliasing, the FPS counter and the achievement sound. Fullscreen, the FPS counter and the sound change immediately; the others are marked and apply the next time you start the game. Changes are saved to `tt-recomp.ini`, the same file the launcher reads. Use the D-pad to choose and change, and B to go back.
+
+<p align="center">
+  <img src="docs/images/linux-pc-settings.jpg" width="70%" alt="PC SETTINGS page in the OPTIONS menu">
+</p>
+
 ### Achievements
 
 All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded. Progress is saved in `user_data/achievements/`. The online-only achievements can no longer be earned.

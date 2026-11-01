@@ -15,6 +15,7 @@ set(TABLETENNIS_SOURCES
     src/main.cpp
     src/intro_skip.cpp
     src/achievement_ui.cpp
+    src/pc_settings.cpp
 )
 
 if(WIN32)
