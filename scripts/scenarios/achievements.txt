@@ -1,0 +1,4 @@
+# Achievement UI check: test notification fires 3 s after the menu (TT_TEST_ACHIEVEMENT_TOAST),
+# then F7 opens the list.
+menu 10 F7
+stop 14

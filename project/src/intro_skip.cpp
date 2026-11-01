@@ -1,5 +1,6 @@
 #include "generated/default/tabletennis_init.h"
 #include "intro_skip.h"
+#include "achievement_ui.h"
 
 #include <SDL3/SDL.h>
 #include <array>
@@ -120,6 +121,11 @@ bool SkipMovies() {
 
 bool ShowTransition() { return phase.load() == Phase::Skipping; }
 
+bool MainMenuReached() {
+  const auto current = phase.load();
+  return current == Phase::Done || current == Phase::Drain;
+}
+
 void AdvanceIntroMovie(PPCContext& ctx, uint8_t* base) {
   // These call sites request single-frame stepping, regardless of dt.
   // Run the normal frames to their Stop action, preserving the real completion
@@ -188,8 +194,36 @@ bool AdvanceFrontendMovie(PPCContext& ctx, uint8_t* base) {
   return true;
 }
 
+namespace {
+void FilterIntroInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state);
+}
+
+// The game's only pad poll passes through here: first the intro mapping, then the
+// achievement list's Back/View hold and navigation.
 void FilterInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state) {
   if (user >= 4 || !state || ctx.r3.u32 != 0) return;
+  FilterIntroInput(ctx, base, user, state);
+  achievement_ui::PadSample pad;
+  pad.buttons = REX_LOAD_U16(state + 4);
+  pad.left_trigger = REX_LOAD_U8(state + 6);
+  pad.right_trigger = REX_LOAD_U8(state + 7);
+  pad.thumb_lx = static_cast<int16_t>(REX_LOAD_U16(state + 8));
+  pad.thumb_ly = static_cast<int16_t>(REX_LOAD_U16(state + 10));
+  pad.thumb_rx = static_cast<int16_t>(REX_LOAD_U16(state + 12));
+  pad.thumb_ry = static_cast<int16_t>(REX_LOAD_U16(state + 14));
+  if (achievement_ui::FilterInput(user, pad)) {
+    REX_STORE_U16(state + 4, pad.buttons);
+    REX_STORE_U8(state + 6, pad.left_trigger);
+    REX_STORE_U8(state + 7, pad.right_trigger);
+    REX_STORE_U16(state + 8, static_cast<uint16_t>(pad.thumb_lx));
+    REX_STORE_U16(state + 10, static_cast<uint16_t>(pad.thumb_ly));
+    REX_STORE_U16(state + 12, static_cast<uint16_t>(pad.thumb_rx));
+    REX_STORE_U16(state + 14, static_cast<uint16_t>(pad.thumb_ry));
+  }
+}
+
+namespace {
+void FilterIntroInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state) {
   const uint16_t buttons = REX_LOAD_U16(state + 4);
   const bool pressed = buttons || REX_LOAD_U8(state + 6) > 30 ||
                        REX_LOAD_U8(state + 7) > 30;
@@ -219,6 +253,7 @@ void FilterInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state) 
     }
   }
 }
+}  // namespace
 
 void ObserveFrontend(PPCContext& ctx, uint8_t* base) {
   frontend_started.store(true);

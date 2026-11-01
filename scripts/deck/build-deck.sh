@@ -40,7 +40,8 @@ cp -L "$(clang++ -print-file-name=libstdc++.so.6)" "$(clang++ -print-file-name=l
 '
 
 out="$root/dist-deck"
-mkdir -p "$out/tools" "$out/licenses"
+mkdir -p "$out/tools" "$out/licenses" "$out/fonts"
+install -m 644 "$root"/project/assets/fonts/*.ttf "$out/fonts/"
 b="$root/.tools/deck/game-build"
 install -m 755 "$b/tabletennis" "$b/librexruntime.so" "$b/librexgpu-xenos.so" "$out/"
 install -m 644 "$root"/.tools/deck/runtime/* "$out/"

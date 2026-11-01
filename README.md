@@ -1,6 +1,6 @@
 # Rockstar Games presents Table Tennis — Linux and Steam Deck
 
-A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows recompilation](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC). The game code is recompiled to native x86-64 with ReXGlue SDK v0.10.0 and rendered with Vulkan. It plays at a steady 60 FPS on desktop Linux and on the Steam Deck, with sound, saves and gamepad input, from **your own Xbox 360 disc image**.
+A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows recompilation](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC). The game code is recompiled to native x86-64 with ReXGlue SDK v0.10.0 and rendered with Vulkan. It plays at a steady 60 FPS on desktop Linux and on the Steam Deck, with sound, saves, gamepad input and achievements, from **your own Xbox 360 disc image**.
 
 <p align="center">
   <img src="docs/images/linux-main-menu.jpg" width="49%" alt="Main menu running natively on Linux">
@@ -18,7 +18,16 @@ Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (pass `--sdk PATH` to use an existing one) with the fixes in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. Nothing from the disc is ever committed or distributed; keep your build to yourself.
 
-`dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as the Windows `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, plus `aspect`, `gamemode` and `engine_flags`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`. Add `--save` to write the options back; anything after `--` goes straight to the engine. Press Escape twice within two seconds to quit; F10 toggles the FPS counter and F7 opens the achievements list.
+`dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as the Windows `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, plus `aspect`, `gamemode` and `engine_flags`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`. Add `--save` to write the options back; anything after `--` goes straight to the engine. Press Escape twice within two seconds to quit; F10 toggles the FPS counter.
+
+### Achievements
+
+All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded; progress is saved in `user_data/achievements/`. Unlocks show an animated popup, and the achievements list opens with F7 or by holding the View/Back button for a moment (scroll with the D-pad or stick, close with B). Both are drawn in the game's own menu style, with the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`). The online-only achievements cannot be earned any more.
+
+<p align="center">
+  <img src="docs/images/linux-achievement-popup.jpg" width="60%" alt="Achievement unlocked popup"><br>
+  <img src="docs/images/linux-achievements.jpg" width="80%" alt="Achievements list">
+</p>
 
 Keep `framerate=60`. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation competes with the emulated GPU and slows gameplay down.
 

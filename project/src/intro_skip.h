@@ -10,6 +10,8 @@ void Uninstall();
 // Called on the UI thread, including while the guest is loading its intro.
 void PollGamepads();
 bool ShowTransition();
+// True once the title's front end has reached the main menu.
+bool MainMenuReached();
 bool SkipMovies();
 void AdvanceIntroMovie(PPCContext& ctx, uint8_t* base);
 bool AdvanceFrontendMovie(PPCContext& ctx, uint8_t* base);

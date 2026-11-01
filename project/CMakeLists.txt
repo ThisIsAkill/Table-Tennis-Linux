@@ -14,6 +14,7 @@ include(cmake/rexglue.cmake)
 set(TABLETENNIS_SOURCES
     src/main.cpp
     src/intro_skip.cpp
+    src/achievement_ui.cpp
 )
 
 if(WIN32)

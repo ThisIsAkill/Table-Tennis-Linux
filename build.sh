@@ -112,6 +112,8 @@ dist="$root/dist"
 install -m 755 "$root/build/tabletennis" "$root/build/librexruntime.so" "$root/build/librexgpu-xenos.so" "$dist/"
 install -m 755 "$root/project/launcher/tt-recomp.sh" "$dist/tt-recomp.sh"
 install -m 644 "$root/project/assets/tabletennis.ico" "$dist/tabletennis.ico"
+mkdir -p "$dist/fonts"
+install -m 644 "$root"/project/assets/fonts/*.ttf "$dist/fonts/"
 mkdir -p "$dist/licenses"
 cp -r "$root/licenses/." "$dist/licenses/"
 if [[ -d "$sdk/share/licenses" ]]; then

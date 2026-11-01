@@ -15,6 +15,7 @@
 #include <cstdio>
 #include "offline_menu_device.h"
 #include "intro_skip.h"
+#include "achievement_ui.h"
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -375,6 +376,23 @@ class TabletennisApp : public rex::ReXApp {
         break;
       }
     }
+    // Achievement popup and list faces, shipped next to the executable.
+    tabletennis::achievement_ui::ConfigureFonts(
+        atlas, rex::filesystem::GetExecutableFolder() / "fonts");
+  }
+
+  // Game-styled replacements for the SDK's achievement overlays (achievement_ui.h).
+  std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override {
+    if (!imgui_drawer() || !runtime() || !runtime()->kernel_state()) return nullptr;
+    return std::make_unique<tabletennis::achievement_ui::AchievementsPanel>(
+        imgui_drawer(), immediate_drawer(), runtime(), &achievements());
+  }
+
+  std::unique_ptr<rex::ui::AchievementNotificationDialog> CreateAchievementNotificationDialog()
+      override {
+    if (!imgui_drawer() || !runtime() || !runtime()->kernel_state()) return nullptr;
+    return std::make_unique<tabletennis::achievement_ui::AchievementToast>(
+        imgui_drawer(), immediate_drawer(), runtime(), &achievements(), window());
   }
 
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
