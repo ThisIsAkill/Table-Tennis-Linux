@@ -1,10 +1,62 @@
-# Rockstar Games presents Table Tennis — Windows PC Recompilation
+# Rockstar Games presents Table Tennis — Linux and Steam Deck
+
+A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows recompilation](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC). The game code is recompiled to native x86-64 with ReXGlue SDK v0.10.0 and rendered with Vulkan. It plays at a steady 60 FPS on desktop Linux and on the Steam Deck, with sound, saves and gamepad input, from **your own Xbox 360 disc image**.
+
+<p align="center">
+  <img src="docs/images/linux-main-menu.jpg" width="49%" alt="Main menu running natively on Linux">
+  <img src="docs/images/linux-match.jpg" width="49%" alt="A match in the National TT Auditorium on Linux">
+</p>
+
+## Play on Linux
+
+Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer, plus your own USA/Europe retail ISO (Title ID `545407DF`).
+
+```sh
+./build.sh --iso /path/to/TableTennis.iso
+./dist/tt-recomp.sh
+```
+
+`build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (pass `--sdk PATH` to use an existing one) with the fixes in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. Nothing from the disc is ever committed or distributed; keep your build to yourself.
+
+`dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as the Windows `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, plus `aspect`, `gamemode` and `engine_flags`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`. Add `--save` to write the options back; anything after `--` goes straight to the engine. Press Escape twice within two seconds to quit; F10 toggles the FPS counter and F7 opens the achievements list.
+
+Keep `framerate=60`. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation competes with the emulated GPU and slows gameplay down.
+
+## Steam Deck
+
+A build made on a rolling distribution needs its newer system libraries, so `scripts/deck/build-deck.sh` (after a normal `./build.sh`) rebuilds the SDK and the game in an Ubuntu 24.04 container with clang 20 (`scripts/deck/make-image.sh` creates it, rootless podman), bundles the C++ runtime and writes a private package to `logs/build/tt-recomp-deck.tar.xz` (about 10 MB). It needs glibc 2.38 or newer and an x86-64-v3 (AVX2) CPU, and contains nothing from the disc.
+
+On the Deck, unpack it and run `./setup-deck.sh /path/to/TableTennis.iso` once: it extracts and patches the menu archive from your own ISO and selects 1280x800 fullscreen. Then add `tt-recomp.sh` to Steam as a non-Steam game and start it from Steam (in Game Mode or Desktop Mode); outside Steam the Deck's desktop layout turns B into Escape and the right stick into a mouse. The launcher starts the game through GameMode when it is available.
+
+The Deck shows the original 16:9 picture with thin bars (`aspect=letterbox`). `aspect=fill` is experimental: it renders the match view for the 16:10 screen and fills it, but menus, the HUD and some scenes (such as character select) come out stretched. The first time a scene appears its shaders compile and it can hitch briefly; after that it comes from the shader cache.
+
+## What the Linux port fixes
+
+<p align="center">
+  <img src="docs/images/linux-match-before-fix.jpg" width="49%" alt="Before: the arena floor and players render almost black">
+  <img src="docs/images/linux-match.jpg" width="49%" alt="After: correct lighting">
+</p>
+
+The SDK's Vulkan backend had not been used for this game before. The fixes are kept as small patches in `project/sdk-patches/` and applied to the pinned SDK source by `build.sh`:
+
+1. **Lighting (above).** The Vulkan shader translator read each texture's exponent adjustment from the wrong word of the texture descriptor, so textures with a LOD bias came out up to 2^32 times too dark: a black arena floor, dark skin, a dark character select screen. (Upstream PR rexglue/rexglue-sdk#490.)
+2. **Full-speed gameplay.** Every game write to memory the GPU watches looked up page permissions by parsing `/proc/self/maps` as text. On the Steam Deck that held matches to 24-27 game frames per second, which played in slow motion. The lookup now uses the kernel's `PROCMAP_QUERY` call (Linux 6.11+), with the old method as a fallback.
+3. **Correct picture shape.** The SDK reported the window size to the game as its TV mode, which stretched the picture on the Deck's 16:10 screen and switched small windows to the game's 4:3 SD layout.
+4. **CPU usage.** The audio thread spun a whole CPU core waiting for work (now about 5%), and a debug-only lookup ran on every GPU register write.
+5. **RenderDoc.** An installed RenderDoc was injected into every run. (Upstream PR rexglue/rexglue-sdk#522.)
+
+All PC options from the Windows version work except FSR and CAS sharpening: AMD's FidelityFX build runs a Windows shader compiler under Wine that fails with current glslang, so Linux uses bilinear scaling. The [devlog](docs/DEVLOG.md) tells the story of the port, and `scripts/` holds the unattended test runner (`autotest.sh`), the Steam Deck packaging and the RenderDoc analysis scripts used to find these bugs.
+
+## Windows PC version (upstream)
+
+The rest of this README describes the original Windows recompilation this port is based on.
+
 
 Bring the Xbox 360 classic to your PC with **up to 4K output, higher internal 3D resolution, high-refresh framerate options, and optional image filters**. The game code is recompiled to native Windows x64 with ReXGlue SDK v0.10.0 and DirectX 12 rendering.
 
 Build and play from **your own Xbox 360 disc image**. A graphical installer prepares the required components and creates the local game build for you.
 
-## Get started
+### Get started
 
 1. Download **[Install-Table-Tennis.exe — installer preview](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC/releases/download/v1.0.5/Install-Table-Tennis.exe)**.
 2. Open it, choose your retail **Table Tennis ISO**, allow the required components, and click **Install**.
@@ -16,7 +68,7 @@ On the first launch, **Saved Game** may ask whether to create a save. Choose **A
 
 First setup needs internet access, several GB of free space and time to download components and build the game. If Microsoft build components are missing, Windows may ask for administrator permission. Nothing restarts Windows automatically; if a restart is required, the installer tells you to reopen it afterward.
 
-## What you need
+### What you need
 
 - Windows 10/11 **x64**, an AVX2 CPU and a DirectX 12 GPU.
 - Your own unmodified **USA/Europe retail Xbox 360 Table Tennis ISO**, Title ID `545407DF`.
@@ -24,9 +76,9 @@ First setup needs internet access, several GB of free space and time to download
 
 The ISO is checked before installing large compiler components and is always opened read-only. Other game versions are rejected. Keep your ISO available after installation: the game still reads it during play.
 
-## PC enhancements
+### PC enhancements
 
-### Sharper 3D rendering — up to 4K
+#### Sharper 3D rendering — up to 4K
 
 Choose your display preset directly in the game launcher:
 
@@ -39,32 +91,32 @@ Choose your display preset directly in the game launcher:
 
 The 1440p and 4K presets raise the internal rendering scale as well as the output size. The 1080p preset keeps 1× internal rendering and uses the selected presentation filter for output scaling.
 
-### High-refresh display options
+#### High-refresh display options
 
 Select **60, 120, 144 or 240 FPS targets**, or choose **Unlocked** for uncapped presentation. A 60 FPS VSync option is available, while higher-framerate modes enable the variable-refresh/tearing presentation path for compatible displays, including suitably configured G-Sync and FreeSync setups.
 
 Pick the resolution and framerate combination that suits your GPU and monitor. Achieved FPS depends on your hardware, scene and settings; these are selectable targets rather than guaranteed benchmark results.
 
-### Image filters and anti-aliasing
+#### Image filters and anti-aliasing
 
 - **FXAA** and **FXAA Extreme** options for edge smoothing, plus an Off setting.
 - **AMD FidelityFX FSR**, **Contrast Adaptive Sharpening (CAS)** or **Bilinear** presentation options.
 - **Fullscreen or windowed mode**, configured before launching the game.
 
-### A more convenient PC experience
+#### A more convenient PC experience
 
 - **Graphical settings launcher:** choose your ISO, resolution, framerate, display mode and image filters in one place; settings are saved for the next launch.
 - **Live FPS and frame-time overlay:** toggle it with **F10** while playing.
 - **Quick exit:** press **Escape** to return to Windows.
 - **SDL3 gamepad support**, with controller detection active before the startup intro.
 
-### Offline menu and startup improvements
+#### Offline menu and startup improvements
 
 - Xbox Live removed from the main menu to avoid the unavailable online screen. Tournament, Exhibition, Training Mode, Options and Extras remain available.
 - A gamepad button immediately stops the startup intro and continues to the main menu after loading, without another Start press.
 - A large, centered, antialiased **LOADING MAIN MENU...** transition while the menu initializes. The skip press cannot accidentally select a menu item.
 
-## If installation stops
+### If installation stops
 
 **Music plays but `LOADING MAIN MENU...` never disappears?** In v1.0.3 and earlier, the loading overlay could hide the first-run save question and block the controls needed to answer it. Download the **v1.0.5 installer**, choose the same ISO and installation folder, and rebuild. Your existing saves are retained. Afterward, answer the visible **Saved Game** question if it appears.
 
@@ -76,7 +128,7 @@ The installer is not code-signed. Automatic installation of missing Microsoft co
 
 Existing local saves and graphics settings are retained during repair; the selected ISO path is updated. First-run save creation and startup with that save were checked in isolated profiles; gameplay progress save/load was not fully revalidated.
 
-## How it works
+### How it works
 
 The small installer contains project source and patch instructions. It downloads a checksum-verified, isolated Python runtime and checks for suitable build tools. If needed, it starts Microsoft's signed Visual Studio 2022 Build Tools installer with the required C++/Windows SDK/CMake/Ninja/Clang components selected. The screen asks permission for component downloads and installation before starting.
 
@@ -110,25 +162,6 @@ The installer builder validates every embedded source file against the public al
 
 </details>
 
-## Linux (work in progress)
-
-This fork adds a native Linux build (CachyOS first, Steam Deck next) using the Vulkan backend of ReXGlue SDK v0.10.0. Matches play with correct lighting, audio, saves and gamepad input; a 20-minute unattended session ran without problems, and the game runs on the Steam Deck at 60 FPS (launch it from Steam so the Deck controls act as a gamepad).
-
-Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer.
-
-```sh
-./build.sh --iso /path/to/TableTennis.iso
-./dist/tt-recomp.sh
-```
-
-`build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (pass `--sdk PATH` to use an existing one), runs code generation, applies the verified native edits and compiles the game into `dist/`. Before building the SDK it applies the fixes in `project/sdk-patches/`: the Vulkan shader translator read each texture's exponent adjustment from the wrong word of the texture descriptor, which turned the arena floor and the players' skin nearly black (upstream PR rexglue/rexglue-sdk#490), and an installed RenderDoc was loaded into every run (rexglue/rexglue-sdk#522).
-
-`dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --framerate=120 --fullscreen=true`. Add `--save` to write the options back to the file; anything after `--` goes straight to the engine. FSR and CAS presentation need an SDK built with FidelityFX and are not enabled on Linux yet, so `post` defaults to `bilinear`. See [the devlog](docs/DEVLOG.md) for progress.
-
-### Steam Deck and older distributions
-
-A build made on a rolling distribution needs its newer system libraries. `scripts/deck/build-deck.sh` (after a normal `./build.sh`) rebuilds the SDK and the game in an Ubuntu 24.04 container with clang 20 (`scripts/deck/make-image.sh` creates it, rootless podman), bundles the C++ runtime and writes a private package to `logs/build/tt-recomp-deck.tar.xz` (about 10 MB). It needs glibc 2.38 or newer and an x86-64-v3 CPU (AVX2: the Steam Deck and most PCs since 2015), and contains nothing from the disc. On the target, unpack it and run `./setup-deck.sh /path/to/TableTennis.iso` once; it extracts and patches the menu archive from your own ISO and selects 1280x800 fullscreen (`resolution=800p`). Then start `./tt-recomp.sh`, or add it to Steam as a non-Steam game. The Deck shows the original 16:9 picture with thin bars (`aspect=letterbox`). `aspect=fill` is experimental: it renders the match view for the 16:10 screen and fills it, but menus, the HUD and some scenes (such as character select) come out stretched. Like every local build, keep the package to yourself.
-
 ## License and rights
 
 ### Desktop icon credit
@@ -137,4 +170,4 @@ Desktop icon artwork by **Gary aka POOTERMAN :)** — [visit POOTERMAN on Devian
 
 Project-authored integration, installer and tools use the [MIT license](LICENSE). Adapted ReXGlue SDK headers, the ISO application adapter and SDK-derived CMake integration retain their BSD 3-Clause notices; see [ReXGlue license](licenses/ReXGlue/LICENSE.txt). [SDL's notice](licenses/SDL3/LICENSE.txt) is retained. Downloaded components have their own licenses: [Microsoft](https://visualstudio.microsoft.com/license-terms/) and [Python](https://docs.python.org/3/license.html).
 
-Rockstar Games and Take-Two retain rights to their original game and material. This project is independent and unaffiliated. No project license grants rights to the original game. Local generation reduces what this project distributes; it is **not a guarantee of legal compliance**. You must have the necessary rights to use and process your copy.
+Rockstar Games and Take-Two retain rights to their original game and material, including the game imagery shown in the screenshots above, which are included only to document this port. This project is independent and unaffiliated. No project license grants rights to the original game. Local generation reduces what this project distributes; it is **not a guarantee of legal compliance**. You must have the necessary rights to use and process your copy.
