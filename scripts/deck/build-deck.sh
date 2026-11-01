@@ -6,7 +6,7 @@
 # Needs a normal ./build.sh run first (it prepares the patched SDK source in
 # .tools/rexglue-src and the generated game code). Builds the SDK and the game inside the
 # localhost/tt-recomp-deck image (scripts/deck/make-image.sh), bundles libstdc++/libgcc next
-# to the game, and writes dist-deck/ plus logs/build/tt-recomp-deck.tar.gz. The package holds
+# to the game, and writes dist-deck/ plus logs/build/tt-recomp-deck.tar.xz (stripped). The package holds
 # no ISO data: setup-deck.sh extracts the menu archive from your own ISO on the target.
 # Keep the package private, like any local build.
 set -euo pipefail
@@ -50,9 +50,13 @@ install -m 644 "$root/project/tools/disc_image.py" "$root/project/tools/patch_me
 cp -r "$root/licenses/." "$out/licenses/"
 [[ -d "$root/.tools/deck/sdk/share/licenses" ]] && cp -r "$root/.tools/deck/sdk/share/licenses" "$out/licenses/SDK"
 
+# Debug symbols are not needed on the target and triple the download size.
+strip --strip-unneeded "$out/tabletennis" "$out"/*.so "$out"/*.so.*
 echo "Highest glibc symbol needed:"
 for f in "$out/tabletennis" "$out/librexruntime.so" "$out/librexgpu-xenos.so"; do
   printf '  %-20s %s\n' "$(basename "$f")" "$(objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
 done
-tar -C "$root" -czf "$root/logs/build/tt-recomp-deck.tar.gz" dist-deck
-echo "Package: $root/logs/build/tt-recomp-deck.tar.gz ($(du -h "$root/logs/build/tt-recomp-deck.tar.gz" | cut -f1))"
+pkg="$root/logs/build/tt-recomp-deck.tar.xz"
+tar -C "$root" --exclude=dist-deck/assets --exclude=dist-deck/tt-recomp.ini -cf - dist-deck \
+  | xz -9e -T0 > "$pkg"
+echo "Package: $pkg ($(du -h "$pkg" | cut -f1))"
