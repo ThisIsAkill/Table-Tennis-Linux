@@ -22,7 +22,12 @@ Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and
 
 ### Achievements
 
-All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded; progress is saved in `user_data/achievements/`. Unlocks show an animated popup in the bottom right corner of the picture with a short ping-pong sound (turn it off with `engine_flags=--achievement_sound=false`), and the achievements list opens with F7 or by holding the View/Back button for a moment (scroll with the D-pad or stick, close with B). Both are drawn in the game's own menu style, with the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`). The online-only achievements cannot be earned any more.
+All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded. Progress is saved in `user_data/achievements/`. The online-only achievements can no longer be earned.
+
+- **Unlock popup:** slides up into the bottom right corner of the picture, with a highlight sweep, the icon popping in, the gamerscore counting up and an eased exit. Several unlocks play one after another.
+- **Sound:** a short ping-pong sound plays with it: a whoosh, two ball bounces and a marimba roll, synthesized by the game build itself. Turn it off with `engine_flags=--achievement_sound=false`.
+- **Achievements list:** press F7, or hold the View/Back button for a moment on a controller. Scroll with the D-pad or stick and close with B. A short Back press still reaches the game.
+- **Style:** both are drawn in the game's own menu style and scale with the picture at any resolution, using the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`).
 
 <p align="center">
   <img src="docs/images/linux-achievement-popup.jpg" width="60%" alt="Achievement unlocked popup"><br>
