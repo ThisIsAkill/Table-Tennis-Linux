@@ -112,7 +112,7 @@ The installer builder validates every embedded source file against the public al
 
 ## Linux (work in progress)
 
-This fork adds a native Linux build (CachyOS first, Steam Deck next) using the Vulkan backend of ReXGlue SDK v0.10.0. Matches play with correct lighting, audio and saves; a 20-minute unattended session ran without problems. Real gamepad and Steam Deck tests are still in progress.
+This fork adds a native Linux build (CachyOS first, Steam Deck next) using the Vulkan backend of ReXGlue SDK v0.10.0. Matches play with correct lighting, audio, saves and gamepad input; a 20-minute unattended session ran without problems, and the game runs on the Steam Deck at 60 FPS (launch it from Steam so the Deck controls act as a gamepad).
 
 Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer.
 
