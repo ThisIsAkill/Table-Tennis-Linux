@@ -8,6 +8,13 @@
 // pad input: D-pad up/down picks a row, left/right (or A) changes its value, X restores the
 // defaults, B returns to the game's OPTIONS list.
 //
+// The UPDATES rows store check_updates / auto_update for the launcher and show the installed
+// version (<install dir>/.tt-version). When the launcher has found a newer release
+// (<install dir>/.tt-update.json) the version row offers it: A asks for confirmation, writes
+// <install dir>/.tt-update-requested and quits; the launcher installs the update and restarts.
+// UpdateToast announces such a release once on the main menu. The game itself does no
+// networking. Test hook: TT_TEST_UPDATE_JSON=<path> reads that file as the update file.
+//
 // Values come from and are saved to the launcher's settings file next to the executable
 // (tt-recomp.ini on Linux, settings.ini on Windows). Show FPS, fullscreen and the achievement sound apply at once; the
 // others are read by the launcher and apply after a restart.
@@ -19,6 +26,8 @@
 #include <string>
 
 #include <rex/ui/imgui_dialog.h>
+
+struct ImDrawList;
 
 #include "achievement_ui.h"
 
@@ -61,8 +70,10 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   void Change(int row, int delta);
   void RestoreDefaults();
   void ApplyLive(int row);
+  void RequestUpdate();
   void Save();
   void Draw(ImGuiIO& io, float alpha);
+  void DrawConfirm(ImDrawList* dl, float s, float cx, float cy, float alpha);
 
   rex::ui::Window* window_ = nullptr;
   LiveHooks hooks_;
@@ -74,6 +85,23 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   std::string save_error_;
   std::string notice_;
   double notice_until_ = 0.0;
+  bool confirm_ = false;  // "update now?" box showing
+  double confirm_at_ = 0.0;
+};
+
+// Front-end popup when the launcher reports a newer release (see the update notes in
+// pc_settings.cpp). Shown once per new version per session, never in a match or over a page.
+class UpdateToast : public rex::ui::ImGuiDialog {
+ public:
+  explicit UpdateToast(rex::ui::ImGuiDrawer* drawer);
+  ~UpdateToast() override;
+
+ protected:
+  void OnDraw(ImGuiIO& io) override;
+
+ private:
+  std::string shown_version_;
+  double started_ = -1.0;
 };
 
 }  // namespace tabletennis::pc_settings

@@ -83,6 +83,8 @@ struct PadState {
 PadState g_pads[4];
 }  // namespace
 
+bool MatchInPlay() { return InMatch(); }
+
 void OnPadSample(uint32_t user, uint16_t buttons, int16_t thumb_lx, int16_t thumb_ly) {
   if (user >= 4) return;
   PadState& state = g_pads[user];

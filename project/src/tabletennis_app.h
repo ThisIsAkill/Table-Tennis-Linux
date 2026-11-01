@@ -162,6 +162,10 @@ class TabletennisApp : public rex::ReXApp {
     if (imgui_drawer_ && pc_settings_) {
       imgui_drawer_->RemoveDialog(pc_settings_.get());
     }
+    if (imgui_drawer_ && update_toast_) {
+      imgui_drawer_->RemoveDialog(update_toast_.get());
+    }
+    update_toast_.reset();
     pc_settings_.reset();
     fps_overlay_.reset();
   }
@@ -418,6 +422,8 @@ class TabletennisApp : public rex::ReXApp {
       pc_settings_ = std::make_unique<tabletennis::pc_settings::SettingsPage>(drawer, window(),
                                                                              std::move(hooks));
       drawer->AddDialog(pc_settings_.get());
+      update_toast_ = std::make_unique<tabletennis::pc_settings::UpdateToast>(drawer);
+      drawer->AddDialog(update_toast_.get());
     }
 
     // Hotkey F10 toggles FPS overlay during gameplay
@@ -498,5 +504,6 @@ class TabletennisApp : public rex::ReXApp {
   ImFont* loading_font_ = nullptr;
   std::unique_ptr<FpsOverlayDialog> fps_overlay_;
   std::unique_ptr<tabletennis::pc_settings::SettingsPage> pc_settings_;
+  std::unique_ptr<tabletennis::pc_settings::UpdateToast> update_toast_;
   rex::ui::ImGuiDrawer* imgui_drawer_ = nullptr;
 };
