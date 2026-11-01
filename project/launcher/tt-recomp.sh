@@ -8,7 +8,8 @@
 #   ./tt-recomp.sh [--iso=PATH] [--resolution=720p|800p|1080p|1440p|4k]
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
-#                  [--post=fsr|cas|bilinear] [--save] [-- extra engine flags...]
+#                  [--post=fsr|cas|bilinear] [--aspect=letterbox|fill] [--save]
+#                  [-- extra engine flags...]
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
 # ini passes further engine options.
@@ -24,6 +25,7 @@ fullscreen="false"
 show_fps="false"
 aa="none"
 post="bilinear"
+aspect="letterbox"
 engine_flags=""
 save=0
 extra=()
@@ -40,6 +42,7 @@ set_option() {
     show_fps) show_fps="$value" ;;
     aa) aa="$value" ;;
     post) post="$value" ;;
+    aspect) aspect="$value" ;;
     engine_flags) engine_flags="$value" ;;
     *) return 1 ;;
   esac
@@ -58,7 +61,7 @@ fi
 while (($#)); do
   case "$1" in
     --save) save=1 ;;
-    --help|-h) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; extra+=("$@"); break ;;
     --*=*)
       key="${1%%=*}"; key="${key#--}"
@@ -81,6 +84,7 @@ case "$fullscreen" in true|false) ;; *) die "fullscreen must be true or false" ;
 case "$show_fps" in true|false) ;; *) die "show_fps must be true or false" ;; esac
 case "$aa" in none|fxaa|fxaa_extreme) ;; *) die "unknown aa '$aa' (none, fxaa, fxaa_extreme)" ;; esac
 case "$post" in fsr|cas|bilinear) ;; *) die "unknown post '$post' (fsr, cas, bilinear)" ;; esac
+case "$aspect" in letterbox|fill) ;; *) die "unknown aspect '$aspect' (letterbox, fill)" ;; esac
 
 [[ -n "$iso_path" ]] || die "no ISO set. Add iso_path=/path/to/TableTennis.iso to $config or pass --iso=PATH."
 [[ -f "$iso_path" ]] || die "ISO not found: $iso_path"
@@ -94,6 +98,7 @@ fullscreen=$fullscreen
 show_fps=$show_fps
 aa=$aa
 post=$post
+aspect=$aspect
 engine_flags=$engine_flags
 EOF
   mv -f "$config.tmp" "$config"
@@ -110,6 +115,14 @@ args=(
   # edges as TV overscan. (SDK patch 0005 keeps the game's TV mode at 1280x720.)
   --present_safe_area_x=100 --present_safe_area_y=100
 )
+# aspect=fill renders the 3D view for the screen's shape and stretches the picture to fill it.
+# The game keeps its horizontal view, so screens narrower than 16:9 (Steam Deck 16:10) show
+# more at the top and bottom; 2D menus and HUD are stretched slightly. Wider screens would
+# lose some of the top and bottom.
+if [[ "$aspect" == fill ]]; then
+  ratio="$(awk -v w="$width" -v h="$height" 'BEGIN { printf "%.4f", w / h }')"
+  args+=("--display_aspect=$ratio" --present_letterbox=false)
+fi
 # engine_flags= in the ini adds engine options (for example --occlusion_query_enable=false);
 # flags after -- on the command line still come last and win.
 if [[ -n "$engine_flags" ]]; then
