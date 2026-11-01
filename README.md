@@ -1,37 +1,74 @@
 # Rockstar Games presents Table Tennis — Linux and Steam Deck
 
-A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows recompilation](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC). The game code is recompiled to native x86-64 with ReXGlue SDK v0.10.0 and rendered with Vulkan. It plays at a steady 60 FPS on desktop Linux and on the Steam Deck, with sound, saves, gamepad input and achievements, from **your own Xbox 360 disc image**.
+A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows recompilation](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC). The game's code is recompiled to native x86-64 with ReXGlue SDK v0.10.0 and rendered with Vulkan. It plays at a steady 60 FPS on Linux PCs and on the Steam Deck, with sound, saves, controller haptics, achievements and in-game PC settings, from **your own Xbox 360 disc image**.
 
 <p align="center">
   <img src="docs/images/linux-main-menu.jpg" width="49%" alt="Main menu running natively on Linux">
   <img src="docs/images/linux-match.jpg" width="49%" alt="A match in the National TT Auditorium on Linux">
 </p>
 
-## Easy install (Linux and Steam Deck)
+## Install
 
-Run `tools/installer/bin/install-table-tennis` (build it once with `tools/installer/build.sh`), drop your ISO on the window or pick one it found, choose where to install and whether to add the game to Steam as a non-Steam game (for Game Mode on the Steam Deck), and press INSTALL. It builds the game on your machine from your own disc and ends with a PLAY button. Missing build tools are downloaded automatically, once: it uses podman or docker when present (the Steam Deck has podman), otherwise this machine's compilers, otherwise an official Ubuntu base system in your cache folder, with no admin rights needed. The first install takes about 5-10 minutes on a desktop PC (longer on a Steam Deck) and needs a few GB of temporary space; later updates take seconds. Settings, desktop entry and Steam shortcut are set up for you, and saves live in `~/.local/share/tabletennis`, so reinstalling keeps them. The same steps run without a window with `scripts/install/tt-install.sh --iso PATH` (see `scripts/install/README.md`).
+1. Download **[install-table-tennis-linux-x86_64.tar.gz](https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest/download/install-table-tennis-linux-x86_64.tar.gz)** from the [latest release](https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest) and unpack it (on a Steam Deck, do this in Desktop Mode).
+2. Open the `TableTennis-Installer` folder and double-click **install-table-tennis** (or run `./install-table-tennis` in a terminal).
+3. Drop your Table Tennis ISO on the window, press **BROWSE...**, or pick one of the ISOs it found in your Downloads, Desktop, Games folder or on an SD card. It checks that it is the right disc.
+4. Choose where to install (internal storage is recommended; SD cards and any other folder work too), whether to **add the game to Steam as a non-Steam game** (so it shows up in your library and in Game Mode on the Steam Deck) and whether to add a desktop shortcut, then press **INSTALL**.
+5. When it says **Ready to play**, press **PLAY**. On a Steam Deck you can go back to Game Mode and start it from Library > Non-Steam.
+
+The mouse, touch screen, keyboard and controller all work in the installer.
 
 <p align="center">
   <img src="docs/images/installer-welcome.jpg" width="49%" alt="Installer: drop your ISO">
   <img src="docs/images/installer-building.jpg" width="49%" alt="Installer: building the game">
 </p>
 
-## Play on Linux
+### What you need
 
-Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer, plus your own USA/Europe retail ISO (Title ID `545407DF`).
+- A 64-bit x86 PC with an AVX2 CPU (most PCs since 2015, and the Steam Deck) and a Vulkan GPU.
+- Your own unmodified **USA/Europe retail Xbox 360 Table Tennis ISO** (Title ID `545407DF`). It is only read, never changed, and nothing from it leaves your computer. Keep it where it is after installing: the game reads it while you play.
+- An internet connection for the first install, and about 1 GB free in the install folder plus about 3 GB temporary space for build files.
 
-```sh
-./build.sh --iso /path/to/TableTennis.iso
-./dist/tt-recomp.sh
-```
+### What the installer does
 
-`build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (pass `--sdk PATH` to use an existing one) with the fixes in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. Nothing from the disc is ever committed or distributed; keep your build to yourself.
+The game cannot be downloaded ready-made, because it is built from the code on your own disc. The installer does that for you on your machine, the same way the Windows version's installer does: it downloads the build tools and the prebuilt engine from the release once (about 125 MB), turns your disc's Xbox code into native code and compiles it, then installs the game with its settings, desktop entry and Steam shortcut. A first install takes about a minute on a desktop PC (45 seconds measured on a Ryzen 5 5600X) and should take a few minutes on a Steam Deck; later installs and updates reuse everything and finish in seconds.
 
-`dist/tt-recomp.sh` replaces the Windows launcher. It reads `dist/tt-recomp.ini` (same keys as the Windows `settings.ini`: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, plus `aspect`, `gamemode` and `engine_flags`), and command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`. `render_scale=2` or `3` renders the 3D view above the screen's resolution and scales it down (supersampling) on GPUs with headroom; the Steam Deck cannot hold 60 FPS at 2. Add `--save` to write the options back; anything after `--` goes straight to the engine. Press Escape twice within two seconds to quit; F10 toggles the FPS counter.
+If the prebuilt files cannot be downloaded, it builds the engine too and fetches whatever tools are missing: it uses podman or docker when available, otherwise your system's compilers, otherwise an official Ubuntu base system unpacked into your cache folder, without needing admin rights. That takes a few more minutes the first time.
+
+| What | Where |
+|---|---|
+| The game | the install folder (default `~/Games/TableTennis`) |
+| Settings | `tt-recomp.ini` in the install folder |
+| Saves, achievements, shader cache | `~/.local/share/tabletennis` (kept when you reinstall or move the game) |
+| Build tools and caches | `~/.cache/tt-recomp` (can be deleted after installing; updates are then slower once) |
+
+To uninstall, delete the install folder (and the cache folder), remove the shortcut from Steam, and delete `~/.local/share/tabletennis` if you also want to remove your saves.
+
+The same install runs without a window with `scripts/install/tt-install.sh --iso /path/to/TableTennis.iso` from the unpacked folder; see [scripts/install/README.md](scripts/install/README.md) for its options.
+
+## Updates
+
+The game checks for a new release in the background when it starts, at most every six hours. When there is one, the main menu shows an **UPDATE AVAILABLE** popup. Go to **OPTIONS > PC SETTINGS** and choose the version row (**UPDATE TO ...**) to see what is new and update: the game closes, updates in about a minute and starts again. Your saves and settings are kept, and if an update fails the current version keeps working.
+
+In PC SETTINGS, **CHECK FOR UPDATES** turns the check off and **AUTOMATIC UPDATES** installs new versions by itself when the game starts. Releases are signed, and the game only installs updates signed with this project's key. The check only downloads the public release information from GitHub; nothing about you or your game is sent.
+
+## Features
 
 ### PC settings in the game's menu
 
-The game's **OPTIONS** menu gets an extra entry, **PC SETTINGS**, added to your own menu file by the build's menu patch. It opens a page in the game's menu style for resolution, fullscreen, picture mode (letterbox or the experimental fill), anti-aliasing, the FPS counter, haptics and the achievement sound. Fullscreen, the FPS counter, haptics and the sound change immediately; the others are marked and apply the next time you start the game. Changes are saved to `tt-recomp.ini`, the same file the launcher reads. Use the D-pad to choose and change, X to restore the defaults (800p fullscreen on a Steam Deck) and B to go back. The same entry is in the pause menu's OPTIONS during a match.
+The game's **OPTIONS** menu, both in the main menu and in the pause menu during a match, has a **PC SETTINGS** entry below AUDIO OPTIONS. It opens a page in the game's own style:
+
+| Setting | Values | Applies |
+|---|---|---|
+| Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160 | after a restart |
+| Fullscreen | on / off | at once |
+| Picture | letterbox (the original 16:9) / fill screen (experimental) | after a restart |
+| Anti-aliasing | off / FXAA / FXAA extreme | after a restart |
+| Show FPS | on / off | at once |
+| Haptics | on / off | at once |
+| Achievement sound | on / off | at once |
+| Check for updates, automatic updates | on / off | next start |
+
+Use the D-pad to choose and change, **X** to restore the defaults (1280x800 fullscreen on a Steam Deck) and **B** to go back. Changes are saved to `tt-recomp.ini`.
 
 <p align="center">
   <img src="docs/images/linux-pc-settings.jpg" width="70%" alt="PC SETTINGS page in the OPTIONS menu">
@@ -39,31 +76,34 @@ The game's **OPTIONS** menu gets an extra entry, **PC SETTINGS**, added to your 
 
 ### Controller haptics
 
-The original game only rumbles on some shots. This port adds a pulse on every ball hit and a tick when moving through the menus, with a stronger one on A and B; menu ticks are off during play. They work on the Steam Deck's built-in controller and other SDL gamepads with rumble, and can be switched off with **HAPTICS** in PC SETTINGS (`haptics=false` in `tt-recomp.ini`).
+The original game only rumbles on some shots. This port adds a firm pulse on every ball hit, a light tick when moving through the menus and a stronger one on A and B (menu ticks are off during play). They work on the Steam Deck's built-in controller and other controllers with rumble.
 
 ### Achievements
 
-All 29 achievements (1000 gamerscore) load from your copy of the game, and the game's unlock calls are recorded. Progress is saved with your saves (`~/.local/share/tabletennis/achievements/` for an installed game). The online-only achievements can no longer be earned.
+All 29 achievements (1000 gamerscore) come from your copy of the game and unlock as you play; the online-only ones can no longer be earned.
 
-- **Unlock popup:** slides up into the bottom right corner of the picture, with a highlight sweep, the icon popping in, the gamerscore counting up and an eased exit. Several unlocks play one after another.
-- **Sound:** a short ping-pong sound plays with it: a whoosh, two ball bounces and a marimba roll, synthesized by the game build itself. Turn it off with `engine_flags=--achievement_sound=false`.
-- **Achievements list:** press F7, or hold the View/Back button for a moment on a controller. Scroll with the D-pad or stick and close with B. A short Back press still reaches the game.
-- **Style:** both are drawn in the game's own menu style and scale with the picture at any resolution, using the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`).
+- **Unlock popup:** slides into the bottom right corner of the picture with the achievement's icon, name and gamerscore, and a short ping-pong sound: a whoosh, two ball bounces and a marimba roll, made by the game build itself.
+- **Achievements list:** hold the **View/Back** button for a moment on a controller, or press F7. Scroll with the D-pad or stick and close with B. A short Back press still reaches the game.
+- **Style:** both are drawn in the game's own menu style with the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`).
 
 <p align="center">
   <img src="docs/images/linux-achievement-popup.jpg" width="60%" alt="Achievement unlocked popup"><br>
   <img src="docs/images/linux-achievements.jpg" width="80%" alt="Achievements list">
 </p>
 
-Keep `framerate=60`. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation competes with the emulated GPU and slows gameplay down.
+### Steam Deck
 
-## Steam Deck
+- Add the game to Steam during installation and play it in Game Mode with the Deck's controls; outside Steam, the Deck's desktop layout turns B into Escape and the right stick into a mouse.
+- It runs at 60 FPS. Sleep and resume in the middle of a match work.
+- The picture is the original 16:9 with thin bars. **Fill screen** in PC SETTINGS renders the match view for the 16:10 screen but stretches menus, the HUD and some scenes, so it is experimental.
+- The first time a scene appears its shaders are compiled and it can hitch briefly; after that they come from the shader cache.
+- The launcher starts the game through Feral GameMode when it is installed.
 
-A build made on a rolling distribution needs its newer system libraries, so `scripts/deck/build-deck.sh` (after a normal `./build.sh`) rebuilds the SDK and the game in an Ubuntu 24.04 container with clang 20 (`scripts/deck/make-image.sh` creates it, rootless podman), bundles the C++ runtime and writes a private package to `logs/build/tt-recomp-deck.tar.xz` (about 10 MB). It needs glibc 2.38 or newer and an x86-64-v3 (AVX2) CPU, and contains nothing from the disc.
+### Tips
 
-On the Deck, unpack it and run `./setup-deck.sh /path/to/TableTennis.iso` once: it extracts and patches the menu archive from your own ISO and selects 1280x800 fullscreen. Then add `tt-recomp.sh` to Steam as a non-Steam game and start it from Steam (in Game Mode or Desktop Mode); outside Steam the Deck's desktop layout turns B into Escape and the right stick into a mouse. The launcher starts the game through GameMode when it is available.
-
-The Deck shows the original 16:9 picture with thin bars (`aspect=letterbox`). `aspect=fill` is experimental: it renders the match view for the 16:10 screen and fills it, but menus, the HUD and some scenes (such as character select) come out stretched. The first time a scene appears its shaders compile and it can hitch briefly; after that it comes from the shader cache.
+- Keep the frame rate at 60. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation slows gameplay down.
+- Press Escape twice within two seconds to quit with a keyboard. F10 toggles the FPS counter.
+- On a PC with a strong GPU, `render_scale=2` (or `3`) in `tt-recomp.ini` renders the 3D view above the screen's resolution and scales it down for a sharper picture. The Steam Deck cannot hold 60 FPS with it.
 
 ## What the Linux port fixes
 
@@ -72,15 +112,45 @@ The Deck shows the original 16:9 picture with thin bars (`aspect=letterbox`). `a
   <img src="docs/images/linux-match.jpg" width="49%" alt="After: correct lighting">
 </p>
 
-The SDK's Vulkan backend had not been used for this game before. The fixes are kept as small patches in `project/sdk-patches/` and applied to the pinned SDK source by `build.sh`:
+The SDK's Vulkan backend had not been used for this game before. The fixes are small patches in `project/sdk-patches/`, applied to the pinned SDK source:
 
 1. **Lighting (above).** The Vulkan shader translator read each texture's exponent adjustment from the wrong word of the texture descriptor, so textures with a LOD bias came out up to 2^32 times too dark: a black arena floor, dark skin, a dark character select screen. (Upstream PR rexglue/rexglue-sdk#490.)
 2. **Full-speed gameplay.** Every game write to memory the GPU watches looked up page permissions by parsing `/proc/self/maps` as text. On the Steam Deck that held matches to 24-27 game frames per second, which played in slow motion. The lookup now uses the kernel's `PROCMAP_QUERY` call (Linux 6.11+), with the old method as a fallback.
 3. **Correct picture shape.** The SDK reported the window size to the game as its TV mode, which stretched the picture on the Deck's 16:10 screen and switched small windows to the game's 4:3 SD layout.
 4. **CPU usage.** The audio thread spun a whole CPU core waiting for work (now about 5%), and a debug-only lookup ran on every GPU register write.
-5. **RenderDoc.** An installed RenderDoc was injected into every run. (Upstream PR rexglue/rexglue-sdk#522.)
+5. **Controller rumble.** Gamepads now report whether they can rumble, and a failing rumble request is logged instead of being dropped silently.
+6. **RenderDoc.** An installed RenderDoc was injected into every run. (Upstream PR rexglue/rexglue-sdk#522.)
 
-All PC options from the Windows version work except FSR and CAS sharpening: AMD's FidelityFX build runs a Windows shader compiler under Wine that fails with current glslang, so Linux uses bilinear scaling. The [devlog](docs/DEVLOG.md) tells the story of the port, and `scripts/` holds the unattended test runner (`autotest.sh`), the Steam Deck packaging and the RenderDoc analysis scripts used to find these bugs.
+All PC options from the Windows version work except FSR and CAS sharpening: AMD's FidelityFX build runs a Windows shader compiler under Wine that fails with current glslang, so Linux uses bilinear scaling. The [devlog](docs/DEVLOG.md) tells the story of the port.
+
+## For developers
+
+Building from a checkout needs x86_64 Linux, `python3`, `git`, `cmake`, `ninja` and `clang` 19 or newer:
+
+```sh
+./build.sh --iso /path/to/TableTennis.iso
+./dist/tt-recomp.sh
+```
+
+`build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
+
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `engine_flags`); command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`, `--save` writes them back, and anything after `--` goes straight to the engine.
+
+| Path | What it is |
+|---|---|
+| `project/src/` | game-side code: PC SETTINGS, achievement UI, haptics, update popup, intro skip |
+| `project/sdk-patches/` | the SDK fixes listed above |
+| `project/tools/` | ISO reader, menu patch (PC SETTINGS entries), native edits |
+| `tools/installer/` | the graphical installer (SDL3 + Dear ImGui); `tools/installer/build.sh` builds it |
+| `scripts/install/` | the install and update engine used by the installer ([README](scripts/install/README.md)) |
+| `scripts/release/` | building and signing releases ([README](scripts/release/README.md)) |
+| `scripts/autotest.sh`, `scripts/scenarios/` | unattended test runs under Xvfb |
+| `scripts/rdc/` | RenderDoc analysis scripts used to find the rendering bugs |
+| `scripts/deck/` | a private all-in-one Steam Deck package built in a container (for your own use only, since it contains the compiled game) |
+
+## What is in a release
+
+Releases contain only open-source, game-free files: the installer and the source code of this project, the prebuilt ReXGlue SDK (an open-source Xbox 360 runtime, with the patches above), slim build tools (Ubuntu 24.04 packages and LLVM's clang, with the source packages of the GPL parts attached to the release), a manifest with every file's SHA256, and its Ed25519 signature. No game files, no game code and nothing from the disc are distributed; the game is always built on the player's machine from their own disc. The source code refers to the game only by function addresses and checksums, and the README screenshots show Rockstar's game to document this port.
 
 ## Windows PC version (upstream)
 
