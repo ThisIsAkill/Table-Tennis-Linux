@@ -31,8 +31,8 @@ struct Pulse {
 // Tunables. The Steam Deck renders mostly the low-frequency motor (the game's own rumble uses
 // only that one), so every pulse drives it. Hit: strong and short; menu: a light tick.
 constexpr Pulse kHitPulse{0xFFFF, 0xC000, 80};
-constexpr Pulse kMenuPulse{0x9000, 0x4000, 40};
-constexpr Pulse kSelectPulse{0xC000, 0x6000, 55};
+constexpr Pulse kMenuPulse{0xFFFF, 0xFFFF, 55};
+constexpr Pulse kSelectPulse{0xFFFF, 0xFFFF, 80};
 
 std::mutex g_mutex;
 Clock::time_point g_pulse_until{};
