@@ -4,6 +4,7 @@
 
 #include "generated/default/tabletennis_init.h"
 
+#include <SDL3/SDL.h>
 #include <imgui.h>
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -140,6 +141,7 @@ enum : uint16_t {
   kPadRight = 0x0008,
   kPadA = 0x1000,
   kPadB = 0x2000,
+  kPadX = 0x4000,
 };
 constexpr int16_t kStickThreshold = 18000;
 
@@ -251,7 +253,10 @@ void Rotate(ImDrawList* dl, int first_vertex, ImVec2 pivot, float radians) {
 void PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t movie) {
   if (!movie) return;
   // Test hook: TT_TEST_OPEN_PC_SETTINGS=1 opens the page a few seconds after the main menu.
-  static const bool test_open = std::getenv("TT_TEST_OPEN_PC_SETTINGS") != nullptr;
+  static const bool test_open = [] {
+    const char* value = std::getenv("TT_TEST_OPEN_PC_SETTINGS");
+    return value && std::strcmp(value, "pause") != 0;
+  }();
   if (test_open) {
     static int frames = 0;
     if (++frames == 240) SetOpen(true);
@@ -285,6 +290,52 @@ void PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t movie) {
   }
   if (!g_open.load()) {
     REXLOG_INFO("Tabletennis: PC SETTINGS chosen in the OPTIONS menu");
+    SetOpen(true);
+  }
+}
+
+void PollPause(PPCContext& ctx, uint8_t* base, uint32_t pause) {
+  if (!pause) return;
+  static uint32_t name = 0;
+  if (!name) {
+    static constexpr char kFlag[] = "GLOBAL_PC_SETTINGS";
+    name = rex::system::kernel_memory()->SystemHeapAlloc(sizeof(kFlag));
+    if (!name) return;
+    std::memcpy(base + name, kFlag, sizeof(kFlag));
+  }
+  // Test hook: TT_TEST_OPEN_PC_SETTINGS=pause opens the page after the pause menu's OPTIONS
+  // list has been showing for about two seconds.
+  static const bool test_open = [] {
+    const char* value = std::getenv("TT_TEST_OPEN_PC_SETTINGS");
+    return value && std::strcmp(value, "pause") == 0;
+  }();
+  if (test_open) {
+    static int frames = 0;
+    static bool done = false;
+    PPCContext call = ctx;
+    call.r3.u64 = REX_LOAD_U32(pause + 92);
+    call.r4.u64 = 0x82060730;  // Retail image's existing "STATE_CURRENT" string.
+    if (!done && call.r3.u32) {
+      sub_823F9280(call, base);
+      constexpr uint32_t kPauseOptions = 1;  // iPAUSE_OPTIONS in pongpause_001
+      if (call.r3.u32 && REX_LOAD_U32(call.r3.u32) == kPauseOptions) {
+        if (++frames == 120) {
+          done = true;
+          SetOpen(true);
+        }
+      } else {
+        frames = 0;
+      }
+    }
+  }
+  // The game's own check-and-clear for the pause movie's flags (sub_823246E8 takes the
+  // pause object, locks its movie and resets the flag).
+  PPCContext call = ctx;
+  call.r3.u64 = pause;
+  call.r4.u64 = name;
+  sub_823246E8(call, base);
+  if ((call.r3.u32 & 0xFF) && !g_open.load()) {
+    REXLOG_INFO("Tabletennis: PC SETTINGS chosen in the pause menu's OPTIONS");
     SetOpen(true);
   }
 }
@@ -349,6 +400,7 @@ void SettingsPage::Open() {
   selected_ = 0;
   held_direction_ = 0;
   save_error_.clear();
+  notice_.clear();
   opened_at_ = ImGui::GetTime();
   shown_ = true;
 }
@@ -357,7 +409,38 @@ void SettingsPage::Change(int row_index, int delta) {
   Row& row = g_rows[row_index];
   const int count = int(row.choices.size());
   row.current = ((row.current + delta) % count + count) % count;
-  const bool on = row.current == 1;
+  ApplyLive(row_index);
+  REXLOG_INFO("Tabletennis: PC setting {} = {}", row.key, row.choices[row.current].value);
+  notice_.clear();
+  Save();
+}
+
+// True on a Steam Deck: Steam sets SteamDeck=1, and the built-in screen is 1280x800.
+bool OnSteamDeck() {
+  if (const char* flag = std::getenv("SteamDeck"); flag && std::strcmp(flag, "1") == 0) return true;
+  const SDL_DisplayMode* mode = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+  return mode && ((mode->w == 1280 && mode->h == 800) || (mode->w == 800 && mode->h == 1280));
+}
+
+// X: every row back to its default, like the game's RESTORE DEFAULTS. The defaults are the
+// launcher's, except on a Steam Deck, where they match setup-deck.sh (800p, fullscreen).
+void SettingsPage::RestoreDefaults() {
+  for (int i = 0; i < int(g_rows.size()); ++i) {
+    g_rows[i].current = g_rows[i].fallback;
+  }
+  if (OnSteamDeck()) {
+    g_rows[kResolution].current = std::max(0, FindChoice(g_rows[kResolution], "800p"));
+    g_rows[kFullscreen].current = 1;
+  }
+  for (int i = 0; i < int(g_rows.size()); ++i) ApplyLive(i);
+  REXLOG_INFO("Tabletennis: PC settings restored to defaults");
+  notice_ = "DEFAULTS RESTORED";
+  notice_until_ = ImGui::GetTime() + 2.5;
+  Save();
+}
+
+void SettingsPage::ApplyLive(int row_index) {
+  const bool on = g_rows[row_index].current == 1;
   switch (row_index) {
     case kFullscreen:
       if (window_) window_->SetFullscreen(on);
@@ -375,8 +458,6 @@ void SettingsPage::Change(int row_index, int delta) {
     default:
       break;
   }
-  REXLOG_INFO("Tabletennis: PC setting {} = {}", row.key, row.choices[row.current].value);
-  Save();
 }
 
 // Rewrites only the keys this page owns, keeping every other line (iso_path, framerate,
@@ -460,6 +541,7 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
     }
   }
   if (pressed & kPadA) Change(selected_, 1);
+  if (pressed & kPadX) RestoreDefaults();
   // Held directions repeat, like the game's lists.
   if (held_direction_ && !(held & held_direction_)) held_direction_ = 0;
   if (held_direction_ && now >= next_repeat_) {
@@ -497,8 +579,8 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const float bx0 = X(312);
   const float header_y0 = Y(80 + rise), header_y1 = Y(146 + rise);
   const float header_cy = (header_y0 + header_y1) * 0.5f;
-  const float body_y0 = header_y1 - 6.0f * s, body_y1 = Y(510 + rise);
-  const float footer_y0 = body_y1, footer_y1 = Y(552 + rise);
+  const float body_y0 = header_y1 - 6.0f * s, body_y1 = Y(546 + rise);
+  const float footer_y0 = body_y1, footer_y1 = Y(588 + rise);
 
   // Body: near-black like the game's option lists, but opaque so the OPTIONS list underneath
   // does not show through; a faint sheen runs along the top.
@@ -550,6 +632,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
             kCondensed);
 
     const char* value = row.choices[row.current].label;
+    float value_left = 0.0f;
     if (selected) {
       const float w = TextWidth(big_font, big_px, value, kCondensed);
       const float arrow = 13.0f * s;
@@ -559,10 +642,20 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       AddOutlinedText(dl, big_font, big_px, ImVec2(text_right - w, CapsTop(cy, big_px)), Col(255, 204, 0, in),
                       Col(16, 18, 28, in), 1.8f * s, value, kCondensed);
       Arrow(dl, ImVec2(text_right - w - arrow - 6.0f * s, cy), arrow, false, Col(150, 156, 166, in));
+      value_left = text_right - w - arrow * 1.5f - 6.0f * s;
     } else {
       const float w = TextWidth(label_font, value_px, value, kCondensed);
       AddText(dl, label_font, value_px, ImVec2(value_right - w, CapsTop(cy, value_px)), Col(222, 224, 228, in),
               value, kCondensed);
+      value_left = value_right - w;
+    }
+    // A changed restart setting is marked on its row until the game is restarted.
+    if (row.apply == Apply::kRestart && row.current != row.running) {
+      const float tag_px = 15.0f * s;
+      const char* tag = "AFTER RESTART";
+      const float w = TextWidth(label_font, tag_px, tag, kCondensed);
+      AddText(dl, label_font, tag_px, ImVec2(value_left - 14.0f * s - w, CapsTop(cy, tag_px)),
+              Col(255, 204, 0, 0.85f * in), tag, kCondensed);
     }
   }
 
@@ -578,7 +671,10 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
             value_right - label_x);
     const char* status = nullptr;
     ImU32 status_col = Col(255, 204, 0, in);
-    if (!save_error_.empty()) {
+    if (!notice_.empty() && ImGui::GetTime() < notice_until_) {
+      status = notice_.c_str();
+      status_col = Col(128, 194, 238, in);
+    } else if (!save_error_.empty()) {
       status = save_error_.c_str();
       status_col = Col(240, 90, 80, in);
     } else if (row.apply == Apply::kRestart && row.current != row.running) {
@@ -587,10 +683,14 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       status = "APPLIES NOW";
       status_col = Col(128, 194, 238, in);
     }
+    const float status_px = 19.0f * s;
     if (status) {
-      const float status_px = 19.0f * s;
       AddText(dl, label_font, status_px, ImVec2(label_x, body_y1 - 32.0f * s), status_col, status, kCondensed);
     }
+    const char* legend = "* APPLIES AFTER RESTART";
+    AddText(dl, label_font, status_px,
+            ImVec2(value_right - TextWidth(label_font, status_px, legend, kCondensed), body_y1 - 32.0f * s),
+            Col(150, 156, 166, in), legend, kCondensed);
   }
 
   // Footer legend.
@@ -612,11 +712,21 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     x -= TextWidth(font, px, "CHANGE", kCondensed) + 10.0f * s;
     Arrow(dl, ImVec2(x - arrow * 0.5f, cy), arrow, true, text);
     Arrow(dl, ImVec2(x - arrow * 2.0f, cy), arrow, false, text);
-    AddText(dl, font, px * 0.9f, ImVec2(bx0 + 24.0f * s, CapsTop(cy, px * 0.9f)), text,
-            "* APPLIES AFTER RESTART", kCondensed);
+    // Left: the game's own "(X) RESTORE DEFAULTS".
+    const float lx = bx0 + 24.0f * s + r;
+    FaceButton(dl, ImVec2(lx, cy), r, Col(40, 110, 210, in), "X", in);
+    AddText(dl, font, px, ImVec2(lx + r + 8.0f * s, CapsTop(cy, px)), text, "RESTORE DEFAULTS", kCondensed);
   }
 
   Rotate(dl, first_vertex, ImVec2((x0 + x1) * 0.5f, (header_y0 + footer_y1) * 0.5f), -0.03f);
 }
 
 }  // namespace tabletennis::pc_settings
+
+// The in-match pause menu's per-frame update (r3 = the pause object). The page is opened from
+// here when its OPTIONS list raises GLOBAL_PC_SETTINGS; the game's update then runs as usual.
+extern "C" void __imp__sub_823132F0(PPCContext& ctx, uint8_t* base);
+extern "C" void sub_823132F0(PPCContext& ctx, uint8_t* base) {
+  tabletennis::pc_settings::PollPause(ctx, base, ctx.r3.u32);
+  __imp__sub_823132F0(ctx, base);
+}

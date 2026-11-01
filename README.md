@@ -22,7 +22,7 @@ Requirements: x86_64 Linux, a Vulkan GPU, `python3`, `git`, `cmake`, `ninja` and
 
 ### PC settings in the game's menu
 
-The game's **OPTIONS** menu gets an extra entry, **PC SETTINGS**, added to your own menu file by the build's menu patch. It opens a page in the game's menu style for resolution, fullscreen, picture mode (letterbox or the experimental fill), anti-aliasing, the FPS counter, haptics and the achievement sound. Fullscreen, the FPS counter, haptics and the sound change immediately; the others are marked and apply the next time you start the game. Changes are saved to `tt-recomp.ini`, the same file the launcher reads. Use the D-pad to choose and change, and B to go back.
+The game's **OPTIONS** menu gets an extra entry, **PC SETTINGS**, added to your own menu file by the build's menu patch. It opens a page in the game's menu style for resolution, fullscreen, picture mode (letterbox or the experimental fill), anti-aliasing, the FPS counter, haptics and the achievement sound. Fullscreen, the FPS counter, haptics and the sound change immediately; the others are marked and apply the next time you start the game. Changes are saved to `tt-recomp.ini`, the same file the launcher reads. Use the D-pad to choose and change, X to restore the defaults (800p fullscreen on a Steam Deck) and B to go back. The same entry is in the pause menu's OPTIONS during a match.
 
 <p align="center">
   <img src="docs/images/linux-pc-settings.jpg" width="70%" alt="PC SETTINGS page in the OPTIONS menu">

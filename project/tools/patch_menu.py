@@ -10,6 +10,9 @@ OFFLINE_MOVIE = '220d6f63f77b57f90b474d2f8fe33e2b077347e087160b49a98a2afd8214f13
 PATCHED_MOVIE = 'ebab047a621e51954a1bfc7c81aa36e3e6c996066453c04c256874d32e237513'
 # Earlier patch with PC SETTINGS as the last OPTIONS item; its regions are rewritten in full.
 PC_SETTINGS_LAST_MOVIE = 'cb3f3eaf65f096ce66e783b364aebd9ca317d7a46a250cf841cda3efa6cde301'
+# In-match pause menu (pongpause_001.xeck): PC SETTINGS below AUDIO OPTIONS in its OPTIONS list.
+ORIGINAL_PAUSE_MOVIE = '7b6f9e70c58adcea5974681aad4dd2fa7915dd6f54015efdaaf888818ba0861d'
+PATCHED_PAUSE_MOVIE = 'ca15a4b5931015c5547ee019ee59febb82bf62b7a547d7c0353f104d3db7d3d4'
 
 
 # Small AVM1 assembler for the PC SETTINGS entry. Constant pool indices refer
@@ -40,6 +43,11 @@ def _branch(opcode, offset):
 
 
 GET_VARIABLE, GET_MEMBER, SET_MEMBER, NEW_OBJECT, STRICT_EQUALS = b'\x1c', b'\x4e', b'\x4f', b'\x40', b'\x66'
+GREATER, NOT, EQUALS2, POP = b'\x67', b'\x12', b'\x49', b'\x17'
+
+
+def _store_register(index):
+    return b'\x87\x01\x00' + bytes([index])
 JUMP, IF = 0x99, 0x9D
 
 
@@ -119,8 +127,82 @@ def _add_pc_settings(movie):
         movie[address + 4] = row + 1
 
 
-def patch(path):
-    path = Path(path)
+def _pause_options_list(size):
+    """_global.LIST_iPAUSE_OPTIONS with ["PC SETTINGS", iPAUSE_OPTIONS, -1] as the third item,
+    after AUDIO OPTIONS.
+
+    Items are [text, target state, -1] (pause states: CONTROLLER 3, AUDIO 2, GAME 7, HELPTIPS 22,
+    OPTIONS 1), pushed last item first. Targeting OPTIONS itself makes the accept handler treat
+    the item as "same state", where it raises the PC flag. GAME OPTIONS and HELP TIPS read their
+    labels with GetVariable (resolved through _global, as the movie's own functions do) to make
+    room; the label script rewrites every row's text by index anyway.
+    """
+    items = [(3, 22, False), (2, 20, False), None, (7, 18, True), (22, 16, True)]
+    code = b''
+    head = [_pool(14)]
+    for item in reversed(items):
+        if item is None:
+            code += _push(*head, _int(-1), _int(1), _str('PC SETTINGS'), _int(3), _pool(4)) + NEW_OBJECT
+        else:
+            state, text, short = item
+            if short:
+                code += _push(*head, _int(-1), _int(state), _pool(text)) + GET_VARIABLE
+            else:
+                code += (_push(*head, _int(-1), _int(state), _pool(0)) + GET_VARIABLE + _push(_pool(text)) +
+                         GET_MEMBER)
+            code += _push(_int(3), _pool(4)) + NEW_OBJECT
+        head = []
+    code += _push(_int(5), _pool(4)) + NEW_OBJECT
+    return _fit(code, size)
+
+
+def _pause_accept(start, end, done):
+    """Pause menu A handler for the highlighted item (r0 = item, r1 = _global):
+    if item[2] > -2: if item[1] != STATE_CURRENT, go to item[1] (the game's behaviour);
+    otherwise raise GLOBAL_PC_SETTINGS in the OPTIONS list, or play ERROR anywhere else."""
+    item = (_push(_pool(52)) + GET_VARIABLE + _push(_reg(1), _pool(20)) + GET_MEMBER + _push(_reg(1), _pool(53)) +
+            GET_MEMBER + GET_MEMBER + GET_MEMBER + _store_register(0) + POP)
+    disabled = _push(_reg(0), _int(2)) + GET_MEMBER + _push(_int(-2)) + GREATER + NOT
+    same_state = _push(_reg(1), _pool(2)) + GET_MEMBER + _push(_reg(0), _int(1)) + GET_MEMBER + EQUALS2
+    go = (_push(_reg(1), _pool(10), _reg(0), _int(1)) + GET_MEMBER + SET_MEMBER +
+          _push(_reg(1), _pool(23), _reg(1), _pool(24)) + GET_MEMBER + SET_MEMBER)
+    not_options = _push(_reg(1), _pool(2)) + GET_MEMBER + _push(_reg(1), _pool(3)) + GET_MEMBER + EQUALS2 + NOT
+    flag = _push(_reg(1), _str('GLOBAL_PC_SETTINGS'), _int(1)) + SET_MEMBER
+    camera = _push(_reg(1), _pool(71), _reg(1), _pool(72)) + GET_MEMBER + SET_MEMBER
+    error = _push(_reg(1), _pool(71), _reg(1), _pool(74)) + GET_MEMBER + SET_MEMBER
+    sound = _push(_reg(1), _pool(73), _int(1)) + SET_MEMBER
+    # Branches are (opcode, label); strings starting with ':' define labels.
+    parts = [item, disabled, (IF, 'error'), same_state, (IF, 'same'), go, (JUMP, 'camera'),
+             ':same', not_options, (IF, 'error'), flag,
+             ':camera', camera, (JUMP, 'sound'), ':error', error, ':sound', sound, (JUMP, 'done')]
+    labels = {'done': done}
+    position = start
+    for part in parts:
+        if isinstance(part, str):
+            labels[part[1:]] = position
+        else:
+            position += 5 if isinstance(part, tuple) else len(part)
+    code = b''
+    for part in parts:
+        if isinstance(part, tuple):
+            code += _branch(part[0], labels[part[1]] - (start + len(code) + 5))
+        elif not isinstance(part, str):
+            code += part
+    return _fit(code, end - start)
+
+
+def _add_pause_pc_settings(movie):
+    movie[0x7A83:0x7B30] = _pause_options_list(0x7B30 - 0x7A83)
+    movie[0x4C96:0x4D87] = _pause_accept(0x4C96, 0x4D87, 0x531B)
+    # The label script copies the translated labels into LIST_iPAUSE_OPTIONS by row; move
+    # GAME OPTIONS and HELP TIPS down one row so PC SETTINGS keeps its own label in row 2.
+    for address, row in ((0x9096, 2), (0x90C1, 3)):
+        if movie[address:address + 4] != b'\x96\x05\x00\x07' or movie[address + 4] != row:
+            raise ValueError('Unexpected pause OPTIONS label code')
+        movie[address + 4] = row + 1
+
+
+def _read_archive(path):
     archive = bytearray(path.read_bytes())
     if archive[:4] != b'RPF0':
         raise ValueError('Not an RPF0 menu archive')
@@ -138,30 +220,61 @@ def patch(path):
         if offset + packed > len(archive):
             raise ValueError('Archive entry outside file')
         entries.append((archive[names + name:end], entry, offset, packed, raw_size))
-    matches = [e for e in entries if e[0] == b'pongui_001.xeck']
+    return archive, entries
+
+
+def _read_movie(archive, entries, name):
+    matches = [e for e in entries if e[0] == name]
     if len(matches) != 1:
-        raise ValueError('Expected exactly one frontend movie')
+        raise ValueError('Expected exactly one ' + name.decode())
     _, entry, offset, packed, raw_size = matches[0]
     if raw_size > 16 * 1024 * 1024:
-        raise ValueError('Unexpected frontend size')
+        raise ValueError('Unexpected movie size')
     decoder = zlib.decompressobj(-15)
     movie = bytearray(decoder.decompress(archive[offset:offset + packed], raw_size + 1))
     if len(movie) != raw_size or not decoder.eof:
-        raise ValueError('Invalid frontend compression')
+        raise ValueError('Invalid movie compression')
+    return movie, entry, offset
+
+
+def patch(path):
+    path = Path(path)
+    archive, entries = _read_archive(path)
+    original_archive = hashlib.sha256(archive).hexdigest() == ORIGINAL_ARCHIVE
+    changed = False
+
+    movie, entry, offset = _read_movie(archive, entries, b'pongui_001.xeck')
     current = hashlib.sha256(movie).hexdigest()
-    if current == PATCHED_MOVIE:
+    if current != PATCHED_MOVIE:
+        if current in (OFFLINE_MOVIE, PC_SETTINGS_LAST_MOVIE):
+            _add_pc_settings(movie)
+        elif original_archive and current == ORIGINAL_MOVIE:
+            _patch_offline(movie)
+            _add_pc_settings(movie)
+        else:
+            raise ValueError('Unsupported menu archive; no changes made')
+        if hashlib.sha256(movie).hexdigest() != PATCHED_MOVIE:
+            raise ValueError('Patched frontend verification failed')
+        _store(archive, entries, entry, offset, movie)
+        changed = True
+
+    movie, entry, offset = _read_movie(archive, entries, b'pongpause_001.xeck')
+    current = hashlib.sha256(movie).hexdigest()
+    if current != PATCHED_PAUSE_MOVIE:
+        if current != ORIGINAL_PAUSE_MOVIE:
+            raise ValueError('Unsupported pause menu; no changes made')
+        _add_pause_pc_settings(movie)
+        if hashlib.sha256(movie).hexdigest() != PATCHED_PAUSE_MOVIE:
+            raise ValueError('Patched pause menu verification failed')
+        _store(archive, entries, entry, offset, movie)
+        changed = True
+
+    if not changed:
         print('Menu patches already verified.', flush=True)
         return
-    if current in (OFFLINE_MOVIE, PC_SETTINGS_LAST_MOVIE):
-        _add_pc_settings(movie)
-    elif hashlib.sha256(archive).hexdigest() != ORIGINAL_ARCHIVE or current != ORIGINAL_MOVIE:
-        raise ValueError('Unsupported menu archive; no changes made')
-    else:
-        _patch_offline(movie)
-        _add_pc_settings(movie)
-    if hashlib.sha256(movie).hexdigest() != PATCHED_MOVIE:
-        raise ValueError('Patched frontend verification failed')
-    _store(path, archive, entries, entry, offset, movie)
+    temp = path.with_suffix('.tmp')
+    temp.write_bytes(archive)
+    temp.replace(path)
     print('Created and verified offline menu, intro timing and PC settings patches locally.', flush=True)
 
 
@@ -178,7 +291,7 @@ def _patch_offline(movie):
         raise ValueError('Patched frontend verification failed')
 
 
-def _store(path, archive, entries, entry, offset, movie):
+def _store(archive, entries, entry, offset, movie):
     compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
     replacement = compressor.compress(movie) + compressor.flush()
     limit = min((e[2] for e in entries if e[2] > offset), default=len(archive))
@@ -186,6 +299,3 @@ def _store(path, archive, entries, entry, offset, movie):
         raise ValueError('Patched movie exceeds archive slot')
     archive[offset:limit] = replacement + bytes(limit - offset - len(replacement))
     struct.pack_into('<I', archive, entry + 8, len(replacement))
-    temp = path.with_suffix('.tmp')
-    temp.write_bytes(archive)
-    temp.replace(path)
