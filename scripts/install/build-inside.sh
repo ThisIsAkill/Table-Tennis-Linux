@@ -5,13 +5,17 @@
 # Environment:
 #   TT_SRC    project source tree (read only)        TT_ISO    the retail ISO (read only)
 #   TT_CACHE  persistent build cache (writable)       TT_STAGE  staging folder for the install
-#   TT_JOBS   parallel compile jobs                   TT_KIND   cache flavour (ubuntu2404 | host)
+#   TT_JOBS   parallel compile jobs                   TT_KIND   cache flavour (ubuntu2404 | host | fast)
+#   TT_PREBUILT_SDK  use this installed SDK instead of building one (fast path)
+#   TT_SDK_ONLY=1    stop after building the SDK (release builds; no ISO needed)
+#   TT_GENERATED_OPT optimization flag for the generated game code only (e.g. -O2; default: -O3)
 #
 # Prints the installer's @@ progress lines (see tt-install.sh); Ninja's "[n/total]" lines are
 # turned into @@progress by tt-install.sh.
 set -euo pipefail
 
-src="${TT_SRC:?}"; iso="${TT_ISO:?}"; cache="${TT_CACHE:?}"; stage="${TT_STAGE:?}"
+sdk_only="${TT_SDK_ONLY:-0}"; prebuilt="${TT_PREBUILT_SDK:-}"
+src="${TT_SRC:?}"; iso="${TT_ISO:-}"; cache="${TT_CACHE:?}"; stage="${TT_STAGE:?}"
 jobs="${TT_JOBS:?}"; kind="${TT_KIND:?}"
 rexglue_repo="https://github.com/rexglue/rexglue-sdk"
 rexglue_tag="v0.10.0"
@@ -33,10 +37,18 @@ step() { echo "@@step $1 $2"; }
 log() { echo "@@log $*"; }
 fail() { echo "@@error $*"; exit 1; }
 
-step extract "Reading your game disc"
-"${helper[@]}" extract "$iso" "$src/project/tools" "$work/private_work/default.xex" \
-  "$stage/assets/resource/flash/flash.rpf" || fail "Your ISO could not be read or is not the supported USA/Europe retail release (Title ID 545407DF)."
+if [[ "$sdk_only" != 1 ]]; then
+  step extract "Reading your game disc"
+  "${helper[@]}" extract "$iso" "$src/project/tools" "$work/private_work/default.xex" \
+    "$stage/assets/resource/flash/flash.rpf" || fail "Your ISO could not be read or is not the supported USA/Europe retail release (Title ID 545407DF)."
+fi
 
+if [[ -n "$prebuilt" ]]; then
+step sdk "Getting the engine"
+sdk="$prebuilt"
+[[ -x "$sdk/bin/rexglue" && "$("$sdk/bin/rexglue" --version)" == 0.10.0 ]] || fail "The prebuilt SDK is damaged. Delete the cache folder's fast/ directory and run the installer again."
+log "Using the prebuilt ReXGlue SDK 0.10.0 (patch set $(cat "$sdk/.tt-sdk-patchset" 2>/dev/null))."
+else
 step sdk "Building the ReXGlue SDK"
 # Fixes to the SDK live in project/sdk-patches; a changed set (or toolchain) rebuilds the SDK.
 patches=("$src"/project/sdk-patches/*.patch)
@@ -91,6 +103,11 @@ else
   echo "$stamp" > "$sdk/.tt-sdk-stamp"
 fi
 [[ "$("$sdk/bin/rexglue" --version)" == 0.10.0 ]] || fail "The cached SDK is not ReXGlue 0.10.0."
+fi
+if [[ "$sdk_only" == 1 ]]; then
+  log "SDK ready: $sdk"
+  exit 0
+fi
 
 step codegen "Generating the game code"
 # A private copy of the project: code generation writes next to the manifest, and the source
@@ -100,7 +117,7 @@ gen="$work/project/generated"
 codegen_stamp="$({ sha256sum "$work/private_work/default.xex" | cut -c1-64
   cat "$work/project/tabletennis_manifest.toml" "$work/project/overrides.toml" \
     "$work/project/tools/native_edits.json" "$work/project/tools/patch_native.py"
-  cat "$sdk/.tt-sdk-stamp"; } | sha256sum | cut -c1-16)"
+  cat "$sdk/.tt-sdk-stamp" "$sdk/.tt-sdk-patchset" 2>/dev/null || true; } | sha256sum | cut -c1-16)"
 if [[ -d "$gen/default" && "$(cat "$work/codegen.stamp" 2>/dev/null)" == "$codegen_stamp" ]]; then
   log "Generated code is up to date (cached)."
 else
@@ -119,8 +136,11 @@ else
 fi
 
 step build "Compiling the game"
+# The binaries are stripped when packaged, so the generated code is compiled without debug
+# line tables (about 7% faster; debug info never changes the generated machine code).
 cmake -S "$work/project" -B "$game_build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_COMPILER=clang++ "-DCMAKE_PREFIX_PATH=$sdk" -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON \
+  -DREXGLUE_RECOMP_DEBUG_INFO=none "-DTT_GENERATED_OPT=${TT_GENERATED_OPT:-}" \
   >/dev/null || fail "Configuring the game build failed."
 cmake --build "$game_build" --parallel "$jobs" || fail "Compiling the game failed (see the log)."
 

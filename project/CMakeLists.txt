@@ -27,6 +27,13 @@ endif()
 
 rexglue_setup_target(tabletennis)
 
+# Optimization level for the generated (recompiled) game code only, e.g. -O2 to compile faster.
+# Empty keeps the build type's default (-O3 for Release); the SDK and src/ keep their flags.
+set(TT_GENERATED_OPT "" CACHE STRING "Optimization flag for the generated game code (empty: build type default)")
+if(TT_GENERATED_OPT AND TARGET tabletennis_recomp)
+    target_compile_options(tabletennis_recomp PRIVATE ${TT_GENERATED_OPT})
+endif()
+
 # The stock v0.10.0 application accepts directories only. Compile our BSD-licensed
 # ISO-capable application adapter instead, without editing the installed SDK.
 get_target_property(TABLETENNIS_HOST_SOURCES tabletennis SOURCES)

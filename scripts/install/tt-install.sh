@@ -4,6 +4,7 @@
 #   scripts/install/tt-install.sh --iso PATH [--prefix DIR] [--cache DIR] [--jobs N]
 #                                 [--steam yes|no] [--desktop yes|no] [--keep-build]
 #                                 [--toolchain auto|podman|docker|host|rootfs] [--install-podman]
+#                                 [--release-url URL] [--offline] [--no-prebuilt]
 #
 # Builds the game on this machine from your own retail ISO (USA/Europe, Title ID 545407DF) and
 # installs it. Nothing from the disc is downloaded or shipped; the ISO is only read.
@@ -22,28 +23,43 @@
 #                     rootless Ubuntu 24.04 base system downloaded into the cache)
 #   --install-podman  if nothing else works, install podman with the system package manager
 #                     (asks for the administrator password through pkexec)
+#   --release-url URL where to get the prebuilt build tools and SDK (manifest.json and the files
+#                     it names; default: this project's latest GitHub release); file:// works
+#   --offline         do not download anything; use what the cache already holds
+#   --no-prebuilt     build the toolchain and SDK on this computer instead (slow path)
+#
+# Fast path (default): download a slim Ubuntu 24.04 toolchain and the prebuilt ReXGlue SDK once
+# (game-free, SHA256-checked against the release manifest, about 120 MB), then generate and
+# compile the game inside that toolchain with bubblewrap or unshare; no container runtime or
+# administrator rights needed. If the release cannot be used (offline without a cached copy, no
+# user namespaces, an SDK for other patches), the installer says why (@@warn) and builds the
+# toolchain and SDK itself (podman, docker, host tools or a rootless Ubuntu system), which takes
+# longer.
 #
 # Re-running continues after a failure or cancel and updates an existing install; settings
 # (tt-recomp.ini) and logs in the install folder are kept. The new build is staged in the cache,
 # copied to DIR/.tt-staging and only moved into place (renames) once complete.
 #
-# Environment: TT_INSTALL_FORCE=<toolchain> (same as --toolchain); TT_USERNS=unshare (rootfs:
+# Environment: TT_GENERATED_OPT=-O2 (optimization of the generated game code; default -O3);
+# TT_RELEASE_URL (same as --release-url); TT_INSTALL_FORCE=<toolchain> (same as --toolchain); TT_USERNS=unshare (rootfs:
 # use unshare even if bubblewrap works); TT_CONTAINER="cmd args"
 # replaces the podman/docker command (e.g. with custom --root/--storage-driver options).
 #
 # ---- Progress contract (stdout, one message per line; other lines are plain text) ----------
 #   @@step <id> <title>    a stage begins. Ids, in order:
 #                            check     Checking your system
-#                            tools     Getting build tools        (rootless toolchain, first run)
+#                            tools     Getting build tools        (fast path downloads, or the
+#                                      rootless toolchain)
 #                            image     Preparing the build container (podman/docker, first run)
 #                            extract   Reading your game disc
-#                            sdk       Building the ReXGlue SDK
+#                            sdk       Getting the engine (prebuilt) / Building the ReXGlue SDK
 #                            codegen   Generating the game code
 #                            build     Compiling the game
 #                            install   Installing
 #                            integrate Adding shortcuts
 #                          tools/image appear at most once (whichever applies, or neither for
-#                          host tools); every other id appears once per run.
+#                          host tools), except that tools can repeat once when the fast path
+#                          falls back to the slow one; every other id appears once per run.
 #   @@progress <0-100>     overall percent, integer, never decreases
 #   @@log <text>           optional detail line
 #   @@warn <text>          something the user should know; installation continues
@@ -68,6 +84,10 @@ desktop="yes"
 keep_build=0
 toolchain="${TT_INSTALL_FORCE:-auto}"
 install_podman=0
+release_url="${TT_RELEASE_URL:-https://github.com/ThisIsAkill/Table-Tennis-Rockstar-PC/releases/latest/download}"
+offline=0
+no_prebuilt=0
+sdk_only=0
 
 say() { echo "$*"; }
 log() { echo "@@log $*"; [[ -n "${logfile:-}" ]] && echo "$*" >> "$logfile"; return 0; }
@@ -77,7 +97,7 @@ die() {
   [[ -n "${logfile:-}" ]] && echo "ERROR: $*" >> "$logfile"
   exit 1
 }
-usage() { sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 bad_arg() { usage >&2; echo "@@error $*"; exit 2; }
 
 while (($#)); do
@@ -98,12 +118,17 @@ while (($#)); do
     --toolchain) toolchain="${2:-}"; shift ;;
     --toolchain=*) toolchain="${1#*=}" ;;
     --install-podman) install_podman=1 ;;
+    --release-url) release_url="${2:-}"; shift ;;
+    --release-url=*) release_url="${1#*=}" ;;
+    --offline) offline=1 ;;
+    --no-prebuilt) no_prebuilt=1 ;;
+    --sdk-only) sdk_only=1 ;;  # for scripts/release/make-release.sh: build the SDK only, no ISO
     -h|--help) usage; exit 0 ;;
     *) bad_arg "Unknown option: $1" ;;
   esac
   shift
 done
-[[ -n "$iso" ]] || bad_arg "Choose your Table Tennis ISO with --iso PATH."
+((sdk_only)) || [[ -n "$iso" ]] || bad_arg "Choose your Table Tennis ISO with --iso PATH."
 [[ -n "$prefix" && -n "$cache" ]] || bad_arg "--prefix and --cache need a folder."
 case "$steam" in yes|no) ;; *) bad_arg "--steam must be yes or no." ;; esac
 case "$desktop" in yes|no) ;; *) bad_arg "--desktop must be yes or no." ;; esac
@@ -116,6 +141,10 @@ declare -A range_lo=([check]=0 [tools]=2 [image]=2 [extract]=20 [sdk]=22 [sdk-do
   [sdk-build]=32 [codegen]=72 [build]=76 [install]=95 [integrate]=98)
 declare -A range_hi=([check]=2 [tools]=20 [image]=20 [extract]=22 [sdk]=72 [sdk-download]=32
   [sdk-build]=72 [codegen]=76 [build]=95 [install]=98 [integrate]=100)
+fast_ranges() {  # downloads instead of an SDK build: the game compile is most of the time
+  range_lo=([check]=0 [tools]=2 [extract]=35 [sdk]=37 [codegen]=38 [build]=46 [install]=95 [integrate]=98)
+  range_hi=([check]=2 [tools]=35 [extract]=37 [sdk]=38 [codegen]=46 [build]=95 [install]=98 [integrate]=100)
+}
 percent=-1
 progress() {
   local p="$1"
@@ -132,8 +161,10 @@ step() {
 
 # Reads build output: everything goes to the log; @@ lines pass through; [n/total] -> percent;
 # in the tools/image step, apt and download lines move the bar towards an expected count.
+recent=()  # last build output lines, shown when a step fails
 filter() {
   local line n=0 lo hi key a b
+  recent=()
   while IFS= read -r line; do
     echo "$line" >> "$logfile"
     case "$line" in
@@ -149,6 +180,7 @@ filter() {
         key="${sub:-$cur}"; lo="${range_lo[$key]:-0}"; hi="${range_hi[$key]:-0}"
         progress $((lo + (hi - lo) * a / b)) ;;
       *)
+        recent+=("$line"); ((${#recent[@]} > 25)) && recent=("${recent[@]:1}")
         if [[ "$cur" == tools || "$cur" == image ]]; then
           n=$((n + 1))
           ((n % 20 == 0)) && progress $((range_lo[$cur] + (range_hi[$cur] - range_lo[$cur]) * (n < 1400 ? n : 1400) / 1500))
@@ -199,6 +231,8 @@ say "Table Tennis installer - source $src"
 [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || die "This game needs a 64-bit x86 Linux PC or a Steam Deck."
 grep -qw avx2 /proc/cpuinfo || die "Your processor does not support AVX2, which the game needs (any Steam Deck and most PCs from 2013 on have it)."
 
+if ((sdk_only)); then iso=/dev/null; prefix="$cache"; fi
+if ((!sdk_only)); then
 iso="$(realpath -e -- "$iso" 2>/dev/null)" || die "The ISO file was not found. Check the path and try again."
 [[ -f "$iso" && -r "$iso" ]] || die "The ISO file cannot be read: $iso"
 # Host python3 verifies the ISO now (else the build environment does it in the extract step).
@@ -206,6 +240,7 @@ if command -v python3 >/dev/null; then
   python3 -I -B "$here/tt_install.py" verify "$iso" "$src/project/tools" >> "$logfile" 2>&1 \
     || die "This ISO is not the supported game. Use your own unmodified USA/Europe retail Xbox 360 Table Tennis ISO (Title ID 545407DF)."
   log "ISO verified: supported retail release."
+fi
 fi
 prefix="$(realpath -m -- "$prefix")"
 cache="$(realpath -m -- "$cache")"
@@ -219,6 +254,7 @@ if [[ "${SteamDeck:-}" == 1 ]] || grep -qsxE 'Jupiter|Galileo' /sys/class/dmi/id
 log "System: $(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}")$( ((is_deck)) && echo ', Steam Deck')."
 
 # Install folder: must exist (create it), be writable and allow running programs.
+if ((!sdk_only)); then
 mkdir -p -- "$prefix" 2>/dev/null || die "Cannot create the install folder $prefix. Choose a folder you can write to."
 probe="$prefix/.tt-exec-test"
 printf '#!/bin/sh\nexit 0\n' > "$probe" 2>/dev/null || die "Cannot write to the install folder $prefix. Choose a folder you can write to."
@@ -232,6 +268,7 @@ fstype() { stat -f -c %T -- "$1" 2>/dev/null; }
 case "$(fstype "$prefix")" in
   exfat|msdos|vfat|fuseblk|ntfs*) warn "The install folder is on a $(fstype "$prefix") drive. It works, but ext4 is more reliable for saves; avoid removing the card while the game runs." ;;
 esac
+fi
 
 # Cache: needs a Linux filesystem (symbolic links, permissions) because the SDK and toolchain live there.
 probe="$cache/.tt-fs-test"
@@ -297,8 +334,98 @@ userns_hint() {
   fi
 }
 
+# ---- fast path: prebuilt toolchain + SDK from the release ----------------------------------
+fast_dir="$cache/fast"
+fast_reason=""
+patchset="$("$here/sdk-patchset-id.sh")"
+downloader() {  # url out: resumes out (a .part file) where possible
+  if command -v curl >/dev/null; then curl -fsSL --retry 3 --connect-timeout 20 -C - -o "$2" "$1"
+  elif command -v wget >/dev/null; then wget -q -c -O "$2" "$1"
+  else python3 -I -c 'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' "$1" "$2"; fi
+}
+# Reads the manifest into tc_name/tc_size/tc_sha/sdk_name/sdk_size/sdk_sha/release_patchset.
+read_manifest() {
+  local vars
+  vars="$(python3 -I -B -c '
+import json, re, shlex, sys
+m = json.load(open(sys.argv[1]))
+files = {f["kind"]: f for f in m["files"]}
+for prefix, kind in (("tc", "toolchain"), ("sdk", "sdk")):
+    f = files[kind]
+    assert re.fullmatch(r"[A-Za-z0-9._-]+", f["name"]) and re.fullmatch(r"[0-9a-f]{64}", f["sha256"])
+    print("%s_name=%s %s_size=%d %s_sha=%s" % (prefix, shlex.quote(f["name"]), prefix, int(f["size"]), prefix, f["sha256"]))
+print("release_patchset=%s release_version=%s" % (shlex.quote(m["sdk_patchset"]), shlex.quote(str(m.get("version", "?")))))
+' "$1" 2>/dev/null)" || return 1
+  eval "$vars"
+}
+fast_check() {  # can the fast path run? sets fast_reason when not
+  ((no_prebuilt)) && { fast_reason="--no-prebuilt"; return 1; }
+  ((sdk_only)) && return 1
+  [[ "$toolchain" == auto || "$toolchain" == rootfs ]] || { fast_reason="--toolchain $toolchain was chosen"; return 1; }
+  command -v python3 >/dev/null || { fast_reason="python3 is missing"; return 1; }
+  command -v zstd >/dev/null && tar --version >/dev/null 2>&1 || { fast_reason="zstd is missing"; return 1; }
+  rootfs_usable || { fast_reason="$(userns_hint)"; return 1; }
+  mkdir -p "$fast_dir"
+  if ((!offline)); then
+    rm -f "$fast_dir/manifest.json.new"
+    if downloader "$release_url/manifest.json" "$fast_dir/manifest.json.new" >> "$logfile" 2>&1 \
+       && read_manifest "$fast_dir/manifest.json.new"; then
+      command mv -f "$fast_dir/manifest.json.new" "$fast_dir/manifest.json"
+    else
+      rm -f "$fast_dir/manifest.json.new"
+      log "Release manifest not available from $release_url."
+    fi
+  fi
+  [[ -f "$fast_dir/manifest.json" ]] && read_manifest "$fast_dir/manifest.json" \
+    || { fast_reason="the prebuilt build tools could not be downloaded$( ((offline)) && echo " (offline)")"; return 1; }
+  [[ "$release_patchset" == "$patchset" ]] \
+    || { fast_reason="the prebuilt SDK ($release_version) was made for other SDK patches than this version of the installer"; return 1; }
+  tc_dir="$fast_dir/toolchain-${tc_sha:0:12}"
+  sdk_dir="$fast_dir/sdk-$patchset-${sdk_sha:0:12}"
+  fast_ready=1
+  [[ -f "$tc_dir/.tt-ready" && -f "$sdk_dir/.tt-ready" ]] || fast_ready=0
+  ((fast_ready || !offline)) || { fast_reason="the prebuilt build tools are not in the cache yet (offline)"; return 1; }
+  return 0
+}
+# Downloads (resumable, with progress), verifies and unpacks one asset into dir.
+fetch_asset() {  # name size sha dir lo hi
+  local name="$1" size="$2" sha="$3" dir="$4" lo="$5" hi="$6" part="$fast_dir/$1.part" have rc
+  [[ -f "$dir/.tt-ready" ]] && return 0
+  log "Downloading $name ($((size / 1048576)) MB)."
+  if [[ ! -f "$part" || "$(stat -c %s "$part")" -lt "$size" ]]; then
+    downloader "$release_url/$name" "$part" >> "$logfile" 2>&1 &
+    child=$!
+    while kill -0 "$child" 2>/dev/null; do
+      have="$(stat -c %s "$part" 2>/dev/null || echo 0)"
+      progress $((lo + (hi - lo) * 9 / 10 * (have > size ? size : have) / size))
+      sleep 0.5
+    done
+    wait "$child"; rc=$?; child=""
+    ((rc == 0)) || { fast_reason="downloading $name failed"; return 1; }
+  fi
+  if ! echo "$sha  $part" | sha256sum -c --quiet >/dev/null 2>&1; then
+    rm -f "$part"; fast_reason="$name failed its SHA256 check (deleted; it is downloaded again next time)"; return 1
+  fi
+  log "Verified $name (SHA256 from the release manifest); unpacking."
+  [[ -e "$dir.new" ]] && { chmod -R u+rwX "$dir.new" 2>/dev/null; rm -rf "${dir:?}.new"; }
+  mkdir -p "$dir.new"
+  zstd -dcq --long=27 "$part" | tar -x -C "$dir.new" --no-same-owner 2>> "$logfile" \
+    || { fast_reason="unpacking $name failed"; return 1; }
+  touch "$dir.new/.tt-ready"
+  [[ -e "$dir" ]] && { chmod -R u+rwX "$dir" 2>/dev/null; rm -rf "${dir:?}"; }
+  command mv -f "$dir.new" "$dir"
+  rm -f "$part"
+  progress "$hi"
+}
+
 pick=""
-case "$toolchain" in
+if fast_check; then
+  pick=fast
+  fast_ranges
+elif [[ -n "$fast_reason" && "$fast_reason" != --* ]]; then
+  warn "Using the slow path: $fast_reason. Building the build tools and SDK on this computer instead; the first install takes longer."
+fi
+[[ -n "$pick" ]] || case "$toolchain" in
   podman|docker) container_usable "$toolchain" && pick=container \
                    || die "$toolchain is not installed or not working for your user (\"$toolchain info\" fails)." ;;
   host) host_usable && pick=host || die "The host has no suitable toolchain (clang 19+, cmake 3.25+, ninja, git, python3, pkg-config, X11 and ALSA/PulseAudio headers)." ;;
@@ -329,24 +456,25 @@ if [[ -z "$pick" ]]; then
   fi
 fi
 [[ "$pick" == container ]] || ct=()
-log "Toolchain: $pick${ct:+ (${ct[*]})}$([[ $pick == rootfs ]] && echo " via $userns_runner")."
+log "Toolchain: $pick${ct:+ (${ct[*]})}$([[ $pick == rootfs || $pick == fast ]] && echo " via $userns_runner")$([[ $pick == fast ]] && echo ", prebuilt release $release_version")."
 
 # ---- what is cached / disk space / network -------------------------------------------------
-kind=ubuntu2404; [[ "$pick" == host ]] && kind=host
+kind=ubuntu2404; [[ "$pick" == host ]] && kind=host; [[ "$pick" == fast ]] && kind=fast
 toolchain_ready=1
 case "$pick" in
+  fast) toolchain_ready=$fast_ready ;;
   container) "${ct[@]}" image inspect "$image" >/dev/null 2>&1 || toolchain_ready=0 ;;
   rootfs) [[ -f "$rootfs/.tt-toolchain-$recipe_id" ]] || toolchain_ready=0 ;;
 esac
 sdk_ready=0
-[[ -x "$build_cache/sdk-$kind/bin/rexglue" ]] && sdk_ready=1
+[[ -x "$build_cache/sdk-$kind/bin/rexglue" || "$pick" == fast ]] && sdk_ready=1
 sdk_src_ready=0
 [[ -d "$build_cache/rexglue-src/.git" ]] && sdk_src_ready=1
 
 # Measured sizes (GB, rounded up): toolchain 1.6 (rootfs or image); SDK source with submodules
 # 1.4, SDK build tree 0.4, SDK 0.1; game code + build 0.4; install 0.1 plus staging.
 need_cache=1
-((toolchain_ready)) || { [[ "$pick" == rootfs ]] && need_cache=$((need_cache + 2)); }
+((toolchain_ready)) || { [[ "$pick" == rootfs || "$pick" == fast ]] && need_cache=$((need_cache + 2)); }
 ((sdk_ready)) || need_cache=$((need_cache + 3))
 need_prefix=1
 need_home=0
@@ -371,15 +499,17 @@ fi
 [[ -n "$short" ]] && die "Not enough free space.$short Free up space or choose other folders (--prefix, --cache)."
 
 online() { timeout 8 bash -c "exec 3<>/dev/tcp/$1/443" 2>/dev/null; }
-if ((!toolchain_ready)) || ((!sdk_ready && !sdk_src_ready)); then
+if [[ "$pick" != fast ]] && { ((!toolchain_ready)) || ((!sdk_ready && !sdk_src_ready)); }; then
+  ((offline)) && die "The build tools are not in the cache yet and --offline was given. Connect to the internet and run the installer without --offline."
   online github.com || die "No internet connection. The first installation downloads build tools and the ReXGlue SDK (about 2 GB); connect to the internet and try again."
   [[ "$pick" == rootfs ]] && ((!toolchain_ready)) && { online cdimage.ubuntu.com || die "Cannot reach cdimage.ubuntu.com to download the build system. Check your internet connection and try again."; }
 fi
 
 if [[ -z "$jobs" ]]; then
-  # Large generated files need about 2 GB per compile job at peak.
+  # A compile job peaks at about 0.6 GB (measured on the largest generated files); allow 1 GB
+  # each, so a 16 GB Steam Deck uses all 8 threads.
   mem_gb=$(awk '/^MemTotal:/ { printf "%d", $2 / 1048576 }' /proc/meminfo)
-  jobs=$(nproc); ((jobs > mem_gb / 2)) && jobs=$((mem_gb / 2)); ((jobs < 1)) && jobs=1
+  jobs=$(nproc); ((jobs > mem_gb)) && jobs=$mem_gb; ((jobs < 1)) && jobs=1
 fi
 log "Compile jobs: $jobs."
 
@@ -473,6 +603,17 @@ build_image() {
 }
 
 case "$pick" in
+  fast)
+    step tools "Getting build tools"
+    if ((fast_ready)); then
+      log "Build tools and engine ready (cached)."
+    else
+      total=$((tc_size + sdk_size)); mid=$((2 + 31 * tc_size / total))
+      if ! fetch_asset "$tc_name" "$tc_size" "$tc_sha" "$tc_dir" 2 "$mid" \
+         || ! fetch_asset "$sdk_name" "$sdk_size" "$sdk_sha" "$sdk_dir" "$mid" 33; then
+        die "Getting the prebuilt build tools failed: $fast_reason. Run the installer again to retry (finished downloads are kept), or use --no-prebuilt to build them on this computer."
+      fi
+    fi ;;
   container)
     step image "Preparing the build container"
     if ((toolchain_ready)); then log "Build container ready (cached)."; else build_image; fi ;;
@@ -480,7 +621,7 @@ case "$pick" in
     step tools "Getting build tools"
     if ((toolchain_ready)); then log "Build tools ready (cached)."; else setup_rootfs; fi ;;
 esac
-progress 20
+[[ "$pick" == fast ]] || progress 20
 
 # ---- 3-7. extract, SDK, codegen, build, stage ---------------------------------------------
 # The build is staged in the cache (a Linux filesystem, so permissions work) and copied into
@@ -491,23 +632,33 @@ mkdir -p "$build_stage"
 stage="$prefix/.tt-staging"
 case "$iso$prefix$cache$src" in *:*) [[ "$pick" == container ]] && die "With podman/docker, paths must not contain ':'. Rename the folder or ISO and try again." ;; esac
 
-inside_env=(TT_JOBS="$jobs" TT_KIND="$kind")
+inside_env=(TT_JOBS="$jobs" TT_KIND="$kind" TT_SDK_ONLY="$sdk_only" TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
+iso_bind=(--ro-bind "$iso" /disc/game.iso); iso_ubind=(ro "$iso" /disc/game.iso); iso_vol=(-v "$iso:/disc/game.iso:ro")
+((sdk_only)) && { iso_bind=(); iso_ubind=(); iso_vol=(); }
 case "$pick" in
+  fast)
+    RF_BINDS=(--ro-bind "$src" /src "${iso_bind[@]}" --bind "$build_cache" /cache --bind "$build_stage" /stage --ro-bind "$sdk_dir" /sdk)
+    RF_ENV=(--setenv TT_SRC /src --setenv TT_ISO /disc/game.iso --setenv TT_CACHE /cache --setenv TT_STAGE /stage
+      --setenv TT_JOBS "$jobs" --setenv TT_KIND "$kind" --setenv TT_PREBUILT_SDK /sdk --setenv TT_GENERATED_OPT "${TT_GENERATED_OPT:-}")
+    RF_UBINDS=(ro "$src" /src "${iso_ubind[@]}" rw "$build_cache" /cache rw "$build_stage" /stage ro "$sdk_dir" /sdk)
+    RF_UENV=(TT_SRC=/src TT_ISO=/disc/game.iso TT_CACHE=/cache TT_STAGE=/stage TT_JOBS="$jobs" TT_KIND="$kind" TT_PREBUILT_SDK=/sdk TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
+    run_filtered in_rootfs "$tc_dir" /bin/bash /src/scripts/install/build-inside.sh
+    rc=$? ;;
   container)
     container_name="tt-install-$$"
     user=(--userns=keep-id)
     [[ "$(basename "${ct[0]}")" == docker ]] && user=(--user "$(id -u):$(id -g)")
     run_filtered "${ct[@]}" run --rm --name "$container_name" "${user[@]}" --security-opt label=disable \
-      -v "$src:/src:ro" -v "$iso:/disc/game.iso:ro" -v "$build_cache:/cache" -v "$build_stage:/stage" \
+      -v "$src:/src:ro" "${iso_vol[@]}" -v "$build_cache:/cache" -v "$build_stage:/stage" \
       -e HOME=/tmp -e TT_SRC=/src -e TT_ISO=/disc/game.iso -e TT_CACHE=/cache -e TT_STAGE=/stage \
-      -e "TT_JOBS=$jobs" -e "TT_KIND=$kind" -w /tmp "$image" bash /src/scripts/install/build-inside.sh
+      -e "TT_JOBS=$jobs" -e "TT_KIND=$kind" -e "TT_SDK_ONLY=$sdk_only" -e "TT_GENERATED_OPT=${TT_GENERATED_OPT:-}" -w /tmp "$image" bash /src/scripts/install/build-inside.sh
     rc=$?; container_name="" ;;
   rootfs)
-    RF_BINDS=(--ro-bind "$src" /src --ro-bind "$iso" /disc/game.iso --bind "$build_cache" /cache --bind "$build_stage" /stage)
+    RF_BINDS=(--ro-bind "$src" /src "${iso_bind[@]}" --bind "$build_cache" /cache --bind "$build_stage" /stage)
     RF_ENV=(--setenv TT_SRC /src --setenv TT_ISO /disc/game.iso --setenv TT_CACHE /cache --setenv TT_STAGE /stage
-      --setenv TT_JOBS "$jobs" --setenv TT_KIND "$kind")
-    RF_UBINDS=(ro "$src" /src ro "$iso" /disc/game.iso rw "$build_cache" /cache rw "$build_stage" /stage)
-    RF_UENV=(TT_SRC=/src TT_ISO=/disc/game.iso TT_CACHE=/cache TT_STAGE=/stage TT_JOBS="$jobs" TT_KIND="$kind")
+      --setenv TT_JOBS "$jobs" --setenv TT_KIND "$kind" --setenv TT_SDK_ONLY "$sdk_only" --setenv TT_GENERATED_OPT "${TT_GENERATED_OPT:-}")
+    RF_UBINDS=(ro "$src" /src "${iso_ubind[@]}" rw "$build_cache" /cache rw "$build_stage" /stage)
+    RF_UENV=(TT_SRC=/src TT_ISO=/disc/game.iso TT_CACHE=/cache TT_STAGE=/stage TT_JOBS="$jobs" TT_KIND="$kind" TT_SDK_ONLY="$sdk_only" TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
     run_filtered in_rootfs "$rootfs" /bin/bash /src/scripts/install/build-inside.sh
     rc=$? ;;
   host)
@@ -517,8 +668,13 @@ case "$pick" in
       bash "$here/build-inside.sh"
     rc=$? ;;
 esac
+if ((sdk_only)); then
+  ((rc == 0)) && [[ -x "$build_cache/sdk-$kind/bin/rexglue" ]] || die "${last_error:-The SDK build failed.} Log: $logfile"
+  echo "@@done $build_cache/sdk-$kind"
+  exit 0
+fi
 if ((rc != 0)) || [[ ! -f "$build_stage/.tt-stage-complete" ]]; then
-  tail -n 25 "$logfile" | grep -v '^@@' | sed 's/^/@@log /'
+  for line in "${recent[@]}"; do echo "@@log $line"; done
   die "${last_error:-The build stopped unexpectedly.} Fix the problem and run the installer again; finished parts are reused. Log: $logfile"
 fi
 
@@ -576,7 +732,7 @@ log "Settings: $ini ($( [[ $res == 800p ]] && echo "Steam Deck defaults: 800p fu
 {
   echo "installed=$(date -Iseconds)"
   echo "source=$(git -C "$src" describe --always --dirty 2>/dev/null || echo unknown)"
-  echo "toolchain=$pick"
+  echo "toolchain=$pick$([[ $pick == fast ]] && echo " (release $release_version)")"
 } > "$prefix/.tt-install-info"
 
 # Remove the large SDK intermediates unless asked to keep them; the SDK and game build stay.
