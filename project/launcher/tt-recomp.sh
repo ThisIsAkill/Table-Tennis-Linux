@@ -10,7 +10,8 @@
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
 #                  [--post=fsr|cas|bilinear] [--save] [-- extra engine flags...]
 #
-# --save writes the resulting settings back to tt-recomp.ini.
+# --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
+# ini passes further engine options.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,6 +24,7 @@ fullscreen="false"
 show_fps="false"
 aa="none"
 post="bilinear"
+engine_flags=""
 save=0
 extra=()
 
@@ -38,6 +40,7 @@ set_option() {
     show_fps) show_fps="$value" ;;
     aa) aa="$value" ;;
     post) post="$value" ;;
+    engine_flags) engine_flags="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -91,6 +94,7 @@ fullscreen=$fullscreen
 show_fps=$show_fps
 aa=$aa
 post=$post
+engine_flags=$engine_flags
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -102,7 +106,16 @@ args=(
   "--swap_post_effect=$aa" "--present_effect=$post"
   "--show_fps=$show_fps" "--framerate=$framerate"
   --protect_zero=false --gpu_allow_invalid_fetch_constants=true
+  # Letterbox other screen shapes (Steam Deck 16:10) instead of cropping up to 10% of the
+  # edges as TV overscan. (SDK patch 0005 keeps the game's TV mode at 1280x720.)
+  --present_safe_area_x=100 --present_safe_area_y=100
 )
+# engine_flags= in the ini adds engine options (for example --occlusion_query_enable=false);
+# flags after -- on the command line still come last and win.
+if [[ -n "$engine_flags" ]]; then
+  read -r -a ini_flags <<< "$engine_flags"
+  extra=("${ini_flags[@]}" "${extra[@]}")
+fi
 # The engine rejects a flag given twice, so an extra flag replaces ours.
 for flag in "${extra[@]}"; do
   [[ "$flag" == --*=* ]] || continue

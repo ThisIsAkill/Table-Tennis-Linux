@@ -20,6 +20,22 @@ extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
   // Call original VdSwap to commit guest frame to GPU
   __imp__VdSwap(ctx, base);
 
+  // Log the game's own frame rate (guest swaps per second) every five seconds. The
+  // presenter's FPS counter measures host presentation, which can differ.
+  {
+    using clock = std::chrono::steady_clock;
+    static auto window_start = clock::now();
+    static uint32_t swaps = 0;
+    ++swaps;
+    const auto elapsed = clock::now() - window_start;
+    if (elapsed >= std::chrono::seconds(5)) {
+      const double seconds = std::chrono::duration<double>(elapsed).count();
+      REXLOG_INFO("Tabletennis: guest frames {:.1f}/s", swaps / seconds);
+      swaps = 0;
+      window_start = clock::now();
+    }
+  }
+
   // High-precision frame limiter for high refresh rate modes
   int32_t target_fps = REXCVAR_GET(framerate);
   if (target_fps > 0) {

@@ -1,0 +1,32 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_video.cpp b/src/kernel/xboxkrnl/xboxkrnl_video.cpp
+index 1254710..42250a8 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_video.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_video.cpp
+@@ -42,9 +42,10 @@ constexpr double kDisplayGammaPower = 2.22222233;
+ uint32_t GetConfiguredVideoModeWidth() {
+   int32_t configured_width = REXCVAR_GET(video_mode_width);
+   if (!rex::cvar::HasNonDefaultValue("video_mode_width")) {
+-    if (rex::cvar::HasNonDefaultValue("window_width") && REXCVAR_GET(window_width) > 0) {
+-      configured_width = REXCVAR_GET(window_width);
+-    } else {
++    // The window size is where the picture is shown, not the TV mode the game renders for.
++    // Following it made a 16:10 window (Steam Deck) report a 16:10 TV, stretching the game's
++    // 16:9 output, and windows narrower than 1280x720 switched games to their SD layouts.
++    {
+       int32_t preset_width = 0;
+       int32_t preset_height = 0;
+       if (rex::graphics::video_mode_util::TryGetResolutionPresetFromCVar(preset_width,
+@@ -59,9 +60,10 @@ uint32_t GetConfiguredVideoModeWidth() {
+ uint32_t GetConfiguredVideoModeHeight() {
+   int32_t configured_height = REXCVAR_GET(video_mode_height);
+   if (!rex::cvar::HasNonDefaultValue("video_mode_height")) {
+-    if (rex::cvar::HasNonDefaultValue("window_height") && REXCVAR_GET(window_height) > 0) {
+-      configured_height = REXCVAR_GET(window_height);
+-    } else {
++    // The window size is where the picture is shown, not the TV mode the game renders for.
++    // Following it made a 16:10 window (Steam Deck) report a 16:10 TV, stretching the game's
++    // 16:9 output, and windows narrower than 1280x720 switched games to their SD layouts.
++    {
+       int32_t preset_width = 0;
+       int32_t preset_height = 0;
+       if (rex::graphics::video_mode_util::TryGetResolutionPresetFromCVar(preset_width,

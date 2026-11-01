@@ -3,6 +3,10 @@
 #pragma once
 
 #include <chrono>
+#include <cstdlib>
+#if defined(__linux__)
+#include <sys/prctl.h>
+#endif
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include "offline_menu_device.h"
@@ -230,6 +234,14 @@ class TabletennisApp : public rex::ReXApp {
   }
 
   void OnPreSetup(rex::RuntimeConfig& config) override {
+#if defined(__linux__)
+    // TT_ALLOW_PTRACE=1 lets a profiler or debugger that is not this process's parent attach
+    // (for stack sampling under the default Yama ptrace_scope=1). Off unless set.
+    if (const char* allow = std::getenv("TT_ALLOW_PTRACE"); allow && allow[0] == '1') {
+      prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
+      REXLOG_INFO("TabletennisApp: TT_ALLOW_PTRACE set; any process may attach a debugger");
+    }
+#endif
     rex::cvar::SetFlagByName("protect_zero", "false");
     rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
     if (config.gpu_plugin.empty()) {
