@@ -26,7 +26,7 @@ cfg="$here/tt-recomp.ini"
 if [[ -f "$cfg" ]]; then
   { echo "iso_path=$iso"; grep -v '^iso_path=' "$cfg" || true; } > "$cfg.tmp"
 else
-  printf 'iso_path=%s\nresolution=800p\nframerate=60\nfullscreen=true\nshow_fps=false\naa=none\npost=bilinear\naspect=fill\n' \
+  printf 'iso_path=%s\nresolution=800p\nframerate=60\nfullscreen=true\nshow_fps=false\naa=none\npost=bilinear\naspect=letterbox\n' \
     "$iso" > "$cfg.tmp"
 fi
 mv -f "$cfg.tmp" "$cfg"
