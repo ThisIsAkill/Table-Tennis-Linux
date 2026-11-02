@@ -12,12 +12,14 @@
 #                  [--achievement_sound=true|false] [--haptics=true|false]
 #                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
 #                  [--auto_update=true|false] [--system_link=true|false]
-#                  [--player_name=NAME] [--lan_peers=IP,IP] [--save] [-- extra engine flags...]
+#                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
+#                  [--save] [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
 # network: player_name is the name the others see (default: this computer's host name, which
 # must differ between the machines), lan_peers lists the other machines' IP addresses for
-# networks that do not pass broadcasts (some Wi-Fi access points and VPNs).
+# networks that do not pass broadcasts (some Wi-Fi access points and VPNs). ONLINE in the main
+# menu plays the same menus over the internet through the online server in server=.
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
 # ini passes further engine options. The in-game OPTIONS > PC SETTINGS page edits the same file.
@@ -52,6 +54,7 @@ engine_flags=""
 system_link="true"
 player_name=""
 lan_peers=""
+server=""
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -79,6 +82,7 @@ set_option() {
     system_link) system_link="$value" ;;
     player_name) player_name="$value" ;;
     lan_peers) lan_peers="$value" ;;
+    server) server="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -96,7 +100,7 @@ fi
 while (($#)); do
   case "$1" in
     --save) save=1 ;;
-    --help|-h) sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; extra+=("$@"); break ;;
     --*=*)
       key="${1%%=*}"; key="${key#--}"
@@ -134,6 +138,7 @@ case "$check_updates" in true|false) ;; *) die "check_updates must be true or fa
 case "$auto_update" in true|false) ;; *) die "auto_update must be true or false" ;; esac
 case "$system_link" in true|false) ;; *) die "system_link must be true or false" ;; esac
 [[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
+[[ "$server" =~ ^[A-Za-z0-9.:_-]*$ ]] || die "server must be a host name or address, optionally with :port"
 [[ "$lan_peers" =~ ^[0-9.,\ ]*$ ]] || die "lan_peers must be IPv4 addresses separated by commas"
 
 [[ -n "$iso_path" ]] || die "no ISO set. Add iso_path=/path/to/TableTennis.iso to $config or pass --iso=PATH."
@@ -159,6 +164,7 @@ engine_flags=$engine_flags
 system_link=$system_link
 player_name=$player_name
 lan_peers=$lan_peers
+server=$server
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -175,6 +181,7 @@ args=(
   --present_safe_area_x=100 --present_safe_area_y=100
   "--system_link=$system_link"
 )
+[[ -n "$server" ]] && args+=("--online_server=$server")
 # Players are told apart by name, and machines of the same kind share a host name (every Steam
 # Deck is "steamdeck"), so the default adds three characters of this machine's ID.
 if [[ -z "$player_name" ]]; then

@@ -51,6 +51,10 @@ bool FilterInput(uint32_t user, achievement_ui::PadSample& pad);
 
 bool IsOpen();
 
+// ONLINE in the main menu: shows the online prompt (public room or a friend's private room)
+// over the game's online menu.
+void OpenOnlinePrompt();
+
 // Live settings the page changes through the application.
 struct LiveHooks {
   std::function<bool()> get_show_fps;
@@ -87,6 +91,31 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   double notice_until_ = 0.0;
   bool confirm_ = false;  // "update now?" box showing
   double confirm_at_ = 0.0;
+};
+
+// The ONLINE prompt: PLAY ANYONE (public room) or PLAY WITH A FRIEND (show or enter a room
+// code), with the connection status; then the game's own PLAYER MATCH menu takes over.
+class OnlinePrompt : public rex::ui::ImGuiDialog {
+ public:
+  explicit OnlinePrompt(rex::ui::ImGuiDrawer* drawer);
+  ~OnlinePrompt() override;
+
+ protected:
+  void OnDraw(ImGuiIO& io) override;
+
+ private:
+  enum class Step { kUnavailable, kChoose, kFriend, kShowCode, kEnterCode };
+  void Draw(ImGuiIO& io, float alpha);
+  void Close(bool back_to_game);
+
+  bool shown_ = false;
+  double opened_at_ = 0.0;
+  Step step_ = Step::kChoose;
+  int selected_ = 0;
+  int held_direction_ = 0;
+  double next_repeat_ = 0.0;
+  std::string code_edit_;
+  int code_pos_ = 0;
 };
 
 // Front-end popup when the launcher reports a newer release (see the update notes in

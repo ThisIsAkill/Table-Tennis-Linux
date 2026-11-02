@@ -1,0 +1,898 @@
+diff --git a/include/rex/system/xsocket.h b/include/rex/system/xsocket.h
+--- a/include/rex/system/xsocket.h
++++ b/include/rex/system/xsocket.h
+@@ -13,6 +13,7 @@
+ #include <cstdint>
+ #include <cstring>
+ #include <queue>
++#include <string>
+ #include <vector>
+ 
+ #include <rex/math.h>
+@@ -32,6 +33,8 @@
+ // Test setups: with net_address set to a loopback address (127.x.y.z) sockets bind to it
+ // instead of INADDR_ANY, and broadcasts go to the net_peers addresses instead, so several
+ // instances on one machine see each other as separate hosts.
++class XSocket;
++
+ namespace net {
+ uint32_t LocalAddress();
+ bool BindLocalAddress();
+@@ -55,6 +58,37 @@
+ // address, tagged with the XNKID, and tagged packets from the peer come back from it.
+ uint32_t SecureAddress(uint32_t real, const uint8_t kid[8]);
+ bool ResolveSecureAddress(uint32_t address, uint32_t* real, uint8_t kid[8]);
++
++// Online play: a virtual LAN through a Table Tennis online server (server/ in the game's
++// repository). Players connected to the same room see each other as one network: System
++// Link broadcasts go through the server to the room, match traffic goes straight between the
++// players after UDP hole punching, or through the server when that fails. While online, every
++// datagram the title sends travels this way and the LAN is not used; the title's own address
++// (LocalAddress) is the room address the server assigned.
++//
++// Settings: online (off, public, room), room_code, online_server (host[:port]),
++// online_relay_only (never connect players directly; for tests and difficult networks).
++struct OnlineStatus {
++  std::string mode;        // off, public, room
++  std::string room;        // room code, empty for the public room
++  std::string state;       // short text for the settings page
++  bool connected = false;  // in a room
++  int room_players = 0;    // including this player
++  int players_online = 0;  // on the whole server
++  int direct_peers = 0;    // room members reached directly
++  int relayed_peers = 0;   // room members reached through the server
++};
++OnlineStatus GetOnlineStatus();
++// Changes the online setting at run time (the settings page); the connection follows.
++void SetOnline(const std::string& mode, const std::string& room_code);
++// True while online play is switched on, connected or not.
++bool OnlineEnabled();
++// The machine's own LAN address (net_address or the default route's), also while online.
++uint32_t BaseAddress();
++// Used by XSocket: send a title datagram online; register the socket bound to a guest port.
++void OnlineSend(uint32_t dest, uint16_t src_port, uint16_t dst_port, const uint8_t* data,
++                size_t len);
++void RegisterBoundSocket(uint16_t port, XSocket* socket);
+ }  // namespace net
+ 
+ struct XSOCKADDR {
+@@ -153,6 +187,8 @@
+   int Send(const uint8_t* buf, uint32_t buf_len, uint32_t flags);
+ 
+   int RecvFrom(uint8_t* buf, uint32_t buf_len, uint32_t flags, XSOCKADDR_IN* from);
++  // A datagram that arrived through the online server or a directly connected player.
++  void DeliverOnline(uint32_t source, uint16_t source_port, const uint8_t* data, size_t len);
+   int SendTo(const uint8_t* buf, uint32_t buf_len, uint32_t flags, const XSOCKADDR_IN* to);
+ 
+   struct packet {
+@@ -180,6 +216,15 @@
+   uint16_t bound_port_ = 0;
+ 
+   bool broadcast_socket_ = false;
++  bool nonblocking_ = false;
++
++  struct OnlinePacket {
++    uint32_t source;
++    uint16_t source_port;
++    std::vector<uint8_t> data;
++  };
++  std::mutex online_mutex_;
++  std::queue<OnlinePacket> online_packets_;
+ 
+   std::unique_ptr<rex::thread::Event> event_;
+   std::mutex incoming_packet_mutex_;
+diff --git a/src/system/xsocket.cpp b/src/system/xsocket.cpp
+--- a/src/system/xsocket.cpp
++++ b/src/system/xsocket.cpp
+@@ -10,6 +10,9 @@
+  */
+ 
+ #include <algorithm>
++#include <chrono>
++#include <random>
++#include <thread>
+ #include <array>
+ #include <atomic>
+ #include <cerrno>
+@@ -38,7 +41,9 @@
+ #include <arpa/inet.h>
+ #include <netinet/in.h>
+ #include <netinet/ip.h>
++#include <netdb.h>
+ #include <netinet/tcp.h>
++#include <poll.h>
+ #include <sys/ioctl.h>
+ #include <sys/socket.h>
+ #include <unistd.h>
+@@ -54,6 +59,17 @@
+                       "broadcasts)");
+ REXCVAR_DEFINE_BOOL(net_log_packets, false, "Network",
+                     "Log every packet the game sends and receives (diagnostics)");
++REXCVAR_DEFINE_STRING(online, "off", "Network",
++                      "Online play through a Table Tennis online server: off, public (everyone "
++                      "online) or room (a private room, see room_code)");
++REXCVAR_DEFINE_STRING(room_code, "", "Network",
++                      "Private room code for online=room: six letters and digits shared with "
++                      "the other players");
++REXCVAR_DEFINE_STRING(online_server, "", "Network",
++                      "Online server address, host or host:port (default port 27360)");
++REXCVAR_DEFINE_BOOL(online_relay_only, false, "Network",
++                    "Online play: send all match traffic through the server instead of "
++                    "connecting the players directly");
+ REXCVAR_DEFINE_INT32(net_port_offset, 10000, "Network",
+                      "Added to every port the game uses, on all machines alike (Linux needs root "
+                      "for ports below 1024)");
+@@ -102,7 +118,10 @@
+ }
+ }  // namespace
+ 
+-uint32_t LocalAddress() {
++uint32_t OnlineAddress();
++
++// The machine's own address: net_address, or the source address of the default route.
++uint32_t BaseAddress() {
+   static const uint32_t address = [] {
+     uint32_t result = ParseAddress(REXCVAR_GET(net_address));
+     if (!result) result = DefaultRouteAddress();
+@@ -114,8 +133,13 @@
+   return address;
+ }
+ 
++uint32_t LocalAddress() {
++  const uint32_t online = OnlineAddress();
++  return online ? online : BaseAddress();
++}
++
+ bool BindLocalAddress() {
+-  return (LocalAddress() >> 24) == 127;
++  return (BaseAddress() >> 24) == 127;
+ }
+ 
+ const std::vector<uint32_t>& BroadcastPeers() {
+@@ -262,6 +286,580 @@
+   }
+ #endif
+ }
++
++// --- Online play ----------------------------------------------------------------------------
++// Client of server/ttlink_server.py. All messages start with "TTV1" and a type byte; fields
++// are big-endian. Server messages: HELLO/WELCOME (join a room, get an id, a room address and a
++// token), MEMBERS (the other players: id, room address, token, public and local endpoint,
++// name), KEEPALIVE/STATUS, DATA/RELAYED (datagrams relayed or broadcast to the room), BYE,
++// ERROR. Between players: PUNCH/PUNCH_ACK (open a direct path through both NATs) and DIRECT
++// (a datagram sent straight to the other player).
++namespace {
++constexpr uint8_t kOnlineMagic[4] = {'T', 'T', 'V', '1'};
++enum OnlineMessage : uint8_t {
++  kHello = 1, kWelcome, kMembers, kKeepAlive, kStatus, kData, kRelayed, kBye, kPunch,
++  kPunchAck, kDirect, kError,
++};
++constexpr uint16_t kDefaultServerPort = 27360;
++constexpr uint32_t kOnlineBroadcast = 0xFFFFFFFF;
++constexpr size_t kMaxOnlinePayload = 1400;
++
++using OnlineClock = std::chrono::steady_clock;
++
++struct Writer {
++  std::vector<uint8_t> data;
++  explicit Writer(uint8_t type) {
++    data.assign(kOnlineMagic, kOnlineMagic + 4);
++    data.push_back(type);
++  }
++  void u8(uint8_t v) { data.push_back(v); }
++  void u16(uint16_t v) { u8(uint8_t(v >> 8)); u8(uint8_t(v)); }
++  void u32(uint32_t v) { u16(uint16_t(v >> 16)); u16(uint16_t(v)); }
++  void u64(uint64_t v) { u32(uint32_t(v >> 32)); u32(uint32_t(v)); }
++  void str(const std::string& v) {
++    const size_t n = std::min<size_t>(v.size(), 255);
++    u8(uint8_t(n));
++    data.insert(data.end(), v.begin(), v.begin() + n);
++  }
++  void bytes(const uint8_t* p, size_t n) { data.insert(data.end(), p, p + n); }
++};
++
++struct Reader {
++  const uint8_t* p;
++  size_t n;
++  size_t pos = 0;
++  bool ok = true;
++  bool need(size_t k) {
++    if (pos + k > n) ok = false;
++    return ok;
++  }
++  uint8_t u8() { return need(1) ? p[pos++] : 0; }
++  uint16_t u16() { uint16_t hi = u8(); return uint16_t((hi << 8) | u8()); }
++  uint32_t u32() { uint32_t hi = u16(); return (hi << 16) | u16(); }
++  uint64_t u64() { uint64_t hi = u32(); return (hi << 32) | u32(); }
++  std::string str() {
++    const size_t k = u8();
++    if (!need(k)) return {};
++    std::string v(reinterpret_cast<const char*>(p + pos), k);
++    pos += k;
++    return v;
++  }
++};
++
++sockaddr_in Endpoint(uint32_t ip, uint16_t port) {
++  sockaddr_in a{};
++  a.sin_family = AF_INET;
++  a.sin_addr.s_addr = htonl(ip);
++  a.sin_port = htons(port);
++  return a;
++}
++
++bool SameEndpoint(const sockaddr_in& a, const sockaddr_in& b) {
++  return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
++}
++
++// Sockets the title bound, by guest port, to hand them the datagrams that arrive online.
++std::mutex bound_mutex;
++std::vector<std::pair<uint16_t, XSocket*>> bound_sockets;
++
++class OnlineClient {
++ public:
++  static OnlineClient& Get() {
++    static OnlineClient* client = new OnlineClient();  // lives for the whole process
++    return *client;
++  }
++
++  void Configure(const std::string& mode, const std::string& room) {
++    std::lock_guard<std::mutex> lock(mutex_);
++    if (mode != mode_ || room != room_) {
++      state_ = mode == "public" || mode == "room" ? "CONNECTING" : "OFF";
++    }
++    mode_ = mode;
++    room_ = room;
++  }
++
++  bool Enabled() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    return mode_ == "public" || mode_ == "room";
++  }
++
++  uint32_t Address() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    return welcomed_ ? vip_ : 0;
++  }
++
++  OnlineStatus Status() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    OnlineStatus status;
++    status.mode = mode_;
++    status.room = mode_ == "room" ? room_ : "";
++    status.state = state_;
++    status.connected = welcomed_;
++    status.room_players = welcomed_ ? std::max(room_players_, int(peers_.size()) + 1) : 0;
++    status.players_online = players_online_;
++    for (const auto& peer : peers_) {
++      (peer.direct ? status.direct_peers : status.relayed_peers)++;
++    }
++    return status;
++  }
++
++  // A datagram from the title: to a room member (directly or relayed) or to the whole room.
++  void Send(uint32_t dest, uint16_t src_port, uint16_t dst_port, const uint8_t* data, size_t len) {
++    if (len > kMaxOnlinePayload) return;
++    std::lock_guard<std::mutex> lock(mutex_);
++    if (!welcomed_ || fd_ < 0) return;
++    const bool broadcast = dest == kOnlineBroadcast || (dest & 0xFF) == 0xFF;
++    if (!broadcast) {
++      for (const auto& peer : peers_) {
++        if (peer.vip != dest || !peer.direct || relay_only_) continue;
++        Writer w(kDirect);
++        w.u32(id_);
++        w.u64(token_);
++        w.u16(src_port);
++        w.u16(dst_port);
++        w.bytes(data, len);
++        SendRaw(peer.direct_addr, w.data);
++        return;
++      }
++    }
++    Writer w(kData);
++    w.u32(id_);
++    w.u64(token_);
++    w.u32(broadcast ? kOnlineBroadcast : dest);
++    w.u16(src_port);
++    w.u16(dst_port);
++    w.bytes(data, len);
++    SendRaw(server_, w.data);
++  }
++
++ private:
++  struct Peer {
++    uint32_t id = 0;
++    uint32_t vip = 0;
++    uint64_t token = 0;
++    std::string name;
++    sockaddr_in public_addr{};
++    sockaddr_in local_addr{};
++    sockaddr_in direct_addr{};
++    bool direct = false;
++    OnlineClock::time_point seen;           // first listed
++    OnlineClock::time_point last_punch{};
++    OnlineClock::time_point last_direct{};  // last packet received directly
++  };
++
++  OnlineClient() {
++    mode_ = REXCVAR_GET(online);
++    room_ = REXCVAR_GET(room_code);
++    std::thread([this] { Run(); }).detach();
++  }
++
++  void SendRaw(const sockaddr_in& to, const std::vector<uint8_t>& data) {
++    sendto(fd_, reinterpret_cast<const char*>(data.data()), data.size(), 0,
++           reinterpret_cast<const sockaddr*>(&to), sizeof(to));
++  }
++
++  // Reads the online_server setting; false when none is set or it cannot be resolved.
++  bool ResolveServer() {
++    std::string text = REXCVAR_GET(online_server);
++    if (text.empty()) return false;
++    uint16_t port = kDefaultServerPort;
++    const size_t colon = text.rfind(':');
++    if (colon != std::string::npos) {
++      port = uint16_t(std::atoi(text.c_str() + colon + 1));
++      text.resize(colon);
++    }
++    addrinfo hints{};
++    hints.ai_family = AF_INET;
++    hints.ai_socktype = SOCK_DGRAM;
++    addrinfo* result = nullptr;
++    if (getaddrinfo(text.c_str(), nullptr, &hints, &result) != 0 || !result) return false;
++    server_ = *reinterpret_cast<sockaddr_in*>(result->ai_addr);
++    server_.sin_port = htons(port);
++    freeaddrinfo(result);
++    return true;
++  }
++
++  void Disconnect() {
++    if (fd_ >= 0) {
++      if (welcomed_) {
++        Writer w(kBye);
++        w.u32(id_);
++        w.u64(token_);
++        SendRaw(server_, w.data);
++      }
++      rex::net::socket_close(fd_);
++    }
++    fd_ = -1;
++    welcomed_ = false;
++    resolved_ = false;
++    peers_.clear();
++    room_players_ = 0;
++  }
++
++  void Run() {
++    std::string active_mode, active_room, active_server;
++    uint8_t buffer[2048];
++    while (true) {
++      std::unique_lock<std::mutex> lock(mutex_);
++      const auto now = OnlineClock::now();
++      const bool on = mode_ == "public" || mode_ == "room";
++      const std::string server = REXCVAR_GET(online_server);
++      if (mode_ != active_mode || room_ != active_room || server != active_server) {
++        if (!active_mode.empty() && fd_ >= 0) {
++          REXKRNL_INFO("Online: settings changed ({} {}), reconnecting", mode_, room_);
++        }
++        Disconnect();
++        active_mode = mode_;
++        active_room = room_;
++        active_server = server;
++        hello_nonce_ = (uint64_t(std::random_device{}()) << 32) | std::random_device{}();
++      }
++      relay_only_ = REXCVAR_GET(online_relay_only);
++      if (!on) {
++        state_ = "OFF";
++        lock.unlock();
++        std::this_thread::sleep_for(std::chrono::milliseconds(200));
++        continue;
++      }
++      if (server.empty()) {
++        state_ = "NO SERVER SET";
++        lock.unlock();
++        std::this_thread::sleep_for(std::chrono::milliseconds(500));
++        continue;
++      }
++      if (mode_ == "room" && !ValidRoom(room_)) {
++        state_ = "ENTER A ROOM CODE";
++        lock.unlock();
++        std::this_thread::sleep_for(std::chrono::milliseconds(300));
++        continue;
++      }
++      if (!resolved_) {
++        if (now < next_resolve_) {
++          lock.unlock();
++          std::this_thread::sleep_for(std::chrono::milliseconds(200));
++          continue;
++        }
++        resolved_ = ResolveServer();
++        if (!resolved_) {
++          state_ = "SERVER NOT FOUND";
++          next_resolve_ = now + std::chrono::seconds(10);
++          continue;
++        }
++      }
++      if (fd_ < 0) {
++        fd_ = int(::socket(AF_INET, SOCK_DGRAM, 0));
++        sockaddr_in local = Endpoint(BindLocalAddress() ? BaseAddress() : INADDR_ANY, 0);
++        bind(fd_, reinterpret_cast<sockaddr*>(&local), sizeof(local));
++        socklen_t len = sizeof(local);
++        getsockname(fd_, reinterpret_cast<sockaddr*>(&local), &len);
++        local_port_ = ntohs(local.sin_port);
++        last_server_ = now;
++        state_ = "CONNECTING";
++      }
++      if (!welcomed_ && now - last_hello_ > std::chrono::seconds(1)) {
++        last_hello_ = now;
++        Writer w(kHello);
++        w.u8(1);  // protocol version
++        w.u64(hello_nonce_);
++        std::string name = rex::cvar::GetFlagByName("user_name");
++        w.str(name.empty() ? "Player" : name);
++        w.str(mode_ == "room" ? room_ : "");
++        w.u32(BaseAddress());
++        w.u16(local_port_);
++        SendRaw(server_, w.data);
++        if (now - last_server_ > std::chrono::seconds(10)) state_ = "NO ANSWER FROM SERVER";
++      }
++      if (welcomed_) {
++        if (now - last_keepalive_ > std::chrono::seconds(3)) {
++          last_keepalive_ = now;
++          Writer w(kKeepAlive);
++          w.u32(id_);
++          w.u64(token_);
++          SendRaw(server_, w.data);
++        }
++        if (now - last_server_ > std::chrono::seconds(15)) {
++          REXKRNL_WARN("Online: lost the server, reconnecting");
++          welcomed_ = false;
++          peers_.clear();
++          state_ = "RECONNECTING";
++        }
++        Punch(now);
++      }
++      const int fd = fd_;
++      lock.unlock();
++
++      pollfd poll_fd{fd, POLLIN, 0};
++      if (poll(&poll_fd, 1, 50) <= 0) continue;
++      while (true) {
++        sockaddr_in from{};
++        socklen_t from_len = sizeof(from);
++        const ssize_t n = recvfrom(fd, reinterpret_cast<char*>(buffer), sizeof(buffer),
++                                   MSG_DONTWAIT, reinterpret_cast<sockaddr*>(&from), &from_len);
++        if (n < 5) break;
++        if (std::memcmp(buffer, kOnlineMagic, 4) != 0) continue;
++        Handle(buffer[4], buffer + 5, size_t(n - 5), from);
++      }
++    }
++  }
++
++  static bool ValidRoom(const std::string& room) {
++    static const char* alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
++    if (room.size() != 6) return false;
++    for (char c : room) {
++      if (!std::strchr(alphabet, c)) return false;
++    }
++    return true;
++  }
++
++  // Opens and keeps direct paths: every new peer gets punches to its public and local
++  // endpoints twice a second for 15 s (then every 5 s); a direct peer gets one every 5 s to
++  // keep the NAT mappings open, and falls back to the relay after 15 s of silence.
++  void Punch(OnlineClock::time_point now) {
++    if (relay_only_) return;
++    for (auto& peer : peers_) {
++      if (peer.direct && now - peer.last_direct > std::chrono::seconds(15)) {
++        REXKRNL_INFO("Online: direct path to {} lost, using the server", peer.name);
++        peer.direct = false;
++      }
++      const auto interval = peer.direct || now - peer.seen > std::chrono::seconds(15)
++                                ? std::chrono::milliseconds(5000)
++                                : std::chrono::milliseconds(500);
++      if (now - peer.last_punch < interval) continue;
++      peer.last_punch = now;
++      Writer w(kPunch);
++      w.u32(id_);
++      w.u64(token_);
++      w.u32(peer.id);
++      if (peer.direct) {
++        SendRaw(peer.direct_addr, w.data);
++      } else {
++        SendRaw(peer.public_addr, w.data);
++        if (peer.local_addr.sin_port && !SameEndpoint(peer.local_addr, peer.public_addr)) {
++          SendRaw(peer.local_addr, w.data);
++        }
++      }
++    }
++  }
++
++  Peer* FindPeer(uint32_t id, uint64_t token) {
++    for (auto& peer : peers_) {
++      if (peer.id == id && peer.token == token) return &peer;
++    }
++    return nullptr;
++  }
++
++  void MarkDirect(Peer* peer, const sockaddr_in& from) {
++    if (!peer->direct || !SameEndpoint(peer->direct_addr, from)) {
++      REXKRNL_INFO("Online: direct connection to {} ({}:{})", peer->name,
++                   FormatAddress(ntohl(from.sin_addr.s_addr)), ntohs(from.sin_port));
++    }
++    peer->direct = true;
++    peer->direct_addr = from;
++    peer->last_direct = OnlineClock::now();
++  }
++
++  void Handle(uint8_t type, const uint8_t* body, size_t len, const sockaddr_in& from) {
++    Reader r{body, len};
++    uint32_t deliver_from = 0;
++    uint16_t src_port = 0, dst_port = 0;
++    const uint8_t* payload = nullptr;
++    size_t payload_len = 0;
++    {
++      std::lock_guard<std::mutex> lock(mutex_);
++      const bool from_server = SameEndpoint(from, server_);
++      if (from_server) last_server_ = OnlineClock::now();
++      switch (type) {
++        case kWelcome: {
++          if (!from_server) return;
++          id_ = r.u32();
++          vip_ = r.u32();
++          token_ = r.u64();
++          const std::string room = r.str();
++          const uint32_t public_ip = r.u32();
++          const uint16_t public_port = r.u16();
++          if (!r.ok) return;
++          if (!welcomed_) {
++            REXKRNL_INFO("Online: joined {} as {} (seen as {}:{})",
++                         room.empty() ? "the public room" : "room " + room, FormatAddress(vip_),
++                         FormatAddress(public_ip), public_port);
++          }
++          welcomed_ = true;
++          state_ = "CONNECTED";
++          return;
++        }
++        case kMembers: {
++          if (!from_server || !welcomed_) return;
++          const uint16_t total = r.u16();
++          const uint16_t count = r.u16();
++          std::vector<Peer> listed;
++          for (uint16_t i = 0; i < count && r.ok; ++i) {
++            Peer peer;
++            peer.id = r.u32();
++            peer.vip = r.u32();
++            peer.token = r.u64();
++            const uint32_t pub_ip = r.u32();
++            const uint16_t pub_port = r.u16();
++            const uint32_t local_ip = r.u32();
++            const uint16_t local_port = r.u16();
++            peer.name = r.str();
++            peer.public_addr = Endpoint(pub_ip, pub_port);
++            peer.local_addr = Endpoint(local_ip, local_port);
++            listed.push_back(peer);
++          }
++          if (!r.ok) return;
++          room_players_ = total + 1;
++          // One MEMBERS message lists the whole room when it is small; larger rooms arrive in
++          // parts and only add players (the periodic refresh drops those who left).
++          const bool complete = count == total;
++          std::vector<Peer> next;
++          for (auto& peer : listed) {
++            auto it = std::find_if(peers_.begin(), peers_.end(),
++                                   [&](const Peer& p) { return p.id == peer.id; });
++            if (it != peers_.end()) {
++              it->public_addr = peer.public_addr;
++              it->local_addr = peer.local_addr;
++              next.push_back(*it);
++            } else {
++              peer.seen = OnlineClock::now();
++              REXKRNL_INFO("Online: {} is in the room ({})", peer.name, FormatAddress(peer.vip));
++              next.push_back(peer);
++            }
++          }
++          if (!complete) {
++            for (auto& peer : peers_) {
++              if (std::none_of(next.begin(), next.end(),
++                               [&](const Peer& p) { return p.id == peer.id; })) {
++                next.push_back(peer);
++              }
++            }
++          }
++          peers_ = std::move(next);
++          return;
++        }
++        case kStatus: {
++          if (!from_server) return;
++          room_players_ = r.u16();
++          players_online_ = int(r.u32());
++          return;
++        }
++        case kError: {
++          if (!from_server) return;
++          const uint8_t code = r.u8();
++          const std::string text = r.str();
++          REXKRNL_WARN("Online: server says: {} ({})", text, code);
++          if (code == 5 /* unknown client */) {
++            welcomed_ = false;
++            peers_.clear();
++            state_ = "RECONNECTING";
++          } else {
++            std::string upper = text;
++            for (auto& c : upper) c = char(std::toupper(static_cast<unsigned char>(c)));
++            state_ = upper;
++          }
++          return;
++        }
++        case kRelayed: {
++          if (!from_server || !welcomed_) return;
++          deliver_from = r.u32();
++          src_port = r.u16();
++          dst_port = r.u16();
++          if (!r.ok) return;
++          payload = body + r.pos;
++          payload_len = len - r.pos;
++          break;
++        }
++        case kPunch:
++        case kPunchAck: {
++          if (relay_only_ || !welcomed_) return;
++          const uint32_t id = r.u32();
++          const uint64_t token = r.u64();
++          const uint32_t target = r.u32();
++          Peer* peer = r.ok && target == id_ ? FindPeer(id, token) : nullptr;
++          if (!peer) return;
++          MarkDirect(peer, from);
++          if (type == kPunch) {
++            Writer w(kPunchAck);
++            w.u32(id_);
++            w.u64(token_);
++            w.u32(peer->id);
++            SendRaw(from, w.data);
++          }
++          return;
++        }
++        case kDirect: {
++          if (relay_only_ || !welcomed_) return;
++          const uint32_t id = r.u32();
++          const uint64_t token = r.u64();
++          src_port = r.u16();
++          dst_port = r.u16();
++          Peer* peer = r.ok ? FindPeer(id, token) : nullptr;
++          if (!peer) return;
++          MarkDirect(peer, from);
++          deliver_from = peer->vip;
++          payload = body + r.pos;
++          payload_len = len - r.pos;
++          break;
++        }
++        default:
++          return;
++      }
++    }
++    // Hand the datagram to the title's socket bound to that port.
++    std::lock_guard<std::mutex> lock(bound_mutex);
++    for (auto& [port, socket] : bound_sockets) {
++      if (port == dst_port) {
++        socket->DeliverOnline(deliver_from, src_port, payload, payload_len);
++        break;
++      }
++    }
++  }
++
++  std::mutex mutex_;
++  std::string mode_, room_;
++  std::string state_ = "OFF";
++  bool relay_only_ = false;
++  int fd_ = -1;
++  bool resolved_ = false;
++  bool welcomed_ = false;
++  sockaddr_in server_{};
++  uint16_t local_port_ = 0;
++  uint64_t hello_nonce_ = 0;
++  uint32_t id_ = 0, vip_ = 0;
++  uint64_t token_ = 0;
++  int room_players_ = 0, players_online_ = 0;
++  std::vector<Peer> peers_;
++  OnlineClock::time_point last_hello_{}, last_keepalive_{}, last_server_{}, next_resolve_{};
++};
++}  // namespace
++
++uint32_t OnlineAddress() {
++  return OnlineClient::Get().Address();
++}
++
++OnlineStatus GetOnlineStatus() {
++  return OnlineClient::Get().Status();
++}
++
++void SetOnline(const std::string& mode, const std::string& room_code) {
++  OnlineClient::Get().Configure(mode, room_code);
++}
++
++bool OnlineEnabled() {
++  return OnlineClient::Get().Enabled();
++}
++
++void OnlineSend(uint32_t dest, uint16_t src_port, uint16_t dst_port, const uint8_t* data,
++                size_t len) {
++  OnlineClient::Get().Send(dest, src_port, dst_port, data, len);
++}
++
++void RegisterBoundSocket(uint16_t port, XSocket* socket) {
++  std::lock_guard<std::mutex> lock(bound_mutex);
++  bound_sockets.erase(std::remove_if(bound_sockets.begin(), bound_sockets.end(),
++                                     [&](const auto& e) { return e.second == socket; }),
++                      bound_sockets.end());
++  if (port) bound_sockets.emplace_back(port, socket);
++}
+ }  // namespace net
+ 
+ namespace {
+@@ -297,6 +895,7 @@
+     : XObject(kernel_state, kObjectType), native_handle_(native_handle) {}
+ 
+ XSocket::~XSocket() {
++  net::RegisterBoundSocket(0, this);
+   Close();
+ }
+ 
+@@ -329,6 +928,7 @@
+ }
+ 
+ X_STATUS XSocket::Close() {
++  net::RegisterBoundSocket(0, this);
+   if (native_handle_ == uint64_t(-1)) {
+     return X_STATUS_SUCCESS;
+   }
+@@ -390,6 +990,7 @@
+ X_STATUS XSocket::IOControl(uint32_t cmd, uint8_t* arg_ptr) {
+   if (cmd == 0x8004667E) {  // FIONBIO with a guest (big-endian) u_long
+     int value = arg_ptr ? rex::byte_swap(*reinterpret_cast<uint32_t*>(arg_ptr)) != 0 : 0;
++    nonblocking_ = value != 0;
+     if (rex::net::socket_ioctl(native_handle_, FIONBIO, reinterpret_cast<uint8_t*>(&value)) < 0) {
+       return X_STATUS_UNSUCCESSFUL;
+     }
+@@ -422,7 +1023,7 @@
+ X_STATUS XSocket::Bind(const XSOCKADDR_IN* name) {
+   sockaddr_in host = ToHost(*name);
+   if (host.sin_addr.s_addr == htonl(INADDR_ANY) && net::BindLocalAddress()) {
+-    host.sin_addr.s_addr = htonl(net::LocalAddress());
++    host.sin_addr.s_addr = htonl(net::BaseAddress());
+   }
+   int ret = bind(native_handle_, reinterpret_cast<sockaddr*>(&host), sizeof(host));
+   REXKRNL_INFO("XSocket {:X}: {} bind {}:{} -> host {}:{} {}", handle(), ProtocolName(proto_),
+@@ -435,6 +1036,7 @@
+ 
+   bound_ = true;
+   bound_port_ = name->sin_port;
++  if (type_ == X_SOCK_DGRAM) net::RegisterBoundSocket(bound_port_, this);
+ 
+   return X_STATUS_SUCCESS;
+ }
+@@ -524,13 +1126,39 @@
+     if (ret >= 0 && from) ToGuest(nfrom, from);
+     return ret;
+   }
+-  std::vector<uint8_t> packet(size_t(buf_len) + kTagSize);
++  std::vector<uint8_t> packet;
+   sockaddr_in nfrom{};
+-  socklen_t nfromlen = sizeof(sockaddr_in);
+-  int ret = recvfrom(native_handle_, reinterpret_cast<char*>(packet.data()),
+-                     uint32_t(packet.size()), flags, reinterpret_cast<sockaddr*>(&nfrom),
+-                     &nfromlen);
+-  if (ret < 0) return ret;
++  int ret = -1;
++  if (net::OnlineEnabled()) {
++    // Online: datagrams come from the online client's queue only, never from the LAN.
++    while (true) {
++      {
++        std::lock_guard<std::mutex> lock(online_mutex_);
++        if (!online_packets_.empty()) {
++          OnlinePacket& next = online_packets_.front();
++          packet = std::move(next.data);
++          nfrom.sin_family = AF_INET;
++          nfrom.sin_addr.s_addr = htonl(next.source);
++          nfrom.sin_port = htons(net::HostPort(next.source_port));
++          if (!(flags & MSG_PEEK)) online_packets_.pop();
++          break;
++        }
++      }
++      if (nonblocking_ || (flags & MSG_DONTWAIT)) {
++        errno = EWOULDBLOCK;
++        return -1;
++      }
++      std::this_thread::sleep_for(std::chrono::milliseconds(1));
++    }
++    ret = int(packet.size());
++  } else {
++    packet.resize(size_t(buf_len) + kTagSize);
++    socklen_t nfromlen = sizeof(sockaddr_in);
++    ret = recvfrom(native_handle_, reinterpret_cast<char*>(packet.data()),
++                   uint32_t(packet.size()), flags, reinterpret_cast<sockaddr*>(&nfrom),
++                   &nfromlen);
++    if (ret < 0) return ret;
++  }
+   const uint32_t source = ntohl(nfrom.sin_addr.s_addr);
+   const uint8_t* data = packet.data();
+   size_t len = size_t(ret);
+@@ -556,6 +1184,13 @@
+   return int(copied);
+ }
+ 
++void XSocket::DeliverOnline(uint32_t source, uint16_t source_port, const uint8_t* data,
++                            size_t len) {
++  std::lock_guard<std::mutex> lock(online_mutex_);
++  if (online_packets_.size() >= 512) return;  // the title stopped reading: drop, as UDP does
++  online_packets_.push(OnlinePacket{source, source_port, std::vector<uint8_t>(data, data + len)});
++}
++
+ int XSocket::Send(const uint8_t* buf, uint32_t buf_len, uint32_t flags) {
+   return send(native_handle_, reinterpret_cast<const char*>(buf), buf_len, flags);
+ }
+@@ -566,10 +1201,28 @@
+   }
+   sockaddr_in nto = ToHost(*to);
+   uint32_t dest = ntohl(nto.sin_addr.s_addr);
+-
+-  // A security association address: send to the peer's real address with the session tag.
+   uint8_t kid[8];
+   uint32_t real = 0;
++
++  if (type_ == X_SOCK_DGRAM && net::OnlineEnabled()) {
++    // Online: through the online client to a room member (or the whole room).
++    std::vector<uint8_t> packet;
++    if (net::ResolveSecureAddress(dest, &real, kid)) {
++      packet.resize(kTagSize + buf_len);
++      std::memcpy(packet.data(), kTagMagic, 4);
++      std::memcpy(packet.data() + 4, kid, 8);
++      memory::store_and_swap<uint32_t>(packet.data() + 12, net::LocalAddress());
++      std::memcpy(packet.data() + kTagSize, buf, buf_len);
++      dest = real;
++    } else {
++      packet.assign(buf, buf + buf_len);
++    }
++    LogPacket("send", handle(), buf_len, dest, to->sin_port, buf);
++    net::OnlineSend(dest, bound_port_, to->sin_port, packet.data(), packet.size());
++    return int(buf_len);
++  }
++
++  // A security association address: send to the peer's real address with the session tag.
+   if (net::ResolveSecureAddress(dest, &real, kid)) {
+     std::vector<uint8_t> packet(kTagSize + buf_len);
+     std::memcpy(packet.data(), kTagMagic, 4);
+diff --git a/src/kernel/xam/xam_net.cpp b/src/kernel/xam/xam_net.cpp
+--- a/src/kernel/xam/xam_net.cpp
++++ b/src/kernel/xam/xam_net.cpp
+@@ -627,7 +627,7 @@
+ 
+ void Serve() {
+   int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+-  sockaddr_in local = QosAddress(net::BindLocalAddress() ? net::LocalAddress() : INADDR_ANY);
++  sockaddr_in local = QosAddress(net::BindLocalAddress() ? net::BaseAddress() : INADDR_ANY);
+   if (fd < 0 || ::bind(fd, reinterpret_cast<sockaddr*>(&local), sizeof(local)) < 0) {
+     REXKRNL_ERROR("XNetQos: cannot listen on UDP port {}: {}", ntohs(local.sin_port),
+                   std::strerror(errno));
+@@ -672,7 +672,7 @@
+   int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+   if (fd < 0) return -1;
+   if (net::BindLocalAddress()) {
+-    sockaddr_in local = QosAddress(net::LocalAddress());
++    sockaddr_in local = QosAddress(net::BaseAddress());
+     local.sin_port = 0;
+     ::bind(fd, reinterpret_cast<sockaddr*>(&local), sizeof(local));
+   }
+@@ -782,7 +782,11 @@
+     for (size_t i = 0; i < targets.size(); ++i) {
+       std::vector<uint8_t> data;
+       uint32_t received = 0;
+-      int rtt = targets[i] ? qos::Probe(targets[i], probes, &data, &received) : -1;
++      // Online, room addresses are not reachable outside the online client; the title joins
++      // without a measurement.
++      int rtt = targets[i] && !net::OnlineEnabled()
++                    ? qos::Probe(targets[i], probes, &data, &received)
++                    : -1;
+       XNQOSINFO& info = result->info[i];
+       info.probes_xmit = uint16_t(std::max(probes, 2u));
+       info.probes_recv = uint16_t(received);

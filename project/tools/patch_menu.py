@@ -9,7 +9,9 @@ ORIGINAL_MOVIE = '75c3a8250db52a44461b5fea383c148ce938229231257f5cd7f8a985848dfa
 OFFLINE_MOVIE = '220d6f63f77b57f90b474d2f8fe33e2b077347e087160b49a98a2afd8214f13a'
 # Offline menu with PC SETTINGS; the main menu's SYSTEM LINK entry is added on top of it.
 PC_SETTINGS_MOVIE = 'ebab047a621e51954a1bfc7c81aa36e3e6c996066453c04c256874d32e237513'
-PATCHED_MOVIE = '2d41824ecc440ebb9f235b426045cb9f38e2838bd4cc2700e572b55b6026d546'
+# With SYSTEM LINK in the main menu (release 1.1.0); ONLINE is added on top of it.
+SYSTEM_LINK_MOVIE = '2d41824ecc440ebb9f235b426045cb9f38e2838bd4cc2700e572b55b6026d546'
+PATCHED_MOVIE = 'eaab6d629629044903a565b63156823948b8d8f3f7bb9d3409b70fd62c8bbe02'
 # Earlier patch with PC SETTINGS as the last OPTIONS item; its regions are rewritten in full.
 PC_SETTINGS_LAST_MOVIE = 'cb3f3eaf65f096ce66e783b364aebd9ca317d7a46a250cf841cda3efa6cde301'
 # In-match pause menu (pongpause_001.xeck): PC SETTINGS below AUDIO OPTIONS in its OPTIONS list.
@@ -152,6 +154,59 @@ def _add_system_link(movie):
         movie[address + 4] = row + 1
 
 
+def _main_list_item(state, label):
+    """[_global.<label>, state, -1] with the frame state inlined."""
+    return (_push(_int(-1), _int(state), _pool(1)) + GET_VARIABLE + _push(_pool(label)) + GET_MEMBER +
+            _push(_int(3), _pool(162)) + NEW_OBJECT)
+
+
+def _add_online(movie):
+    """Main menu: ONLINE in the original Xbox LIVE row (3) and SYSTEM LINK below it (row 4).
+
+    Both open the game's online menus (FE_WAIT_FOR_ONLINE, 91); the executable reads which one
+    was chosen (see the accept handler below) to play over the online server or the local
+    network.
+    LIST_MAIN is rebuilt with the frame states inlined (FE_TOURNAMENT 5, FE_TRAINING 83,
+    FE_OPTIONS 18, FE_EXTRAS 85) to make room; the EXHIBITION item is kept as it is.
+    """
+    start, end = 0x17EBB, 0x17FEC
+    exhibition = bytes(movie[0x17F5D:0x17FB9])
+    if movie[0x17F0D:0x17F12] != b'\x96\x1e\x00\x07\xff' or exhibition[-1:] != NEW_OBJECT:
+        raise ValueError('Unexpected main menu list code')
+    literal = lambda text: _push(_int(-1), _int(91), _str(text), _int(3), _pool(162)) + NEW_OBJECT
+    # Array pops its arguments: the last item is pushed first.
+    # The list's name shares the first Push with the EXTRAS item.
+    extras = (_push(_pool(210), _int(-1), _int(85), _pool(1)) + GET_VARIABLE + _push(_pool(211)) + GET_MEMBER +
+              _push(_int(3), _pool(162)) + NEW_OBJECT)
+    code = (extras + _main_list_item(18, 212) + literal('SYSTEM LINK') +
+            literal('ONLINE') + _main_list_item(83, 214) + exhibition + _main_list_item(5, 220) +
+            _push(_int(7), _pool(162)) + NEW_OBJECT)
+    movie[start:end] = _fit(code, end - start)
+    # The localisation script's row 3 label becomes ONLINE; OPTIONS and EXTRAS move down a row.
+    label = (_push(_pool(0)) + GET_VARIABLE + _push(_pool(2)) + GET_MEMBER + _push(_int(3)) + GET_MEMBER +
+             _push(_int(0), _str('ONLINE')) + SET_MEMBER)
+    movie[0x3AC212:0x3AC23D] = _fit(label, 0x3AC23D - 0x3AC212)
+    for address, row in ((0x3AC249, 4), (0x3AC274, 5)):
+        if movie[address:address + 4] != b'\x96\x05\x00\x07' or movie[address + 4] != row:
+            raise ValueError('Unexpected main menu label code')
+        movie[address + 4] = row + 1
+    # Main menu accept handler: the game asks the executable for its online menu
+    # (initRequestOnline) only for row 3. Ask for both rows that open it (target state 91), and
+    # leave the chosen row in iCurrChooseModeSel, which the executable reads and clears.
+    # r1 = _global; pool: 21 target_STATE_NEW, 218 initRequestOnline, 28 iCurrChooseModeSel,
+    # 30 MENU_SELECTIONS, 31 MENU_ID.
+    start, end = 0x13F9C, 0x13FE2
+    if movie[start:start + 7] != _push(_reg(1), _pool(14)):
+        raise ValueError('Unexpected main menu accept code')
+    request = _push(_reg(1), _pool(218), _int(1)) + SET_MEMBER
+    # (ToInteger: the executable reads the variable as an integer.)
+    row = (_push(_reg(1), _pool(28), _reg(1), _pool(30)) + GET_MEMBER + _push(_reg(1), _pool(31)) + GET_MEMBER +
+           GET_MEMBER + b'\x18' + SET_MEMBER)
+    test = _push(_reg(1), _pool(21)) + GET_MEMBER + _push(_int(91)) + EQUALS2 + NOT
+    code = test + _branch(IF, len(request) + len(row)) + request + row
+    movie[start:end] = _fit(code, end - start)
+
+
 def _pause_options_list(size):
     """_global.LIST_iPAUSE_OPTIONS with ["PC SETTINGS", iPAUSE_OPTIONS, -1] as the third item,
     after AUDIO OPTIONS.
@@ -276,11 +331,15 @@ def patch(path):
         elif original_archive and current == ORIGINAL_MOVIE:
             _patch_offline(movie)
             _add_pc_settings(movie)
-        elif current != PC_SETTINGS_MOVIE:
+        elif current not in (PC_SETTINGS_MOVIE, SYSTEM_LINK_MOVIE):
             raise ValueError('Unsupported menu archive; no changes made')
-        if hashlib.sha256(movie).hexdigest() != PC_SETTINGS_MOVIE:
+        if current != SYSTEM_LINK_MOVIE:
+            if hashlib.sha256(movie).hexdigest() != PC_SETTINGS_MOVIE:
+                raise ValueError('Patched frontend verification failed')
+            _add_system_link(movie)
+        if hashlib.sha256(movie).hexdigest() != SYSTEM_LINK_MOVIE:
             raise ValueError('Patched frontend verification failed')
-        _add_system_link(movie)
+        _add_online(movie)
         if hashlib.sha256(movie).hexdigest() != PATCHED_MOVIE:
             raise ValueError('Patched frontend verification failed')
         _store(archive, entries, entry, offset, movie)
@@ -303,7 +362,7 @@ def patch(path):
     temp = path.with_suffix('.tmp')
     temp.write_bytes(archive)
     temp.replace(path)
-    print('Created and verified offline menu, intro timing, PC settings and system link patches locally.', flush=True)
+    print('Created and verified offline menu, intro timing, PC settings, system link and online patches locally.', flush=True)
 
 
 def _patch_offline(movie):

@@ -92,21 +92,23 @@ All 29 achievements (1000 gamerscore) come from your copy of the game and unlock
   <img src="docs/images/linux-achievements.jpg" width="80%" alt="Achievements list">
 </p>
 
-### System link (LAN play)
+### Online and System Link play
 
-Two machines on the same network, for example a Steam Deck and a PC on the same Wi-Fi, can play a match against each other. **SYSTEM LINK** in the main menu opens the game's online menu, which plays over the local network instead of Xbox LIVE:
+Two players can play a match against each other, on the same network or over the internet. The main menu has two entries that both open the game's own online menus (PLAYER MATCH, QUICK MATCH, CREATE MATCH, lobby):
 
-1. On one machine choose **SYSTEM LINK > PLAYER MATCH > CREATE MATCH**, accept the settings and wait in the lobby.
-2. On the other choose **SYSTEM LINK > PLAYER MATCH > QUICK MATCH**. It finds the match and joins the lobby.
-3. The host presses Start (or A on START) to begin; the match loads on both machines.
+- **ONLINE** plays over the internet through an online server. It first asks how: **PLAY ANYONE** joins the public room, **PLAY WITH A FRIEND** either shows a six-character code to give your friend (**SHOW MY CODE**) or lets you type theirs with the D-pad (**ENTER CODE**). Only players in the same room see each other's matches. No ports or IP addresses to set up: the game connects to the server, and the match itself runs directly between the two machines when the networks allow it, or through the server when they do not.
+- **SYSTEM LINK** plays on the local network, for example a Steam Deck and a PC on the same Wi-Fi.
+
+Then, on one machine choose **PLAYER MATCH > CREATE MATCH**, accept the settings and wait in the lobby; on the other choose **PLAYER MATCH > QUICK MATCH**, which finds the match and joins the lobby. The host presses Start (or A on START) to begin.
 
 Notes:
 
+- Online play needs a server, set with `server=` in `tt-recomp.ini` (none is set up yet; see [server/README.md](server/README.md) to run one). Without it, ONLINE says that online play is not available yet. PC SETTINGS shows the server and the connection status under ONLINE.
+- The game was made for local networks: every action waits for the other machine, so online matches play well between players in the same region and feel delayed across continents.
 - Each player is named automatically after the computer, with a short code so that two Steam Decks get different names (for example `steamdeck-4f2`). `player_name=` in `tt-recomp.ini` sets your own.
-- The game uses UDP ports 11000, 11001 and 13075. A PC firewall must allow them, for example `sudo ufw allow 11000:11001/udp` and `sudo ufw allow 13075/udp`. SteamOS has no firewall by default.
-- If the machines do not find each other (some access points and VPNs drop broadcasts), add `lan_peers=` with the other machine's IP address to `tt-recomp.ini` on both.
-- Playing over the internet works in principle (tested between a Steam Deck in India and a PC in Canada over Tailscale with `lan_peers=` set to each other's address), but the game was made for local networks and every action waits for the other machine, so it is only playable with low latency. Easier internet play is planned.
-- PLAYER MATCH works; RANKED MATCH, TABLE TENNIS NETWORK and LEADERBOARDS were Xbox LIVE services. `system_link=false` turns the feature off and brings back the offline behaviour of earlier versions.
+- System Link uses UDP ports 11000, 11001 and 13075 on the local network. A PC firewall must allow them, for example `sudo ufw allow 11000:11001/udp` and `sudo ufw allow 13075/udp`. SteamOS has no firewall by default. Online play needs no open ports.
+- If machines on the same network do not find each other (some access points and VPNs drop broadcasts), add `lan_peers=` with the other machine's IP address to `tt-recomp.ini` on both.
+- PLAYER MATCH works; RANKED MATCH, TABLE TENNIS NETWORK and LEADERBOARDS were Xbox LIVE services. `system_link=false` turns both entries off and brings back the offline behaviour of earlier versions.
 
 ### Steam Deck
 

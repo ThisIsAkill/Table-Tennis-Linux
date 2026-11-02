@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+struct PPCContext;
+
 // System link: the game's Xbox LIVE front end played over the local network.
 //
 // The retail game ships Rockstar's network layer with system link support behind a debug
@@ -14,5 +16,8 @@ namespace tabletennis::lan {
 // True when system link is enabled (the system_link setting). When false the game stays the
 // offline port: the online front end stays blocked, as in earlier versions.
 bool Enabled();
+
+// Front-end frame (game thread): notices whether ONLINE or SYSTEM LINK was chosen.
+void PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t movie);
 
 }  // namespace tabletennis::lan

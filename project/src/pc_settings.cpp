@@ -5,6 +5,7 @@
 #include "generated/default/tabletennis_init.h"
 #include "haptics.h"
 #include "intro_skip.h"
+#include "system_link.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -12,6 +13,7 @@
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system/xsocket.h>
 #include <rex/ui/window.h>
 
 #include <algorithm>
@@ -29,6 +31,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -66,6 +69,8 @@ struct Row {
 enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kShowFps, kHaptics,
   kAchievementSound,
+  // ONLINE section
+  kOnlineServer, kOnlineStatus,
   // UPDATES section
   kCheckUpdates, kAutoUpdate, kVersion,
 };
@@ -101,6 +106,9 @@ std::vector<Row> MakeRows() {
        Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        1},
+      {"", "ONLINE SERVER", "The server ONLINE in the main menu plays through (server= in "
+       "tt-recomp.ini).", Apply::kInfo, {}, 0},
+      {"", "ONLINE STATUS", "", Apply::kInfo, {}, 0},
       {"check_updates", "CHECK FOR UPDATES", "Look for a new version each time the game starts.",
        Apply::kSaved,
        {{"false", "OFF"}, {"true", "ON"}},
@@ -116,6 +124,48 @@ std::vector<Row> MakeRows() {
 // UI thread only.
 std::vector<Row> g_rows;
 bool g_loaded = false;
+std::string g_room_code;  // this session's private room code (ONLINE > PLAY WITH A FRIEND)
+
+constexpr const char* kRoomAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";  // no 0/O, 1/I/L
+constexpr int kRoomLength = 6;
+
+bool ValidRoomCode(const std::string& code);
+
+std::string NewRoomCode() {
+  // Test hook: TT_TEST_ROOM_CODE fixes the code, so a scripted second instance can enter it.
+  if (const char* fixed = std::getenv("TT_TEST_ROOM_CODE"); fixed && ValidRoomCode(fixed)) return fixed;
+  std::random_device random;
+  std::string code;
+  const int n = int(std::strlen(kRoomAlphabet));
+  for (int i = 0; i < kRoomLength; ++i) code += kRoomAlphabet[random() % n];
+  return code;
+}
+
+bool ValidRoomCode(const std::string& code) {
+  return code.size() == size_t(kRoomLength) &&
+         std::all_of(code.begin(), code.end(), [](char c) { return std::strchr(kRoomAlphabet, c); });
+}
+
+// Value and description of the STATUS row, from the online client.
+std::string OnlineStatusText(std::string* help) {
+  const auto status = rex::system::net::GetOnlineStatus();
+  if (status.mode != "public" && status.mode != "room") {
+    *help = "Not online. ONLINE in the main menu connects; SYSTEM LINK plays on the local network.";
+    return "NOT CONNECTED";
+  }
+  if (!status.connected) {
+    *help = status.state == "NO SERVER SET"
+                ? "No online server is set (server= in tt-recomp.ini)."
+                : "Connecting to the online server.";
+    return status.state;
+  }
+  const std::string where = status.mode == "room" ? "ROOM " + status.room : "PUBLIC";
+  *help = "Connected. " + std::to_string(status.players_online) + " players online. Matches with " +
+          std::to_string(status.direct_peers) + " player(s) run directly, " +
+          std::to_string(status.relayed_peers) + " through the server.";
+  return where + ": " + std::to_string(status.room_players) +
+         (status.room_players == 1 ? " PLAYER" : " PLAYERS");
+}
 
 // The launcher's settings file: tt-recomp.ini for tt-recomp.sh, settings.ini for the Windows
 // launcher (same keys; it ignores the ones it does not offer).
@@ -378,6 +428,7 @@ struct UserPad {
 std::mutex g_pad_mutex;
 std::array<UserPad, 4> g_users;
 std::atomic<bool> g_open{false};
+std::atomic<bool> g_prompt_open{false};  // ONLINE prompt (OnlinePrompt)
 std::atomic<uint16_t> g_pressed{0};  // new presses since the UI thread last looked
 std::atomic<uint16_t> g_held{0};
 
@@ -405,6 +456,20 @@ void SetOpen(bool open) {
   g_pressed.store(0);
   g_held.store(0);
   g_open.store(open);
+}
+
+// The ONLINE prompt captures the pad like the page. Closing with B can leave the B to the game
+// (it then backs out of the online menu to the main menu).
+void SetPromptOpen(bool open, bool pass_b_to_game = false) {
+  std::lock_guard lock(g_pad_mutex);
+  for (auto& user : g_users) {
+    user.ignore = open ? user.last : 0;
+    user.swallow_until_release = !open && !pass_b_to_game;
+    if (!open && pass_b_to_game) user.last &= uint16_t(~kPadB);
+  }
+  g_pressed.store(0);
+  g_held.store(0);
+  g_prompt_open.store(open);
 }
 
 // --- Drawing helpers --------------------------------------------------------------------------
@@ -476,6 +541,7 @@ void Rotate(ImDrawList* dl, int first_vertex, ImVec2 pivot, float radians) {
 // ==============================================================================================
 void PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t movie) {
   if (!movie) return;
+  lan::PollFrontend(ctx, base, movie);
   g_frontend_tick_ns.store(NowNs());
   // Test hook: TT_TEST_OPEN_PC_SETTINGS=1 opens the page a few seconds after the main menu.
   static const bool test_open = [] {
@@ -573,7 +639,7 @@ bool FilterInput(uint32_t user, achievement_ui::PadSample& pad) {
   std::lock_guard lock(g_pad_mutex);
   UserPad& state = g_users[user];
   const uint16_t buttons = Buttons(pad);
-  if (g_open.load()) {
+  if (g_open.load() || g_prompt_open.load()) {
     state.ignore &= buttons;
     const uint16_t usable = buttons & uint16_t(~state.ignore);
     const uint16_t pressed = usable & uint16_t(~state.last);
@@ -702,6 +768,7 @@ void SettingsPage::ApplyLive(int row_index) {
     case kHaptics:
       REXCVAR_SET(haptics, on);
       break;
+
     default:
       break;
   }
@@ -734,6 +801,7 @@ void SettingsPage::Save() {
   for (size_t i = 0; i < g_rows.size(); ++i) {
     if (!written[i] && !g_rows[i].choices.empty()) lines.push_back(std::string(g_rows[i].key) + "=" + g_rows[i].choices[g_rows[i].current].value);
   }
+
   auto temp = path;
   temp += ".tmp";
   {
@@ -802,7 +870,8 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
     }
   }
   if (pressed & kPadA) {
-    if (selected_ == kVersion) {
+    if (selected_ == kOnlineServer || selected_ == kOnlineStatus) {
+    } else if (selected_ == kVersion) {
       if (g_update) {
         confirm_ = true;
         confirm_at_ = now;
@@ -849,8 +918,8 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const float bx0 = X(312);
   const float header_y0 = Y(34 + rise), header_y1 = Y(96 + rise);
   const float header_cy = (header_y0 + header_y1) * 0.5f;
-  const float body_y0 = header_y1 - 6.0f * s, body_y1 = Y(642 + rise);
-  const float footer_y0 = body_y1, footer_y1 = Y(682 + rise);
+  const float body_y0 = header_y1 - 6.0f * s, body_y1 = Y(660 + rise);
+  const float footer_y0 = body_y1, footer_y1 = Y(700 + rise);
 
   // Body: near-black like the game's option lists, but opaque so the OPTIONS list underneath
   // does not show through; a faint sheen runs along the top.
@@ -882,23 +951,30 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const float big_px = 27.0f * s;
   ImFont* label_font = achievement_ui::HeadlineFont(label_px);
   ImFont* big_font = achievement_ui::HeadlineFont(big_px);
-  const float row_h = 33.0f * s;
-  const float section_h = 30.0f * s;
+  const float row_h = 28.0f * s;
+  const float section_h = 25.0f * s;
   const float rows_y0 = body_y0 + 16.0f * s;
   const float label_x = bx0 + 30.0f * s;
   const float value_right = x1 - 34.0f * s;
   auto row_center = [&](int i) {
-    return rows_y0 + row_h * (float(i) + 0.5f) + (i >= kCheckUpdates ? section_h : 0.0f);
+    return rows_y0 + row_h * (float(i) + 0.5f) + (i >= kOnlineServer ? section_h : 0.0f) +
+           (i >= kCheckUpdates ? section_h : 0.0f);
   };
-  // UPDATES section heading.
-  {
-    const float cy = rows_y0 + row_h * float(kCheckUpdates) + section_h * 0.55f;
+  // Section headings.
+  for (const auto& [first, title] : {std::pair<int, const char*>{kOnlineServer, "ONLINE"},
+                                     std::pair<int, const char*>{kCheckUpdates, "UPDATES"}}) {
+    const float cy = row_center(first) - row_h * 0.5f - section_h * 0.45f;
     const float px = 17.0f * s;
-    AddText(dl, label_font, px, ImVec2(label_x, CapsTop(cy, px)), Col(128, 194, 238, in), "UPDATES", kCondensed);
-    const float w = TextWidth(label_font, px, "UPDATES", kCondensed);
+    AddText(dl, label_font, px, ImVec2(label_x, CapsTop(cy, px)), Col(128, 194, 238, in), title, kCondensed);
+    const float w = TextWidth(label_font, px, title, kCondensed);
     dl->AddLine(ImVec2(label_x + w + 10.0f * s, cy), ImVec2(value_right, cy), Col(128, 194, 238, 0.35f * in),
                 1.5f * s);
   }
+  std::string status_help;
+  const std::string status_value = OnlineStatusText(&status_help);
+  std::string server_value = rex::cvar::GetFlagByName("online_server");
+  for (auto& c : server_value) c = char(std::toupper(static_cast<unsigned char>(c)));
+  if (server_value.empty()) server_value = "NOT SET";
   const std::string version_value =
       InstalledVersion().empty() ? "DEV BUILD"
       : g_update                 ? "UPDATE TO " + g_update->version
@@ -918,11 +994,14 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     AddText(dl, label_font, label_px, ImVec2(label_x, CapsTop(cy, label_px)), label_col, label.c_str(),
             kCondensed);
 
-    const char* value = row.choices.empty() ? version_value.c_str() : row.choices[row.current].label;
+    const char* value = !row.choices.empty() ? row.choices[row.current].label
+                        : i == kOnlineServer ? server_value.c_str()
+                        : i == kOnlineStatus ? status_value.c_str()
+                                             : version_value.c_str();
     float value_left = 0.0f;
-    if (i == kVersion) {
+    if (row.choices.empty()) {
       // No arrows: the version is not a choice. An available update is yellow, with A to start it.
-      const bool update = bool(g_update);
+      const bool update = i == kVersion && bool(g_update);
       ImFont* font = selected ? big_font : label_font;
       const float px = selected ? big_px : value_px;
       const float w = TextWidth(font, px, value, kCondensed);
@@ -996,7 +1075,8 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
         for (const auto& note : g_update->notes) line("- " + note, Col(176, 182, 192, in));
       }
     } else {
-      AddText(dl, body, help_px, ImVec2(label_x, help_y), Col(176, 182, 192, in), row.help, 1.0f,
+      const char* help = selected_ == kOnlineStatus ? status_help.c_str() : row.help;
+      AddText(dl, body, help_px, ImVec2(label_x, help_y), Col(176, 182, 192, in), help, 1.0f,
               value_right - label_x);
     }
     const char* status = nullptr;
@@ -1015,7 +1095,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     } else if (row.apply == Apply::kSaved) {
       status = "SAVED; USED WHEN THE GAME STARTS";
       status_col = Col(128, 194, 238, in);
-    } else if (row.apply == Apply::kInfo && g_update) {
+    } else if (selected_ == kVersion && g_update) {
       status = "PRESS A TO UPDATE";
     }
     const float status_px = 19.0f * s;
@@ -1192,6 +1272,303 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
   }
   AddText(dl, heavy_small, hint_px, ImVec2(tx, y0 + 89.0f * s), Col(158, 164, 174, alpha),
           "OPTIONS > PC SETTINGS TO UPDATE", kCondensed);
+}
+
+
+// ==============================================================================================
+// ONLINE prompt
+// ==============================================================================================
+void OpenOnlinePrompt() {
+  if (g_prompt_open.load()) return;
+  REXLOG_INFO("Tabletennis: ONLINE chosen in the main menu");
+  SetPromptOpen(true);
+}
+
+OnlinePrompt::OnlinePrompt(rex::ui::ImGuiDrawer* drawer) : rex::ui::ImGuiDialog(drawer) {}
+OnlinePrompt::~OnlinePrompt() = default;
+
+void OnlinePrompt::Close(bool back_to_game) {
+  if (back_to_game) rex::system::net::SetOnline("off", "");
+  SetPromptOpen(false, back_to_game);
+  shown_ = false;
+}
+
+void OnlinePrompt::OnDraw(ImGuiIO& io) {
+  if (!g_prompt_open.load()) {
+    shown_ = false;
+    return;
+  }
+  const double now = ImGui::GetTime();
+  if (!shown_) {
+    shown_ = true;
+    opened_at_ = now;
+    selected_ = 0;
+    held_direction_ = 0;
+    step_ = rex::cvar::GetFlagByName("online_server").empty() ? Step::kUnavailable : Step::kChoose;
+  }
+  const uint16_t pressed = g_pressed.exchange(0);
+  const uint16_t held = g_held.load();
+  const int n = int(std::strlen(kRoomAlphabet));
+
+  auto direction = [&](uint16_t button) {
+    if (step_ == Step::kEnterCode) {
+      char& c = code_edit_[size_t(code_pos_)];
+      const int index = int(std::strchr(kRoomAlphabet, c) - kRoomAlphabet);
+      switch (button) {
+        case kPadUp: c = kRoomAlphabet[(index + 1) % n]; break;
+        case kPadDown: c = kRoomAlphabet[(index + n - 1) % n]; break;
+        case kPadLeft: code_pos_ = (code_pos_ + kRoomLength - 1) % kRoomLength; break;
+        case kPadRight: code_pos_ = (code_pos_ + 1) % kRoomLength; break;
+        default: break;
+      }
+    } else if (step_ == Step::kChoose || step_ == Step::kFriend) {
+      if (button == kPadUp || button == kPadDown) selected_ ^= 1;
+    }
+  };
+  for (uint16_t button : {kPadUp, kPadDown, kPadLeft, kPadRight}) {
+    if (pressed & button) {
+      direction(button);
+      held_direction_ = button;
+      next_repeat_ = now + 0.45;
+    }
+  }
+  if (held_direction_ && !(held & held_direction_)) held_direction_ = 0;
+  if (held_direction_ && now >= next_repeat_) {
+    direction(uint16_t(held_direction_));
+    next_repeat_ = now + 0.13;
+  }
+
+  if (pressed & kPadA) {
+    switch (step_) {
+      case Step::kUnavailable:
+        Close(true);
+        return;
+      case Step::kChoose:
+        if (selected_ == 0) {
+          rex::system::net::SetOnline("public", "");
+          REXLOG_INFO("Tabletennis: online, public room");
+          Close(false);
+          return;
+        }
+        step_ = Step::kFriend;
+        selected_ = 0;
+        break;
+      case Step::kFriend:
+        if (selected_ == 0) {
+          if (!ValidRoomCode(g_room_code)) g_room_code = NewRoomCode();
+          rex::system::net::SetOnline("room", g_room_code);
+          REXLOG_INFO("Tabletennis: online, hosting private room {}", g_room_code);
+          step_ = Step::kShowCode;
+        } else {
+          code_edit_ = std::string(size_t(kRoomLength), kRoomAlphabet[0]);
+          code_pos_ = 0;
+          step_ = Step::kEnterCode;
+        }
+        break;
+      case Step::kShowCode:
+        Close(false);
+        return;
+      case Step::kEnterCode:
+        g_room_code = code_edit_;
+        rex::system::net::SetOnline("room", g_room_code);
+        REXLOG_INFO("Tabletennis: online, joining private room {}", g_room_code);
+        Close(false);
+        return;
+    }
+  } else if (pressed & kPadB) {
+    switch (step_) {
+      case Step::kUnavailable:
+      case Step::kChoose:
+        Close(true);
+        return;
+      case Step::kFriend:
+        step_ = Step::kChoose;
+        selected_ = 1;
+        break;
+      case Step::kShowCode:
+        rex::system::net::SetOnline("off", "");
+        step_ = Step::kFriend;
+        selected_ = 0;
+        break;
+      case Step::kEnterCode:
+        step_ = Step::kFriend;
+        selected_ = 1;
+        break;
+    }
+  }
+  Draw(io, std::clamp(float(now - opened_at_) / 0.18f, 0.0f, 1.0f));
+}
+
+void OnlinePrompt::Draw(ImGuiIO& io, float in) {
+  const double configured = REXCVAR_GET(display_aspect);
+  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  const float pic_w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
+  const float pic_h = pic_w / aspect;
+  const float pic_x = (io.DisplaySize.x - pic_w) * 0.5f;
+  const float pic_y = (io.DisplaySize.y - pic_h) * 0.5f;
+  const float s = pic_h / 720.0f;
+  const float ox = pic_x + (pic_w - 1280.0f * s) * 0.5f;
+  auto X = [&](float x) { return ox + x * s; };
+  auto Y = [&](float y) { return pic_y + y * s; };
+
+  ImDrawList* dl = ImGui::GetForegroundDrawList();
+  dl->AddRectFilled(ImVec2(pic_x, pic_y), ImVec2(pic_x + pic_w, pic_y + pic_h), Col(0, 0, 0, 0.45f * in));
+  const int first_vertex = dl->VtxBuffer.Size;
+  const float rise = (1.0f - in) * 10.0f;
+
+  // The PC SETTINGS panel's look, smaller: navy pill header, near-black body, grey footer.
+  const float x0 = X(370), x1 = X(910), bx0 = X(400);
+  const float header_y0 = Y(168 + rise), header_y1 = Y(230 + rise);
+  const float header_cy = (header_y0 + header_y1) * 0.5f;
+  const float body_y0 = header_y1 - 6.0f * s, body_y1 = Y(508 + rise);
+  const float footer_y0 = body_y1, footer_y1 = Y(548 + rise);
+  dl->AddRectFilled(ImVec2(bx0, body_y0), ImVec2(x1, body_y1), Col(6, 8, 12, in), 6.0f * s,
+                    ImDrawFlags_RoundCornersTop);
+  dl->AddRectFilledMultiColor(ImVec2(bx0, body_y0), ImVec2(x1, body_y0 + 60.0f * s),
+                              Col(255, 255, 255, 0.07f * in), Col(255, 255, 255, 0.07f * in),
+                              Col(255, 255, 255, 0.0f), Col(255, 255, 255, 0.0f));
+  dl->AddRectFilled(ImVec2(bx0, footer_y0), ImVec2(x1, footer_y1), Col(212, 215, 220, in), 6.0f * s,
+                    ImDrawFlags_RoundCornersBottom);
+  const float header_r = (header_y1 - header_y0) * 0.5f;
+  dl->AddRectFilled(ImVec2(x0, header_y0), ImVec2(x1, header_y1), Col(150, 166, 186, in), header_r);
+  dl->AddRectFilled(ImVec2(x0 + 4.0f * s, header_y0 + 4.0f * s), ImVec2(x1 - 4.0f * s, header_y1 - 4.0f * s),
+                    Col(12, 28, 52, in), header_r - 4.0f * s);
+  const float title_px = 44.0f * s;
+  const char* title = step_ == Step::kChoose || step_ == Step::kUnavailable ? "ONLINE" : "PLAY WITH A FRIEND";
+  AddOutlinedText(dl, achievement_ui::HeadlineFont(title_px), title_px,
+                  ImVec2(x0 + 34.0f * s, CapsTop(header_cy, title_px)), Col(255, 204, 0, in),
+                  Col(16, 18, 28, in), 2.6f * s, title, kCondensed);
+
+  const float item_px = 30.0f * s, big_px = 34.0f * s;
+  ImFont* item_font = achievement_ui::HeadlineFont(item_px);
+  ImFont* big_font = achievement_ui::HeadlineFont(big_px);
+  ImFont* body = achievement_ui::BodyFont();
+  const float left = bx0 + 34.0f * s, right = x1 - 34.0f * s;
+  const float help_px = 19.0f * s;
+  float y = body_y0 + 34.0f * s;
+  auto text_block = [&](const std::string& text, ImU32 col) {
+    const float wrap = right - left;
+    AddText(dl, body, help_px, ImVec2(left, y), col, text.c_str(), 1.0f, wrap);
+    y += body->CalcTextSizeA(help_px, FLT_MAX, wrap, text.c_str()).y + 10.0f * s;
+  };
+  auto menu = [&](const char* a, const char* b) {
+    const char* items[2] = {a, b};
+    for (int i = 0; i < 2; ++i) {
+      const float cy = y + 22.0f * s;
+      const bool selected = i == selected_;
+      if (selected) {
+        dl->AddRectFilledMultiColor(ImVec2(bx0 + 10.0f * s, cy - 20.0f * s), ImVec2(x1 - 10.0f * s, cy + 20.0f * s),
+                                    Col(255, 255, 255, 0.12f * in), Col(255, 255, 255, 0.02f * in),
+                                    Col(255, 255, 255, 0.02f * in), Col(255, 255, 255, 0.12f * in));
+        AddOutlinedText(dl, big_font, big_px, ImVec2(left, CapsTop(cy, big_px)), Col(255, 204, 0, in),
+                        Col(16, 18, 28, in), 1.8f * s, items[i], kCondensed);
+      } else {
+        AddText(dl, item_font, item_px, ImVec2(left, CapsTop(cy, item_px)), Col(222, 224, 228, in), items[i],
+                kCondensed);
+      }
+      y += 46.0f * s;
+    }
+    y += 8.0f * s;
+  };
+  auto code_boxes = [&](const std::string& code, int current) {
+    const float cell = 52.0f * s;
+    float x = (bx0 + x1) * 0.5f - cell * kRoomLength * 0.5f;
+    const float cy = y + 32.0f * s;
+    for (int k = 0; k < kRoomLength; ++k) {
+      const char ch[2] = {code[size_t(k)], 0};
+      const bool hot = k == current;
+      dl->AddRectFilled(ImVec2(x + 4.0f * s, cy - 28.0f * s), ImVec2(x + cell - 4.0f * s, cy + 28.0f * s),
+                        hot ? Col(255, 204, 0, 0.28f * in) : Col(255, 255, 255, 0.09f * in), 4.0f * s);
+      const float px = 44.0f * s;
+      ImFont* font = achievement_ui::HeadlineFont(px);
+      const float w = TextWidth(font, px, ch);
+      AddOutlinedText(dl, font, px, ImVec2(x + (cell - w) * 0.5f, CapsTop(cy, px)),
+                      hot || current < 0 ? Col(255, 204, 0, in) : Col(235, 237, 240, in), Col(16, 18, 28, in),
+                      1.8f * s, ch);
+      if (hot) {
+        Arrow(dl, ImVec2(x + cell * 0.5f, cy - 40.0f * s), 10.0f * s, true, Col(150, 156, 166, in));
+      }
+      x += cell;
+    }
+    y += 76.0f * s;
+  };
+
+  const char* a_label = "SELECT";
+  switch (step_) {
+    case Step::kUnavailable:
+      text_block("Online play is not available yet.", Col(235, 237, 240, in));
+      text_block("No online server is set up. SYSTEM LINK in the main menu plays against other "
+                 "machines on your local network.", Col(176, 182, 192, in));
+      a_label = "BACK";
+      break;
+    case Step::kChoose:
+      menu("PLAY ANYONE", "PLAY WITH A FRIEND");
+      text_block(selected_ == 0 ? "Find or create a match with anyone playing online."
+                                : "Play only with a friend: one of you shares a room code.",
+                 Col(176, 182, 192, in));
+      break;
+    case Step::kFriend:
+      menu("SHOW MY CODE", "ENTER CODE");
+      text_block(selected_ == 0 ? "Get a code to give your friend, then create a match."
+                                : "Type the code your friend gives you, then use QUICK MATCH.",
+                 Col(176, 182, 192, in));
+      break;
+    case Step::kShowCode:
+      text_block("Give this code to your friend:", Col(235, 237, 240, in));
+      code_boxes(g_room_code, -1);
+      text_block("Then choose PLAYER MATCH > CREATE MATCH. Your friend enters the code and uses "
+                 "QUICK MATCH.", Col(176, 182, 192, in));
+      a_label = "CONTINUE";
+      break;
+    case Step::kEnterCode:
+      text_block("Enter your friend's code (up/down: letter, left/right: position):",
+                 Col(235, 237, 240, in));
+      code_boxes(code_edit_, code_pos_);
+      a_label = "JOIN";
+      break;
+  }
+
+  // Connection status, once a room is chosen (or the server is unreachable).
+  if (step_ != Step::kUnavailable) {
+    const auto status = rex::system::net::GetOnlineStatus();
+    std::string line;
+    ImU32 col = Col(128, 194, 238, in);
+    if (status.mode == "public" || status.mode == "room") {
+      if (status.connected) {
+        line = "CONNECTED - " + std::to_string(status.room_players) + " IN THIS ROOM, " +
+               std::to_string(status.players_online) + " ONLINE";
+      } else {
+        line = status.state;
+        if (line != "CONNECTING" && line != "RECONNECTING") col = Col(240, 90, 80, in);
+      }
+    }
+    if (!line.empty()) {
+      const float px = 19.0f * s;
+      AddText(dl, item_font, px, ImVec2(left, body_y1 - 32.0f * s), col, line.c_str(), kCondensed);
+    }
+  }
+
+  // Footer: (A) action, (B) back.
+  {
+    const float cy = (footer_y0 + footer_y1) * 0.5f;
+    const float px = 21.0f * s;
+    ImFont* font = achievement_ui::HeadlineFont(px);
+    const ImU32 text = Col(28, 30, 36, in);
+    const float r = 12.0f * s;
+    float x = x1 - 26.0f * s - r;
+    FaceButton(dl, ImVec2(x, cy), r, Col(210, 44, 44, in), "B", in);
+    x -= r + 8.0f * s;
+    AddText(dl, font, px, ImVec2(x - TextWidth(font, px, "BACK", kCondensed), CapsTop(cy, px)), text, "BACK",
+            kCondensed);
+    x -= TextWidth(font, px, "BACK", kCondensed) + 26.0f * s;
+    if (step_ != Step::kUnavailable) {
+      FaceButton(dl, ImVec2(x - r, cy), r, Col(90, 186, 40, in), "A", in);
+      x -= 2.0f * r + 8.0f * s;
+      AddText(dl, font, px, ImVec2(x - TextWidth(font, px, a_label, kCondensed), CapsTop(cy, px)), text,
+              a_label, kCondensed);
+    }
+  }
+  Rotate(dl, first_vertex, ImVec2((x0 + x1) * 0.5f, (header_y0 + footer_y1) * 0.5f), -0.03f);
 }
 
 }  // namespace tabletennis::pc_settings
