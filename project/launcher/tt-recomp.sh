@@ -217,6 +217,9 @@ update_log="$here/logs/update.log"
 # Runs the update. Returns 0 when the (new or current) game should start, 1 when not.
 run_update() {
   mkdir -p "$here/logs"
+  # Steam injects its overlay into everything started from a game; the update tools are not
+  # games, and the 32-bit overlay only fills their log with ld.so errors.
+  local LD_PRELOAD=""; export LD_PRELOAD
   if [[ -x "$here/install-table-tennis" && -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
     "$here/install-table-tennis" --update "$here"
     case $? in
