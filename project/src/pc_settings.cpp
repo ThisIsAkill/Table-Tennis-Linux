@@ -1370,10 +1370,27 @@ void ConnectionIndicator::OnDraw(ImGuiIO& io) {
   if (const char* warning = QualityWarning(peer.rtt_ms, peer.loss)) {
     // Not condensed: ImGui culls glyphs against the screen before the condensing, which would
     // cut the end of a right-aligned line.
+    // Right-aligned to the box. Measured at the drawn size plus the outline and a small margin,
+    // and placed on two lines when it is wider than the room left of the picture's edge.
     const float wpx = 15.0f * s;
-    const float ww = TextWidth(font, wpx, warning);
-    AddOutlinedText(dl, font, wpx, ImVec2(right - ww, top - 22.0f * s), Col(255, 204, 0, 1.0f),
-                    Col(16, 18, 28, 1.0f), 1.5f * s, warning);
+    const float pad = 4.0f * s;
+    const float room = right - pic_x - 20.0f * s;
+    const float ww = TextWidth(font, wpx, warning) + pad;
+    if (ww <= room) {
+      AddOutlinedText(dl, font, wpx, ImVec2(right - ww, top - 22.0f * s), Col(255, 204, 0, 1.0f),
+                      Col(16, 18, 28, 1.0f), 1.5f * s, warning);
+    } else {
+      const std::string text(warning);
+      const size_t cut = text.find(": ");
+      const std::string first = cut == std::string::npos ? text : text.substr(0, cut + 1);
+      const std::string second = cut == std::string::npos ? std::string() : text.substr(cut + 2);
+      const float w1 = TextWidth(font, wpx, first.c_str()) + pad;
+      const float w2 = TextWidth(font, wpx, second.c_str()) + pad;
+      AddOutlinedText(dl, font, wpx, ImVec2(right - w1, top - 40.0f * s), Col(255, 204, 0, 1.0f),
+                      Col(16, 18, 28, 1.0f), 1.5f * s, first.c_str());
+      AddOutlinedText(dl, font, wpx, ImVec2(right - w2, top - 22.0f * s), Col(255, 204, 0, 1.0f),
+                      Col(16, 18, 28, 1.0f), 1.5f * s, second.c_str());
+    }
   }
 }
 
