@@ -186,6 +186,9 @@ args=(
   --present_safe_area_x=100 --present_safe_area_y=100
   "--system_link=$system_link"
 )
+# The project's online matchmaking server, used when the ini sets no server= of its own. Update
+# this one line (and ship it as an update) if the server ever moves.
+[[ -z "$server" ]] && server="2.31.190.147:27360"
 [[ -n "$server" ]] && args+=("--online_server=$server")
 case "$online_redundancy" in
   auto|on|off) args+=("--online_redundancy=$online_redundancy") ;;
