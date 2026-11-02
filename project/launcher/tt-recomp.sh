@@ -13,13 +13,15 @@
 #                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
 #                  [--auto_update=true|false] [--system_link=true|false]
 #                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
-#                  [--save] [-- extra engine flags...]
+#                  [--online_redundancy=auto|on|off] [--save] [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
 # network: player_name is the name the others see (default: this computer's host name, which
 # must differ between the machines), lan_peers lists the other machines' IP addresses for
 # networks that do not pass broadcasts (some Wi-Fi access points and VPNs). ONLINE in the main
 # menu plays the same menus over the internet through the online server in server=.
+# online_redundancy sends every online match datagram twice to cover lost packets: auto (only
+# while the connection loses packets), on, or off.
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
 # ini passes further engine options. The in-game OPTIONS > PC SETTINGS page edits the same file.
@@ -55,6 +57,7 @@ system_link="true"
 player_name=""
 lan_peers=""
 server=""
+online_redundancy="auto"
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -83,6 +86,7 @@ set_option() {
     player_name) player_name="$value" ;;
     lan_peers) lan_peers="$value" ;;
     server) server="$value" ;;
+    online_redundancy) online_redundancy="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -100,7 +104,7 @@ fi
 while (($#)); do
   case "$1" in
     --save) save=1 ;;
-    --help|-h) sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; extra+=("$@"); break ;;
     --*=*)
       key="${1%%=*}"; key="${key#--}"
@@ -165,6 +169,7 @@ system_link=$system_link
 player_name=$player_name
 lan_peers=$lan_peers
 server=$server
+online_redundancy=$online_redundancy
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -182,6 +187,10 @@ args=(
   "--system_link=$system_link"
 )
 [[ -n "$server" ]] && args+=("--online_server=$server")
+case "$online_redundancy" in
+  auto|on|off) args+=("--online_redundancy=$online_redundancy") ;;
+  *) echo "tt-recomp: online_redundancy must be auto, on or off" >&2 ;;
+esac
 # Players are told apart by name, and machines of the same kind share a host name (every Steam
 # Deck is "steamdeck"), so the default adds three characters of this machine's ID.
 if [[ -z "$player_name" ]]; then

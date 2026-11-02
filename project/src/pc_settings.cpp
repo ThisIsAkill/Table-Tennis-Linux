@@ -1320,6 +1320,7 @@ std::string QualityText(const rex::system::net::OnlinePeerQuality& peer) {
   std::string text = std::to_string(peer.rtt_ms) + " MS";
   if (peer.loss > 0.005f) text += ", " + std::to_string(int(peer.loss * 100.0f + 0.5f)) + "% LOSS";
   text += peer.direct ? ", DIRECT" : ", VIA SERVER";
+  if (peer.redundant) text += ", REDUNDANT";  // every datagram sent twice (online_redundancy)
   return text;
 }
 }  // namespace

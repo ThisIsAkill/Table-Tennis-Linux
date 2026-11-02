@@ -35,6 +35,9 @@ extern "C" void __imp__sub_822FD580(PPCContext& ctx, uint8_t* base);
 extern "C" void __imp__sub_823697F8(PPCContext& ctx, uint8_t* base);
 // pongLiveManager's session notification handler (this, session, code, data).
 extern "C" void __imp__sub_823AE760(PPCContext& ctx, uint8_t* base);
+// The singles network game's message handler; RemoteServeReady sets the serve unlock time
+// there from the network tuning's serveTimeDelay.
+extern "C" void __imp__sub_82394268(PPCContext& ctx, uint8_t* base);
 // The generated code's import is redirected to the hook below (tabletennis_pch.h); this file
 // calls the engine's implementation.
 #undef __imp__XamUserGetXUID
@@ -113,6 +116,38 @@ extern "C" void sub_823AE760(PPCContext& ctx, uint8_t* base) {
     arbitrated.r5.u64 = 12;
     __imp__sub_823AE760(arbitrated, base);
   }
+}
+
+// Network matches unlock the serve serveTimeDelay seconds after both players are ready
+// (tune/net/PongNet.NetTuningData in assets.rpf: 1.0). Half a second still covers a 400 ms
+// round trip with margin and takes 0.5 s off every point. The tuning lives at
+// PONGNET (0x8271A328) +4, serveTimeDelay at +284; only the shipped value is changed.
+namespace {
+constexpr uint32_t kPongNet = 0x8271A328;
+constexpr uint32_t kServeTimeDelayOffset = 284;
+constexpr float kShippedServeTimeDelay = 1.0f;
+constexpr float kServeTimeDelay = 0.5f;
+
+void ShortenServeDelay(uint8_t* base) {
+  const uint32_t pongnet = REX_LOAD_U32(kPongNet);
+  if (!pongnet) return;
+  const uint32_t tuning = REX_LOAD_U32(pongnet + 4);
+  if (!tuning) return;
+  const uint32_t address = tuning + kServeTimeDelayOffset;
+  uint32_t bits = REX_LOAD_U32(address);
+  float value;
+  std::memcpy(&value, &bits, sizeof(value));
+  if (value != kShippedServeTimeDelay) return;
+  std::memcpy(&bits, &kServeTimeDelay, sizeof(bits));
+  REX_STORE_U32(address, bits);
+  REXLOG_INFO("Tabletennis: network serve delay {} s (game default {} s)", kServeTimeDelay,
+              kShippedServeTimeDelay);
+}
+}  // namespace
+
+extern "C" void sub_82394268(PPCContext& ctx, uint8_t* base) {
+  ShortenServeDelay(base);
+  __imp__sub_82394268(ctx, base);
 }
 
 // XamUserGetXUID(user_index, type_mask, xuid_ptr)

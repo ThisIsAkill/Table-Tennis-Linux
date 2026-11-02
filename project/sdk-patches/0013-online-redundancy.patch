@@ -1,0 +1,368 @@
+diff --git a/include/rex/system/xsocket.h b/include/rex/system/xsocket.h
+--- a/include/rex/system/xsocket.h
++++ b/include/rex/system/xsocket.h
+@@ -67,13 +67,15 @@
+ // (LocalAddress) is the room address the server assigned.
+ //
+ // Settings: online (off, public, room), room_code, online_server (host[:port]),
+-// online_relay_only (never connect players directly; for tests and difficult networks).
++// online_relay_only (never connect players directly; for tests and difficult networks),
++// online_redundancy (auto, on, off: send match datagrams twice while packets get lost).
+ // Connection quality to one room member, from pings over the path the match uses.
+ struct OnlinePeerQuality {
+   std::string name;
+   int rtt_ms = -1;     // smoothed round trip, -1 until measured
+   float loss = 0.0f;   // share of the last pings without an answer (0..1)
+   bool direct = false; // false: through the server
++  bool redundant = false;  // match datagrams are sent twice (online_redundancy)
+ };
+ 
+ struct OnlineStatus {
+diff --git a/src/system/xsocket.cpp b/src/system/xsocket.cpp
+--- a/src/system/xsocket.cpp
++++ b/src/system/xsocket.cpp
+@@ -80,6 +80,16 @@
+                      "Online play tests: delay every packet this machine sends by this many ms");
+ REXCVAR_DEFINE_INT32(online_test_loss_percent, 0, "Network",
+                      "Online play tests: drop this share of the packets this machine sends");
++REXCVAR_DEFINE_STRING(online_test_burst, "", "Network",
++                      "Online play tests: PERIOD:LENGTH in ms; once per period (at a random "
++                      "moment) every packet this machine sends is dropped for LENGTH ms");
++REXCVAR_DEFINE_STRING(online_redundancy, "auto", "Network",
++                      "Online play: send every match datagram twice to cover lost packets: auto "
++                      "(while the connection to that player loses packets), on or off");
++REXCVAR_DEFINE_INT32(online_redundancy_delay_ms, 80, "Network",
++                     "Online play: the second copy of a datagram goes out this many ms after the "
++                     "first, so a burst of loss does not take both (tests: 20 ms saved a third "
++                     "of the datagrams lost in 60 ms bursts, 80 ms all of them)");
+ REXCVAR_DEFINE_INT32(net_port_offset, 10000, "Network",
+                      "Added to every port the game uses, on all machines alike (Linux needs root "
+                      "for ports below 1024)");
+@@ -313,6 +323,8 @@
+ constexpr uint16_t kDefaultServerPort = 27360;
+ constexpr uint32_t kOnlineBroadcast = 0xFFFFFFFF;
+ constexpr size_t kMaxOnlinePayload = 1400;
++// Source port flag of a tagged match datagram (see OnlineClient::Send); title ports stay below.
++constexpr uint16_t kTaggedPort = 0x8000;
+ 
+ using OnlineClock = std::chrono::steady_clock;
+ 
+@@ -418,6 +430,7 @@
+       quality.rtt_ms = peer.rtt_ms < 0 ? -1 : int(peer.rtt_ms + 0.5);
+       quality.loss = Loss(peer, now);
+       quality.direct = peer.direct && !relay_only_;
++      quality.redundant = peer.redundant;
+       // The opponent: the member the title sent match traffic to most recently (5 s), or the
+       // only member.
+       if (now - peer.last_game < std::chrono::seconds(5) && peer.last_game > latest) {
+@@ -438,7 +451,29 @@
+     const bool broadcast = dest == kOnlineBroadcast || (dest & 0xFF) == 0xFF;
+     if (!broadcast) {
+       for (auto& peer : peers_) {
+-        if (peer.vip == dest) peer.last_game = OnlineClock::now();
++        if (peer.vip != dest) continue;
++        peer.last_game = OnlineClock::now();
++        if (!peer.tags || src_port & kTaggedPort || len + 4 > kMaxOnlinePayload) break;
++        // Tagged: the source port gets kTaggedPort and the payload starts with the sequence
++        // number (top bit set on the second copy).
++        const uint32_t seq = ++peer.send_seq & 0x7FFFFFFF;
++        for (const bool second : {false, true}) {
++          if (second && !peer.redundant) break;
++          const bool direct = peer.direct && !relay_only_;
++          Writer w(direct ? kDirect : kData);
++          w.u32(id_);
++          w.u64(token_);
++          if (!direct) w.u32(dest);
++          w.u16(src_port | kTaggedPort);
++          w.u16(dst_port);
++          w.u32(second ? seq | 0x80000000u : seq);
++          w.bytes(data, len);
++          SendRaw(direct ? peer.direct_addr : server_, w.data,
++                  second ? std::max(0, REXCVAR_GET(online_redundancy_delay_ms)) : 0);
++        }
++        return;
++      }
++      for (auto& peer : peers_) {
+         if (peer.vip != dest || !peer.direct || relay_only_) continue;
+         Writer w(kDirect);
+         w.u32(id_);
+@@ -484,6 +519,23 @@
+     };
+     std::deque<PingRecord> pings;  // the last 20
+     double rtt_ms = -1.0;          // smoothed
++    // Tagged datagrams (both sides newer than plain DIRECT/DATA, announced in pings): match
++    // datagrams carry a sequence number so second copies can be sent and dropped on arrival.
++    bool tags = false;
++    uint32_t send_seq = 0;
++    bool receiving = false;        // recv_max is valid
++    uint32_t recv_max = 0;         // highest sequence received
++    uint64_t recv_seen[4] = {};    // the 256 sequences up to recv_max: bit set = received
++    uint32_t window_start = 0;     // loss of first copies from this player, measured over
++    uint32_t window_firsts = 0;    // windows of sequences
++    uint32_t window_delivered = 0; // ... and of datagrams the title got (either copy)
++    int incoming_loss_pct = -1;    // last measurement, sent back in pings; -1 unknown
++    int residual_loss_pct = -1;    // datagrams of which neither copy arrived
++    uint64_t total_expected = 0, total_firsts = 0, total_delivered = 0;  // for the log
++    int reported_loss_pct = -1;    // what the player reports receiving from us
++    OnlineClock::time_point reported_at{};
++    bool redundant = false;        // second copies are being sent
++    OnlineClock::time_point last_loss{};
+   };
+ 
+   // Share of the recent pings (older than 2 s, so their answers had time) without an answer.
+@@ -527,9 +579,16 @@
+     }
+   }
+ 
++  // Pings and pongs carry two more bytes after the 13 above, which older clients ignore and
++  // leave out of their pongs: bit 0 = speaks tagged datagrams, and the share (percent, 255 =
++  // unknown) of first copies lost on the way from that player.
++  static constexpr uint8_t kTagsCapability = 1;
++  static constexpr size_t kControlSize = 15;
+   void SendPing(Peer& peer, OnlineClock::time_point now) {
+-    uint8_t message[13];
++    uint8_t message[kControlSize];
+     message[0] = 1;
++    message[13] = kTagsCapability;
++    message[14] = peer.incoming_loss_pct < 0 ? 255 : uint8_t(peer.incoming_loss_pct);
+     const uint32_t seq = ++peer.ping_seq;
+     const uint64_t t = NowMicros();
+     for (int i = 0; i < 4; ++i) message[1 + i] = uint8_t(seq >> (24 - 8 * i));
+@@ -542,10 +601,19 @@
+ 
+   void HandleControl(Peer* peer, const uint8_t* data, size_t len) {
+     if (!peer || len < 13) return;
++    if (len >= kControlSize) {
++      peer->tags = (data[13] & kTagsCapability) != 0;
++      if (data[14] <= 100) {
++        peer->reported_loss_pct = data[14];
++        peer->reported_at = OnlineClock::now();
++      }
++    }
+     if (data[0] == 1) {
+-      uint8_t reply[13];
+-      std::memcpy(reply, data, sizeof(reply));
++      uint8_t reply[kControlSize];
++      std::memcpy(reply, data, 13);
+       reply[0] = 2;
++      reply[13] = kTagsCapability;
++      reply[14] = peer->incoming_loss_pct < 0 ? 255 : uint8_t(peer->incoming_loss_pct);
+       SendToPeer(*peer, kControlPort, reply, sizeof(reply));
+     } else if (data[0] == 2) {
+       uint32_t seq = 0;
+@@ -590,10 +658,7 @@
+       delayed_.pop_front();
+       const int fd = fd_;
+       lock.unlock();
+-      if (fd >= 0) {
+-        sendto(fd, reinterpret_cast<const char*>(next.data.data()), next.data.size(), 0,
+-               reinterpret_cast<const sockaddr*>(&next.to), sizeof(next.to));
+-      }
++      WireSend(fd, next.to, next.data);
+       lock.lock();
+     }
+   }
+@@ -604,21 +669,53 @@
+     std::thread([this] { Run(); }).detach();
+   }
+ 
+-  void SendRaw(const sockaddr_in& to, const std::vector<uint8_t>& data) {
++  // Sends now, or after extra_ms (second copies) plus the test delay, from the sender thread.
++  void SendRaw(const sockaddr_in& to, const std::vector<uint8_t>& data, int extra_ms = 0) {
+     const int loss = REXCVAR_GET(online_test_loss_percent);
+     if (loss > 0 && int(std::random_device{}() % 100) < loss) return;
+-    const int delay = REXCVAR_GET(online_test_delay_ms);
++    const int delay = std::max(0, REXCVAR_GET(online_test_delay_ms)) + extra_ms;
+     if (delay > 0) {
+       std::lock_guard<std::mutex> lock(delay_mutex_);
+       if (!delay_thread_) {
+         delay_thread_ = true;
+         std::thread([this] { DelayLoop(); }).detach();
+       }
+-      delayed_.push_back({OnlineClock::now() + std::chrono::milliseconds(delay), to, data});
++      // Keep the queue in send order (second copies are due later than what follows them).
++      const auto due = OnlineClock::now() + std::chrono::milliseconds(delay);
++      auto it = delayed_.end();
++      while (it != delayed_.begin() && std::prev(it)->due > due) --it;
++      delayed_.insert(it, {due, to, data});
+       delay_cv_.notify_one();
+       return;
+     }
+-    sendto(fd_, reinterpret_cast<const char*>(data.data()), data.size(), 0,
++    WireSend(fd_, to, data);
++  }
++
++  // online_test_burst: within every PERIOD ms, LENGTH ms (starting at a random moment) in
++  // which nothing this machine sends arrives.
++  bool InTestBurst() {
++    const std::string burst = REXCVAR_GET(online_test_burst);
++    if (burst.empty()) return false;
++    const int period = std::atoi(burst.c_str());
++    const size_t colon = burst.find(':');
++    const int length = colon == std::string::npos ? 0 : std::atoi(burst.c_str() + colon + 1);
++    if (period <= 0 || length <= 0) return false;
++    std::lock_guard<std::mutex> lock(burst_mutex_);
++    const auto now = OnlineClock::now();
++    if (now >= burst_period_end_) {
++      burst_period_end_ = now + std::chrono::milliseconds(period);
++      const int start = int(std::random_device{}() % unsigned(std::max(1, period - length)));
++      burst_start_ = now + std::chrono::milliseconds(start);
++      burst_end_ = burst_start_ + std::chrono::milliseconds(length);
++    }
++    return now >= burst_start_ && now < burst_end_;
++  }
++  std::mutex burst_mutex_;
++  OnlineClock::time_point burst_period_end_{}, burst_start_{}, burst_end_{};
++
++  void WireSend(int fd, const sockaddr_in& to, const std::vector<uint8_t>& data) {
++    if (fd < 0 || InTestBurst()) return;
++    sendto(fd, reinterpret_cast<const char*>(data.data()), data.size(), 0,
+            reinterpret_cast<const sockaddr*>(&to), sizeof(to));
+   }
+ 
+@@ -750,13 +847,28 @@
+           const bool wanted = peers_.size() <= 15 || now - peer.last_game < std::chrono::seconds(30);
+           if (wanted && now - peer.last_ping >= std::chrono::seconds(1)) SendPing(peer, now);
+         }
++        if (now - last_redundancy_check_ >= std::chrono::seconds(1)) {
++          last_redundancy_check_ = now;
++          UpdateRedundancy(now);
++        }
+         if (now - last_quality_log_ > std::chrono::seconds(10)) {
+           last_quality_log_ = now;
+           for (const auto& peer : peers_) {
+-            REXKRNL_INFO("Online: {} round trip {} ms, loss {:.0f}%, {} (server {} ms)", peer.name,
+-                         peer.rtt_ms < 0 ? -1 : int(peer.rtt_ms + 0.5), Loss(peer, now) * 100.0f,
++            REXKRNL_INFO("Online: {} round trip {} ms, loss {:.0f}% (datagrams from it {}%, "
++                         "both copies {}%; to it {}%), {}{} (server {} ms)",
++                         peer.name, peer.rtt_ms < 0 ? -1 : int(peer.rtt_ms + 0.5),
++                         Loss(peer, now) * 100.0f, peer.incoming_loss_pct,
++                         peer.residual_loss_pct, peer.reported_loss_pct,
+                          peer.direct && !relay_only_ ? "direct" : "through the server",
+-                         server_rtt_ms_);
++                         peer.redundant ? ", sending second copies" : "", server_rtt_ms_);
++            if (peer.total_expected) {
++              const double expected = double(peer.total_expected);
++              REXKRNL_INFO("Online: from {} so far: {} datagrams, first copies lost {:.2f}%, both "
++                           "copies lost {:.2f}%",
++                           peer.name, peer.total_expected,
++                           100.0 * (expected - double(peer.total_firsts)) / expected,
++                           100.0 * (expected - double(peer.total_delivered)) / expected);
++            }
+           }
+         }
+         if (now - last_server_ > std::chrono::seconds(15)) {
+@@ -830,6 +942,85 @@
+     return nullptr;
+   }
+ 
++  // Strips the tag of a match datagram; false for a copy that already arrived (or one too old
++  // to tell), which the title never sees. Counts first copies for the loss measurement.
++  static bool Untag(Peer& peer, uint16_t& src_port, const uint8_t*& payload, size_t& len) {
++    if (len < 4) return false;
++    const uint32_t word = uint32_t(payload[0]) << 24 | uint32_t(payload[1]) << 16 |
++                          uint32_t(payload[2]) << 8 | payload[3];
++    const bool second = word & 0x80000000u;
++    const uint32_t seq = word & 0x7FFFFFFF;
++    payload += 4;
++    len -= 4;
++    src_port &= uint16_t(~kTaggedPort);
++    constexpr uint32_t kWindow = 256;
++    auto bit = [&](uint32_t s) -> uint64_t& { return peer.recv_seen[(s / 64) % 4]; };
++    if (!peer.receiving || seq > peer.recv_max + 100000 || seq + 100000 < peer.recv_max) {
++      // First datagram, or the sender restarted its numbering.
++      peer.receiving = true;
++      peer.recv_max = seq;
++      std::memset(peer.recv_seen, 0, sizeof(peer.recv_seen));
++      peer.window_start = seq;
++      peer.window_firsts = 0;
++      peer.window_delivered = 0;
++    } else if (seq > peer.recv_max) {
++      for (uint32_t s = peer.recv_max + 1; s <= seq && s - peer.recv_max <= kWindow; ++s) {
++        bit(s) &= ~(uint64_t(1) << (s % 64));
++      }
++      if (seq - peer.recv_max > kWindow) std::memset(peer.recv_seen, 0, sizeof(peer.recv_seen));
++      peer.recv_max = seq;
++    } else if (peer.recv_max - seq >= kWindow) {
++      return false;
++    } else if (bit(seq) & (uint64_t(1) << (seq % 64))) {
++      return false;
++    }
++    bit(seq) |= uint64_t(1) << (seq % 64);
++    if (!second) ++peer.window_firsts;
++    ++peer.window_delivered;
++    return true;
++  }
++
++  // Every second: the share of first copies lost from each player (over at least 50
++  // datagrams), and auto redundancy towards each player. Second copies start when either
++  // side sees loss above 1% (the player's report of our datagrams, or unanswered pings) and
++  // stop after 30 s without any.
++  void UpdateRedundancy(OnlineClock::time_point now) {
++    const std::string mode = REXCVAR_GET(online_redundancy);
++    for (auto& peer : peers_) {
++      if (peer.receiving) {
++        const uint32_t expected = peer.recv_max - peer.window_start;
++        if (expected >= 50) {
++          const uint32_t firsts = std::min(peer.window_firsts, expected);
++          const uint32_t delivered = std::min(peer.window_delivered, expected);
++          peer.incoming_loss_pct = int((expected - firsts) * 100 + expected - 1) / int(expected);
++          peer.residual_loss_pct = int((expected - delivered) * 100 + expected - 1) / int(expected);
++          peer.total_expected += expected;
++          peer.total_firsts += firsts;
++          peer.total_delivered += delivered;
++          peer.window_start = peer.recv_max;
++          peer.window_firsts = 0;
++          peer.window_delivered = 0;
++        }
++      }
++      const bool fresh = peer.reported_loss_pct >= 0 && now - peer.reported_at < std::chrono::seconds(5);
++      const float loss = std::max(fresh ? peer.reported_loss_pct / 100.0f : 0.0f, Loss(peer, now));
++      if (loss > 0.01f) peer.last_loss = now;
++      bool want = false;
++      if (mode == "on") {
++        want = true;
++      } else if (mode != "off") {
++        want = peer.redundant ? now - peer.last_loss < std::chrono::seconds(30) : loss > 0.01f;
++      }
++      want = want && peer.tags;
++      if (want != peer.redundant) {
++        peer.redundant = want;
++        REXKRNL_INFO("Online: {} second copies of match datagrams to {} (loss {:.0f}%, {})",
++                     want ? "sending" : "no longer sending", peer.name, loss * 100.0f,
++                     mode.c_str());
++      }
++    }
++  }
++
+   void MarkDirect(Peer* peer, const sockaddr_in& from) {
+     if (!peer->direct || !SameEndpoint(peer->direct_addr, from)) {
+       REXKRNL_INFO("Online: direct connection to {} ({}:{})", peer->name,
+@@ -964,6 +1155,11 @@
+             }
+             return;
+           }
++          if (src_port & kTaggedPort) {
++            auto it = std::find_if(peers_.begin(), peers_.end(),
++                                   [&](const Peer& p) { return p.vip == deliver_from; });
++            if (it == peers_.end() || !Untag(*it, src_port, payload, payload_len)) return;
++          }
+           break;
+         }
+         case kPunch:
+@@ -1000,6 +1196,7 @@
+             HandleControl(peer, payload, payload_len);
+             return;
+           }
++          if ((src_port & kTaggedPort) && !Untag(*peer, src_port, payload, payload_len)) return;
+           break;
+         }
+         default:
+@@ -1016,6 +1213,7 @@
+     }
+   }
+ 
++  OnlineClock::time_point last_redundancy_check_{};
+   std::mutex mutex_;
+   std::string mode_, room_;
+   std::string state_ = "OFF";
