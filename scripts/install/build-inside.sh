@@ -136,6 +136,16 @@ else
 fi
 
 step build "Compiling the game"
+# A build tree made against another SDK holds a precompiled header of the old SDK headers.
+# Ninja only rebuilds it when a header is newer than the header file, and an unpacked prebuilt SDK
+# keeps its archive times, so after an engine update clang can refuse the stale header ("has been
+# modified since the precompiled header was built"). Start the game build over when the SDK changes.
+engine_id="$({ cat "$sdk/.tt-sdk-stamp" "$sdk/.tt-sdk-patchset" 2>/dev/null; echo "$sdk"; } | sha256sum | cut -c1-16)"
+if [[ -d "$game_build" && "$(cat "$game_build/.tt-engine" 2>/dev/null)" != "$engine_id" ]]; then
+  log "The engine changed; compiling the game from scratch."
+  rm -rf "${game_build:?}"
+fi
+mkdir -p "$game_build" && echo "$engine_id" > "$game_build/.tt-engine"
 # The binaries are stripped when packaged, so the generated code is compiled without debug
 # line tables (about 7% faster; debug info never changes the generated machine code).
 cmake -S "$work/project" -B "$game_build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
