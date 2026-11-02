@@ -11,7 +11,13 @@
 #                  [--post=fsr|cas|bilinear] [--aspect=letterbox|fill]
 #                  [--achievement_sound=true|false] [--haptics=true|false]
 #                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
-#                  [--auto_update=true|false] [--save] [-- extra engine flags...]
+#                  [--auto_update=true|false] [--system_link=true|false]
+#                  [--player_name=NAME] [--lan_peers=IP,IP] [--save] [-- extra engine flags...]
+#
+# System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
+# network: player_name is the name the others see (default: this computer's host name, which
+# must differ between the machines), lan_peers lists the other machines' IP addresses for
+# networks that do not pass broadcasts (some Wi-Fi access points and VPNs).
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
 # ini passes further engine options. The in-game OPTIONS > PC SETTINGS page edits the same file.
@@ -43,6 +49,9 @@ gamemode="auto"
 check_updates="true"
 auto_update="false"
 engine_flags=""
+system_link="true"
+player_name=""
+lan_peers=""
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -67,6 +76,9 @@ set_option() {
     check_updates) check_updates="$value" ;;
     auto_update) auto_update="$value" ;;
     engine_flags) engine_flags="$value" ;;
+    system_link) system_link="$value" ;;
+    player_name) player_name="$value" ;;
+    lan_peers) lan_peers="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -84,7 +96,7 @@ fi
 while (($#)); do
   case "$1" in
     --save) save=1 ;;
-    --help|-h) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; extra+=("$@"); break ;;
     --*=*)
       key="${1%%=*}"; key="${key#--}"
@@ -120,6 +132,9 @@ case "$haptics" in true|false) ;; *) die "haptics must be true or false" ;; esac
 case "$gamemode" in auto|off) ;; *) die "gamemode must be auto or off" ;; esac
 case "$check_updates" in true|false) ;; *) die "check_updates must be true or false" ;; esac
 case "$auto_update" in true|false) ;; *) die "auto_update must be true or false" ;; esac
+case "$system_link" in true|false) ;; *) die "system_link must be true or false" ;; esac
+[[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
+[[ "$lan_peers" =~ ^[0-9.,\ ]*$ ]] || die "lan_peers must be IPv4 addresses separated by commas"
 
 [[ -n "$iso_path" ]] || die "no ISO set. Add iso_path=/path/to/TableTennis.iso to $config or pass --iso=PATH."
 [[ -f "$iso_path" ]] || die "ISO not found: $iso_path"
@@ -141,6 +156,9 @@ gamemode=$gamemode
 check_updates=$check_updates
 auto_update=$auto_update
 engine_flags=$engine_flags
+system_link=$system_link
+player_name=$player_name
+lan_peers=$lan_peers
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -155,7 +173,10 @@ args=(
   # Letterbox other screen shapes (Steam Deck 16:10) instead of cropping up to 10% of the
   # edges as TV overscan. (SDK patch 0005 keeps the game's TV mode at 1280x720.)
   --present_safe_area_x=100 --present_safe_area_y=100
+  "--system_link=$system_link"
 )
+[[ -n "$player_name" ]] && args+=("--user_name=$player_name")
+[[ -n "${lan_peers// /}" ]] && args+=("--net_peers=${lan_peers// /}")
 # aspect=fill renders the 3D view for the screen's shape and stretches the picture to fill it.
 # The game keeps its horizontal view, so screens narrower than 16:9 (Steam Deck 16:10) show
 # more at the top and bottom; 2D menus and HUD are stretched slightly. Wider screens would

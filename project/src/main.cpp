@@ -8,6 +8,7 @@
 #include <immintrin.h>
 #endif
 
+#include "system_link.h"
 #include "tabletennis_app.h"
 
 REXCVAR_DEFINE_BOOL(show_fps, false, "UI", "Show in-game FPS counter");
@@ -68,10 +69,12 @@ extern "C" void __imp__Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
 }
 
 // Returns SignedInLocally for user 0, allowing offline profiles/tournaments, but NOT Xbox Live.
+// With system link enabled user 0 counts as signed in online: the game's online front end, which
+// system link play goes through, requires it. Nothing reaches Xbox LIVE; sessions stay on the LAN.
 extern "C" void Tabletennis_XamUserGetSigninState_Hook(PPCContext& ctx, uint8_t* base) {
   uint32_t user_index = ctx.r3.u32;
   if (user_index == 0) {
-    ctx.r3.u64 = 1; // eXUserSigninState_SignedInLocally
+    ctx.r3.u64 = tabletennis::lan::Enabled() ? 2 : 1; // SignedInToLive : SignedInLocally
   } else {
     ctx.r3.u64 = 0; // eXUserSigninState_NotSignedIn
   }
@@ -82,11 +85,13 @@ extern "C" void __imp__Tabletennis_XamUserGetSigninState_Hook(PPCContext& ctx, u
 }
 
 // Denies Xbox Live multiplayer privileges (XPRIVILEGE_MULTIPLAYER_SESSIONS),
-// cleanly graying out and disabling the "Xbox Live" option in the main menu.
+// cleanly graying out and disabling the online option in the main menu. System link grants them
+// to user 0 so the online front end opens.
 extern "C" void Tabletennis_XamUserCheckPrivilege_Hook(PPCContext& ctx, uint8_t* base) {
   uint32_t result_ptr = ctx.r5.u32;
   if (result_ptr != 0) {
-    REX_STORE_U32(result_ptr, 0); // 0 = Denied / Disabled
+    const bool allowed = tabletennis::lan::Enabled() && (ctx.r3.u32 == 0 || ctx.r3.u32 == 0xFF);
+    REX_STORE_U32(result_ptr, allowed ? 1 : 0); // 1 = allowed, 0 = denied
   }
   ctx.r3.u64 = 0;
 }

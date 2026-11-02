@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# System link test on one machine: two game instances that see each other as separate hosts.
+#
+#   scripts/lan-test.sh NAME HOST_SCENARIO JOIN_SCENARIO [extra engine flags...]
+#
+# Runs scripts/autotest.sh twice in parallel under one GPU lock, each with its own virtual
+# display (:95 host, :94 joiner), build folder copy and user data folder. The instances use the
+# loopback addresses 127.0.0.2 (host) and 127.0.0.3 (joiner): a loopback net_address makes the
+# engine bind sockets to it, and net_peers turns the system link broadcast into packets to the
+# other instance, so no root, network namespace or real network is needed. The players are
+# named Host and Guest (the session layer tells players apart by gamertag).
+#
+# Output: logs/runs/NAME/host and logs/runs/NAME/join (frames, logs, summary.txt, as autotest).
+# TT_JOIN_DELAY=seconds starts the joiner later (default 20), so the host is in its lobby first.
+set -u
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+name="${1:?run name}"; host_scenario="${2:?host scenario}"; join_scenario="${3:?join scenario}"
+shift 3
+out="$root/logs/runs/$name"
+[[ -f "$root/scripts/autotest.local" ]] && source "$root/scripts/autotest.local"
+if [[ -z "${TT_LOCKED:-}" && -n "${TT_GPU_LOCK:-}" ]]; then
+  [[ -e "$out" ]] && { echo "$out exists; pick another name"; exit 2; }
+  exec env TT_LOCKED=1 flock -w 1800 "$TT_GPU_LOCK" "$0" "$name" "$host_scenario" "$join_scenario" "$@"
+fi
+[[ -z "${TT_LOCKED:-}" && -e "$out" ]] && { echo "$out exists; pick another name"; exit 2; }
+pgrep -x tabletennis >/dev/null && { echo "tabletennis already running"; exit 1; }
+mkdir -p "$out"
+
+# The engine finds its settings, logs and libraries next to the real executable, so each
+# instance gets its own folder with hard links to the binaries (no extra space); the large
+# read-only folders are symlinked. Delete logs/runs/NAME when done.
+stage() {
+  local role="$1" dist="$out/dist-$1"
+  mkdir -p "$dist"
+  for f in tabletennis librexruntime.so librexgpu-xenos.so tt-recomp.sh; do
+    command cp -lf "$root/dist/$f" "$dist/" 2>/dev/null || command cp -f "$root/dist/$f" "$dist/"
+  done
+  command cp -f "$root/dist/tt-recomp.ini" "$dist/"
+  for d in assets fonts licenses; do ln -sfn "$root/dist/$d" "$dist/$d"; done
+  mkdir -p "$out/user-$role"
+  # Saves and shader cache of the normal test build (see tabletennis_app.h), so both skip the
+  # first-run save prompt and start with compiled shaders.
+  [[ -d "$root/user_data" ]] && command cp -r "$root/user_data/." "$out/user-$role/"
+  [[ -d "$root/cache" ]] && command cp -r "$root/cache" "$out/user-$role/"
+}
+stage host
+stage join
+
+run() {
+  local role="$1" display="$2" scenario="$3" self="$4" peer="$5" player="$6"
+  shift 6
+  TT_LOCKED=1 TT_PARALLEL=1 TT_DISPLAY="$display" TT_DIST="$out/dist-$role" \
+    "$root/scripts/autotest.sh" "$name/$role" "$scenario" \
+    "--user_data_root=$out/user-$role" "--net_address=$self" "--net_peers=$peer" "--user_name=$player" "$@" \
+    > "$out/$role.out" 2>&1
+}
+run host :95 "$host_scenario" 127.0.0.2 127.0.0.3 Host "$@" &
+host_pid=$!
+sleep "${TT_JOIN_DELAY:-20}"
+run join :94 "$join_scenario" 127.0.0.3 127.0.0.2 Guest "$@" &
+join_pid=$!
+wait "$host_pid"; wait "$join_pid"
+
+cat "$out/host.out" "$out/join.out"

@@ -14,6 +14,8 @@
 # TT_DIST=DIR runs another build folder (default dist/).
 # TT_PAD=1 sends presses to a virtual Xbox 360 pad (scripts/vpad.py, needs write access to
 # /dev/uinput) instead of the keyboard: space=A, BackSpace=B, Return=Start, shift+arrows=D-pad.
+# TT_DISPLAY=:N picks the virtual display (default :97). TT_PARALLEL=1 allows another game
+# instance to run at the same time (scripts/lan-test.sh runs two under one GPU lock).
 # The window is 960x540 by default (TT_WINDOW=WxH to change). Under Xvfb a
 # 1080p window drops to ~15 FPS, and game time follows frames, so a large
 # window makes every run about four times slower.
@@ -36,7 +38,7 @@ if [[ -z "${TT_LOCKED:-}" && -n "${TT_GPU_LOCK:-}" ]]; then
 fi
 [[ -z "${TT_LOCKED:-}" && -e "$out" ]] && { echo "$out exists; pick another name"; exit 2; }
 mkdir -p "$out"
-pgrep -x tabletennis >/dev/null && { echo "tabletennis already running"; exit 1; }
+[[ -z "${TT_PARALLEL:-}" ]] && pgrep -x tabletennis >/dev/null && { echo "tabletennis already running"; exit 1; }
 
 hard=300; stop=""; events=(); repeats=()
 while read -r kind a b; do
@@ -48,7 +50,7 @@ while read -r kind a b; do
   esac
 done < <(grep -v '^\s*#' "$scenario" | grep -v '^\s*$')
 
-display=:97
+display="${TT_DISPLAY:-:97}"
 Xvfb "$display" -screen 0 "${window}x24" >/dev/null 2>&1 &
 xpid=$!
 trap 'kill $xpid 2>/dev/null' EXIT

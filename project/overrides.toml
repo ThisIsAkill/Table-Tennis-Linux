@@ -42,3 +42,30 @@
 0x8248DBA8 = { size = 32 }
 0x82494140 = { size = 24 }
 0x82494158 = { size = 8 }
+
+# 4. Branch thunks (lis r11 / addi r11 / mtctr r11 / bctr) only reached through function
+#    pointers. The network session code (system link) calls 0x822F99C0 as a notify handler.
+0x82199198 = { size = 16 }
+0x821991A8 = { size = 16 }
+0x821991B8 = { size = 16 }
+0x821991C8 = { size = 16 }
+0x821991D8 = { size = 16 }
+0x821991E8 = { size = 16 }
+0x822F9910 = { size = 16 }
+0x822F9920 = { size = 16 }
+0x822F9930 = { size = 16 }
+0x822F9940 = { size = 16 }
+0x822F9950 = { size = 16 }
+0x822F9960 = { size = 16 }
+0x822F9970 = { size = 16 }
+0x822F9980 = { size = 16 }
+0x822F9990 = { size = 16 }
+0x822F99A0 = { size = 16 }
+0x822F99B0 = { size = 16 }
+0x822F99C0 = { size = 16 }
+0x822F99D0 = { size = 16 }
+0x823A83F8 = { size = 16 }
+
+# 5. Single-branch thunks (b target, padded to 8 bytes) reached through function pointers.
+0x82261050 = { size = 4 }
+0x823A8408 = { size = 4 }

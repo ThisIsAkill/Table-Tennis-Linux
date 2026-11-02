@@ -7,7 +7,9 @@ import zlib
 ORIGINAL_ARCHIVE = '2dd3b2e2141caf554a63b0791271ab256b9597238f3685ca9569776fb80e28bc'
 ORIGINAL_MOVIE = '75c3a8250db52a44461b5fea383c148ce938229231257f5cd7f8a985848dfa17'
 OFFLINE_MOVIE = '220d6f63f77b57f90b474d2f8fe33e2b077347e087160b49a98a2afd8214f13a'
-PATCHED_MOVIE = 'ebab047a621e51954a1bfc7c81aa36e3e6c996066453c04c256874d32e237513'
+# Offline menu with PC SETTINGS; the main menu's SYSTEM LINK entry is added on top of it.
+PC_SETTINGS_MOVIE = 'ebab047a621e51954a1bfc7c81aa36e3e6c996066453c04c256874d32e237513'
+PATCHED_MOVIE = '2d41824ecc440ebb9f235b426045cb9f38e2838bd4cc2700e572b55b6026d546'
 # Earlier patch with PC SETTINGS as the last OPTIONS item; its regions are rewritten in full.
 PC_SETTINGS_LAST_MOVIE = 'cb3f3eaf65f096ce66e783b364aebd9ca317d7a46a250cf841cda3efa6cde301'
 # In-match pause menu (pongpause_001.xeck): PC SETTINGS below AUDIO OPTIONS in its OPTIONS list.
@@ -124,6 +126,29 @@ def _add_pc_settings(movie):
     for address, row in ((0x3AC880, 2), (0x3AC8AB, 3), (0x3AC8D6, 4), (0x3AC901, 5), (0x3AC92C, 6)):
         if movie[address:address + 4] != b'\x96\x05\x00\x07' or movie[address + 4] not in (row, row + 1):
             raise ValueError('Unexpected OPTIONS label code')
+        movie[address + 4] = row + 1
+
+
+def _add_system_link(movie):
+    """Put the main menu's online entry (removed by the offline patch) back as SYSTEM LINK.
+
+    The item is [text, FE_WAIT_FOR_ONLINE (91), -1] in row 3, between TRAINING MODE and OPTIONS,
+    where the original menu has Xbox LIVE. The executable runs the game's online front end over
+    the local network when system link is enabled and keeps it blocked otherwise.
+    """
+    if movie[0x17F0D:0x17F10] != b'\x99\x02\x00' or movie[0x17FE5] != 5:
+        raise ValueError('Unexpected main menu list code')
+    movie[0x17F0D:0x17F35] = _fit(_push(_int(-1), _int(91), _str('SYSTEM LINK'), _int(3), _pool(162)) +
+                                  NEW_OBJECT, 0x17F35 - 0x17F0D)
+    movie[0x17FE5] = 6
+    # The localisation script copies the translated labels into LIST_MAIN by row: give row 3
+    # its label back and move OPTIONS and EXTRAS to their original rows.
+    label = (_push(_pool(0)) + GET_VARIABLE + _push(_pool(2)) + GET_MEMBER + _push(_int(3)) + GET_MEMBER +
+             _push(_int(0), _str('SYSTEM LINK')) + SET_MEMBER)
+    movie[0x3AC212:0x3AC23D] = _fit(label, 0x3AC23D - 0x3AC212)
+    for address, row in ((0x3AC249, 3), (0x3AC274, 4)):
+        if movie[address:address + 4] != b'\x96\x05\x00\x07' or movie[address + 4] != row:
+            raise ValueError('Unexpected main menu label code')
         movie[address + 4] = row + 1
 
 
@@ -251,8 +276,11 @@ def patch(path):
         elif original_archive and current == ORIGINAL_MOVIE:
             _patch_offline(movie)
             _add_pc_settings(movie)
-        else:
+        elif current != PC_SETTINGS_MOVIE:
             raise ValueError('Unsupported menu archive; no changes made')
+        if hashlib.sha256(movie).hexdigest() != PC_SETTINGS_MOVIE:
+            raise ValueError('Patched frontend verification failed')
+        _add_system_link(movie)
         if hashlib.sha256(movie).hexdigest() != PATCHED_MOVIE:
             raise ValueError('Patched frontend verification failed')
         _store(archive, entries, entry, offset, movie)
@@ -275,7 +303,7 @@ def patch(path):
     temp = path.with_suffix('.tmp')
     temp.write_bytes(archive)
     temp.replace(path)
-    print('Created and verified offline menu, intro timing and PC settings patches locally.', flush=True)
+    print('Created and verified offline menu, intro timing, PC settings and system link patches locally.', flush=True)
 
 
 def _patch_offline(movie):

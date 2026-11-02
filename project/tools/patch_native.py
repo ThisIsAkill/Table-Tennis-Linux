@@ -44,9 +44,10 @@ def patch(folder):
             seen.add(name)
             return apply_edits(match.group(0), rules[name])
         updated = PATTERN.sub(replace, text)
-        if 'tabletennis::intro::' in updated and '#include "intro_skip.h"' not in updated:
-            first_line, rest = updated.split('\n', 1)
-            updated = first_line + '\n#include "intro_skip.h"\n' + rest
+        for namespace, header in (('tabletennis::intro::', 'intro_skip.h'), ('tabletennis::lan::', 'system_link.h')):
+            if namespace in updated and f'#include "{header}"' not in updated:
+                first_line, rest = updated.split('\n', 1)
+                updated = first_line + f'\n#include "{header}"\n' + rest
         if updated != text:
             pending[path] = updated
     header = folder / 'tabletennis_pch.h'
