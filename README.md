@@ -102,9 +102,10 @@ Two machines on the same network, for example a Steam Deck and a PC on the same 
 
 Notes:
 
-- Each machine needs its own name: by default it is the computer's host name. If both are called the same (two Steam Decks are both "steamdeck"), set `player_name=` in `tt-recomp.ini` on one of them.
+- Each player is named automatically after the computer, with a short code so that two Steam Decks get different names (for example `steamdeck-4f2`). `player_name=` in `tt-recomp.ini` sets your own.
 - The game uses UDP ports 11000, 11001 and 13075. A PC firewall must allow them, for example `sudo ufw allow 11000:11001/udp` and `sudo ufw allow 13075/udp`. SteamOS has no firewall by default.
 - If the machines do not find each other (some access points and VPNs drop broadcasts), add `lan_peers=` with the other machine's IP address to `tt-recomp.ini` on both.
+- Playing over the internet works in principle (tested between a Steam Deck in India and a PC in Canada over Tailscale with `lan_peers=` set to each other's address), but the game was made for local networks and every action waits for the other machine, so it is only playable with low latency. Easier internet play is planned.
 - PLAYER MATCH works; RANKED MATCH, TABLE TENNIS NETWORK and LEADERBOARDS were Xbox LIVE services. `system_link=false` turns the feature off and brings back the offline behaviour of earlier versions.
 
 ### Steam Deck

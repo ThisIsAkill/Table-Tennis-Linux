@@ -175,6 +175,13 @@ args=(
   --present_safe_area_x=100 --present_safe_area_y=100
   "--system_link=$system_link"
 )
+# Players are told apart by name, and machines of the same kind share a host name (every Steam
+# Deck is "steamdeck"), so the default adds three characters of this machine's ID.
+if [[ -z "$player_name" ]]; then
+  host="$(cat /proc/sys/kernel/hostname 2>/dev/null || echo player)"
+  id="$(head -c 3 /etc/machine-id 2>/dev/null || true)"
+  player_name="$(printf '%s' "$host" | tr -cd 'A-Za-z0-9_-' | cut -c1-11)${id:+-$id}"
+fi
 [[ -n "$player_name" ]] && args+=("--user_name=$player_name")
 [[ -n "${lan_peers// /}" ]] && args+=("--net_peers=${lan_peers// /}")
 # aspect=fill renders the 3D view for the screen's shape and stretches the picture to fill it.
