@@ -12,6 +12,11 @@ JSON (players and rooms online). Python 3.8 or newer, standard library only.
 
     python3 ttlink_server.py [--port 27360] [--bind 0.0.0.0]
 
+Nearby matchmaking: clients report their round trip to the server and their UTC offset (no
+location). In the public room a broadcast (match search or announce) first reaches only players
+whose estimated round trip to the sender is short, and the radius widens the longer a player
+keeps searching; see `reach()` and server/README.md. Private rooms are not filtered.
+
 Limits against abuse: traffic is only relayed between players in the same room, every client
 has a packet and byte budget, broadcasts are capped, clients that stop sending keepalives are
 dropped after 30 s, and the number of clients per IP address and per room is limited. Nothing
@@ -54,6 +59,14 @@ HELLO_RATE_PER_IP = 5
 
 ERR_VERSION, ERR_FULL, ERR_ROOM, ERR_LIMIT, ERR_UNKNOWN = 1, 2, 3, 4, 5
 
+# Nearby matchmaking (public room only). A player's search radius, as an estimated round trip
+# in milliseconds, grows with the age of its current search streak: a streak starts with a
+# broadcast after SEARCH_QUIET seconds without one. Two players see each other's broadcasts when
+# their estimated round trip is within the larger of their two radii.
+SEARCH_QUIET = 60.0
+SEARCH_RADIUS = ((6.0, 100), (20.0, 200), (40.0, 400))  # (streak age below, radius ms); then all
+NEARBY_RTT = 150  # "nearby" in the STATUS count
+
 
 class Bucket:
     """Token bucket: rate per second, capacity of `burst` seconds."""
@@ -78,7 +91,8 @@ class Bucket:
 
 class Client:
     __slots__ = ("id", "token", "nonce", "addr", "name", "room", "vip", "local_ip", "local_port",
-                 "last_seen", "packets", "bytes", "broadcasts", "relayed_bytes", "joined")
+                 "last_seen", "packets", "bytes", "broadcasts", "relayed_bytes", "joined", "rtt",
+                 "utc_offset", "streak_start", "last_broadcast", "_reach")
 
     def __init__(self, cid, token, nonce, addr, name, room, vip, local_ip, local_port):
         self.id = cid
@@ -96,6 +110,50 @@ class Client:
         self.broadcasts = Bucket(BROADCAST_RATE)
         self.relayed_bytes = 0
         self.joined = time.time()
+        self.rtt = None          # client's round trip to this server (ms), from its keepalives
+        self.utc_offset = None   # minutes east of UTC, from HELLO
+        self.streak_start = 0.0  # current search streak (see SEARCH_RADIUS)
+        self.last_broadcast = 0.0
+        self._reach = None        # last logged search reach
+
+
+def estimate_rtt(a, b):
+    """Estimated round trip between two players in ms, or None when nothing is known.
+
+    Two rough measures, and the smaller one wins:
+    - the sum of both players' round trips to this server: the path through the server is an
+      upper bound, close for players on opposite sides of it, too high for two players near
+      each other but far from the server;
+    - the difference in UTC offset: 30 ms plus 25 ms per hour, which catches the second case.
+    """
+    estimates = []
+    if a.rtt is not None and b.rtt is not None:
+        estimates.append(a.rtt + b.rtt)
+    if a.utc_offset is not None and b.utc_offset is not None:
+        estimates.append(30 + 25 * abs(a.utc_offset - b.utc_offset) / 60.0)
+    return min(estimates) if estimates else None
+
+
+def radius(client, now):
+    """Search radius in ms for a player, from the age of its search streak (None = everyone)."""
+    if now - client.last_broadcast > SEARCH_QUIET:
+        return SEARCH_RADIUS[0][1]
+    age = now - client.streak_start
+    for limit, value in SEARCH_RADIUS:
+        if age < limit:
+            return value
+    return None
+
+
+def reaches(sender, target, now):
+    """Whether a public-room broadcast from sender is passed to target."""
+    estimate = estimate_rtt(sender, target)
+    if estimate is None:
+        return True
+    widest = [radius(sender, now), radius(target, now)]
+    if None in widest:
+        return True
+    return estimate <= max(widest)
 
 
 def ip_to_int(ip):
@@ -144,6 +202,9 @@ class Server(asyncio.DatagramProtocol):
                 if not client.packets.take() or not client.bytes.take(len(data)):
                     return
                 if kind == KEEPALIVE:
+                    if len(body) >= 14:
+                        rtt = struct.unpack_from(">H", body, 12)[0]
+                        client.rtt = rtt if rtt < 0xFFFF else None
                     self.on_keepalive(client)
                 elif kind == DATA:
                     self.on_data(client, body[12:])
@@ -175,6 +236,8 @@ class Server(asyncio.DatagramProtocol):
         room = body[pos + 1:pos + 1 + room_len].decode("ascii", "replace").upper()
         pos += 1 + room_len
         local_ip, local_port = struct.unpack_from(">IH", body, pos)
+        pos += 6
+        utc_offset = struct.unpack_from(">h", body, pos)[0] if len(body) >= pos + 2 else None
         if version != 1:
             self.error(addr, ERR_VERSION, "this server speaks a different version; update the game")
             return
@@ -206,6 +269,8 @@ class Server(asyncio.DatagramProtocol):
         while cid in self.clients:
             cid = random.getrandbits(32) or 1
         client = Client(cid, random.getrandbits(64), nonce, addr, name, room, vip, local_ip, local_port)
+        if utc_offset is not None and -14 * 60 <= utc_offset <= 14 * 60:
+            client.utc_offset = utc_offset
         self.clients[cid] = client
         self.by_addr[addr] = client
         members[vip] = client
@@ -245,8 +310,12 @@ class Server(asyncio.DatagramProtocol):
 
     def on_keepalive(self, client):
         members = self.rooms.get(client.room, {})
-        self.send(client.addr, STATUS, struct.pack(">HIH", len(members), len(self.clients),
-                                                    len(self.rooms)))
+        nearby = 0
+        if client.room == PUBLIC_ROOM:
+            nearby = sum(1 for m in members.values()
+                         if m is not client and (estimate_rtt(client, m) or 9999) <= NEARBY_RTT)
+        self.send(client.addr, STATUS, struct.pack(">HIHH", len(members), len(self.clients),
+                                                    len(self.rooms), nearby))
 
     def on_data(self, client, body):
         dst_vip, src_port, dst_port = struct.unpack_from(">IHH", body, 0)
@@ -258,7 +327,19 @@ class Server(asyncio.DatagramProtocol):
         if dst_vip == BROADCAST:
             if not client.broadcasts.take():
                 return
+            now = time.monotonic()
+            if now - client.last_broadcast > SEARCH_QUIET:
+                client.streak_start = now
+            client.last_broadcast = now
             targets = [m for m in members.values() if m is not client]
+            if client.room == PUBLIC_ROOM:
+                everyone = len(targets)
+                targets = [m for m in targets if reaches(client, m, now)]
+                if now == client.streak_start or len(targets) != getattr(client, "_reach", None):
+                    client._reach = len(targets)
+                    r = radius(client, now)
+                    logging.info("%s searches within %s: reaches %d of %d players", client.name,
+                                 "%d ms" % r if r else "any distance", len(targets), everyone)
         else:
             target = members.get(dst_vip)
             targets = [target] if target is not None and target is not client else []
@@ -295,6 +376,16 @@ class Server(asyncio.DatagramProtocol):
                 for room in list(self.rooms):
                     self.send_members(room)
 
+    def by_offset(self):
+        counts = {}
+        for m in self.rooms.get(PUBLIC_ROOM, {}).values():
+            key = "unknown" if m.utc_offset is None else "%+g" % (m.utc_offset / 60.0)
+            entry = counts.setdefault(key, {"players": 0, "rtt_ms": []})
+            entry["players"] += 1
+            if m.rtt is not None:
+                entry["rtt_ms"].append(m.rtt)
+        return counts
+
     def status(self):
         public = len(self.rooms.get(PUBLIC_ROOM, {}))
         private_rooms = [m for code, m in self.rooms.items() if code != PUBLIC_ROOM]
@@ -305,6 +396,8 @@ class Server(asyncio.DatagramProtocol):
             "private_room_players": sum(len(m) for m in private_rooms),
             "relayed_bytes": self.relayed_total,
             "uptime_seconds": int(time.time() - self.started),
+            # Public room players by UTC offset (hours) and round trip to this server (ms).
+            "public_room_by_utc_offset": self.by_offset(),
         }
 
 

@@ -12,6 +12,8 @@
 #
 # Output: logs/runs/NAME/host and logs/runs/NAME/join (frames, logs, summary.txt, as autotest).
 # TT_JOIN_DELAY=seconds starts the joiner later (default 20), so the host is in its lobby first.
+# TT_HOST_FLAGS / TT_JOIN_FLAGS add engine flags to one instance only, e.g.
+# TT_JOIN_FLAGS="--online_test_delay_ms=300 --online_utc_offset=330" for a distant player.
 set -u
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 name="${1:?run name}"; host_scenario="${2:?host scenario}"; join_scenario="${3:?join scenario}"
@@ -54,10 +56,12 @@ run() {
     "--user_data_root=$out/user-$role" "--net_address=$self" "--net_peers=$peer" "--user_name=$player" "$@" \
     > "$out/$role.out" 2>&1
 }
-run host :95 "$host_scenario" 127.0.0.2 127.0.0.3 Host "$@" &
+read -r -a host_flags <<< "${TT_HOST_FLAGS:-}"
+read -r -a join_flags <<< "${TT_JOIN_FLAGS:-}"
+run host :95 "$host_scenario" 127.0.0.2 127.0.0.3 Host "$@" "${host_flags[@]}" &
 host_pid=$!
 sleep "${TT_JOIN_DELAY:-20}"
-run join :94 "$join_scenario" 127.0.0.3 127.0.0.2 Guest "$@" &
+run join :94 "$join_scenario" 127.0.0.3 127.0.0.2 Guest "$@" "${join_flags[@]}" &
 join_pid=$!
 wait "$host_pid"; wait "$join_pid"
 

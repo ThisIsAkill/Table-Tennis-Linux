@@ -163,6 +163,11 @@ std::string OnlineStatusText(std::string* help) {
   *help = "Connected. " + std::to_string(status.players_online) + " players online. Matches with " +
           std::to_string(status.direct_peers) + " player(s) run directly, " +
           std::to_string(status.relayed_peers) + " through the server.";
+  if (status.server_rtt_ms >= 0) *help += " Server: " + std::to_string(status.server_rtt_ms) + " ms.";
+  if (status.opponent >= 0 && status.peers[size_t(status.opponent)].rtt_ms >= 0) {
+    const auto& peer = status.peers[size_t(status.opponent)];
+    *help += " " + peer.name + ": " + std::to_string(peer.rtt_ms) + " ms.";
+  }
   return where + ": " + std::to_string(status.room_players) +
          (status.room_players == 1 ? " PLAYER" : " PLAYERS");
 }
@@ -1276,6 +1281,103 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
 
 
 // ==============================================================================================
+// Connection quality
+// ==============================================================================================
+namespace {
+constexpr int kHighLatencyMs = 150;
+constexpr float kHighLoss = 0.02f;
+
+// 1-4 bars and their colour (green, yellow, red) for a round trip and packet loss.
+int QualityBars(int rtt_ms, float loss) {
+  int bars = rtt_ms < 60 ? 4 : rtt_ms < 100 ? 3 : rtt_ms < kHighLatencyMs ? 2 : 1;
+  if (loss > 0.05f) bars = 1;
+  else if (loss > kHighLoss) bars = std::min(bars, 2);
+  return bars;
+}
+
+ImU32 QualityColour(int bars, float alpha) {
+  return bars >= 3 ? Col(90, 200, 80, alpha) : bars == 2 ? Col(240, 200, 40, alpha) : Col(235, 70, 60, alpha);
+}
+
+const char* QualityWarning(int rtt_ms, float loss) {
+  if (loss > kHighLoss) return "PACKET LOSS: THE GAME WILL STUTTER AND FEEL DELAYED";
+  if (rtt_ms > kHighLatencyMs) return "HIGH LATENCY: THE GAME WILL FEEL DELAYED";
+  return nullptr;
+}
+
+void DrawBars(ImDrawList* dl, ImVec2 left_bottom, float s, int bars, float alpha) {
+  const ImU32 on = QualityColour(bars, alpha);
+  const ImU32 off = Col(255, 255, 255, 0.18f * alpha);
+  for (int i = 0; i < 4; ++i) {
+    const float x = left_bottom.x + float(i) * 7.0f * s;
+    const float h = (6.0f + 4.0f * float(i)) * s;
+    dl->AddRectFilled(ImVec2(x, left_bottom.y - h), ImVec2(x + 5.0f * s, left_bottom.y), i < bars ? on : off,
+                      1.0f * s);
+  }
+}
+
+std::string QualityText(const rex::system::net::OnlinePeerQuality& peer) {
+  std::string text = std::to_string(peer.rtt_ms) + " MS";
+  if (peer.loss > 0.005f) text += ", " + std::to_string(int(peer.loss * 100.0f + 0.5f)) + "% LOSS";
+  text += peer.direct ? ", DIRECT" : ", VIA SERVER";
+  return text;
+}
+}  // namespace
+
+ConnectionIndicator::ConnectionIndicator(rex::ui::ImGuiDrawer* drawer) : rex::ui::ImGuiDialog(drawer) {}
+ConnectionIndicator::~ConnectionIndicator() = default;
+
+// The connection to the other player, in the bottom right corner of the picture while online
+// outside a match (lobby, menus, results): bars, round trip, loss and path, and a warning when
+// the match will feel delayed.
+void ConnectionIndicator::OnDraw(ImGuiIO& io) {
+  using clock = std::chrono::steady_clock;
+  static clock::time_point last_match{};
+  if (haptics::MatchInPlay()) last_match = clock::now();
+  const bool hidden = g_open.load() || g_prompt_open.load() || clock::now() - last_match < std::chrono::seconds(3);
+  const auto status = rex::system::net::GetOnlineStatus();
+  if (hidden || !status.connected || status.opponent < 0) return;
+  const auto& peer = status.peers[size_t(status.opponent)];
+  if (peer.rtt_ms < 0) return;
+
+  const double configured = REXCVAR_GET(display_aspect);
+  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  const float pic_w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
+  const float pic_h = pic_w / aspect;
+  const float pic_x = (io.DisplaySize.x - pic_w) * 0.5f;
+  const float pic_y = (io.DisplaySize.y - pic_h) * 0.5f;
+  const float s = pic_h / 720.0f;
+  ImDrawList* dl = ImGui::GetForegroundDrawList();
+
+  const int bars = QualityBars(peer.rtt_ms, peer.loss);
+  const std::string name = peer.name.empty() ? "OPPONENT" : peer.name;
+  std::string upper_name = name;
+  for (auto& c : upper_name) c = char(std::toupper(static_cast<unsigned char>(c)));
+  const std::string text = QualityText(peer);
+  const float px = 19.0f * s;
+  ImFont* font = achievement_ui::HeadlineFont(px);
+  const float w = std::max(TextWidth(font, px, upper_name.c_str(), kCondensed),
+                           TextWidth(font, px, text.c_str(), kCondensed)) + 64.0f * s;
+  const float right = pic_x + pic_w - 36.0f * s, bottom = pic_y + pic_h - 30.0f * s;
+  const float left = right - w, top = bottom - 52.0f * s;
+  dl->AddRectFilled(ImVec2(left, top), ImVec2(right, bottom), Col(6, 8, 12, 0.82f), 6.0f * s);
+  dl->AddRect(ImVec2(left, top), ImVec2(right, bottom), Col(150, 166, 186, 0.6f), 6.0f * s, 0, 1.5f * s);
+  DrawBars(dl, ImVec2(left + 14.0f * s, bottom - 14.0f * s), s, bars, 1.0f);
+  AddText(dl, font, px, ImVec2(left + 50.0f * s, top + 7.0f * s), Col(222, 224, 228, 1.0f), upper_name.c_str(),
+          kCondensed);
+  AddText(dl, font, px, ImVec2(left + 50.0f * s, top + 27.0f * s), QualityColour(bars, 1.0f), text.c_str(),
+          kCondensed);
+  if (const char* warning = QualityWarning(peer.rtt_ms, peer.loss)) {
+    // Not condensed: ImGui culls glyphs against the screen before the condensing, which would
+    // cut the end of a right-aligned line.
+    const float wpx = 15.0f * s;
+    const float ww = TextWidth(font, wpx, warning);
+    AddOutlinedText(dl, font, wpx, ImVec2(right - ww, top - 22.0f * s), Col(255, 204, 0, 1.0f),
+                    Col(16, 18, 28, 1.0f), 1.5f * s, warning);
+  }
+}
+
+// ==============================================================================================
 // ONLINE prompt
 // ==============================================================================================
 void OpenOnlinePrompt() {
@@ -1305,6 +1407,9 @@ void OnlinePrompt::OnDraw(ImGuiIO& io) {
     selected_ = 0;
     held_direction_ = 0;
     step_ = rex::cvar::GetFlagByName("online_server").empty() ? Step::kUnavailable : Step::kChoose;
+    // Join the public room right away, so the first screen can already show how many players
+    // are online and near you; PLAY WITH A FRIEND moves to a private room, B leaves.
+    if (step_ == Step::kChoose) rex::system::net::SetOnline("public", "");
   }
   const uint16_t pressed = g_pressed.exchange(0);
   const uint16_t held = g_held.load();
@@ -1384,9 +1489,10 @@ void OnlinePrompt::OnDraw(ImGuiIO& io) {
       case Step::kFriend:
         step_ = Step::kChoose;
         selected_ = 1;
+        rex::system::net::SetOnline("public", "");
         break;
       case Step::kShowCode:
-        rex::system::net::SetOnline("off", "");
+        rex::system::net::SetOnline("public", "");
         step_ = Step::kFriend;
         selected_ = 0;
         break;
@@ -1537,6 +1643,8 @@ void OnlinePrompt::Draw(ImGuiIO& io, float in) {
       if (status.connected) {
         line = "CONNECTED - " + std::to_string(status.room_players) + " IN THIS ROOM, " +
                std::to_string(status.players_online) + " ONLINE";
+        if (status.mode == "public") line += " (" + std::to_string(status.nearby_players) + " NEAR YOU)";
+        if (status.server_rtt_ms >= 0) line += " - SERVER " + std::to_string(status.server_rtt_ms) + " MS";
       } else {
         line = status.state;
         if (line != "CONNECTING" && line != "RECONNECTING") col = Col(240, 90, 80, in);

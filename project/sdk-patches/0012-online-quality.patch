@@ -1,0 +1,342 @@
+diff --git a/include/rex/system/xsocket.h b/include/rex/system/xsocket.h
+--- a/include/rex/system/xsocket.h
++++ b/include/rex/system/xsocket.h
+@@ -68,6 +68,14 @@
+ //
+ // Settings: online (off, public, room), room_code, online_server (host[:port]),
+ // online_relay_only (never connect players directly; for tests and difficult networks).
++// Connection quality to one room member, from pings over the path the match uses.
++struct OnlinePeerQuality {
++  std::string name;
++  int rtt_ms = -1;     // smoothed round trip, -1 until measured
++  float loss = 0.0f;   // share of the last pings without an answer (0..1)
++  bool direct = false; // false: through the server
++};
++
+ struct OnlineStatus {
+   std::string mode;        // off, public, room
+   std::string room;        // room code, empty for the public room
+@@ -77,6 +85,10 @@
+   int players_online = 0;  // on the whole server
+   int direct_peers = 0;    // room members reached directly
+   int relayed_peers = 0;   // room members reached through the server
++  int server_rtt_ms = -1;  // round trip to the server
++  int nearby_players = 0;  // public room players the server estimates within 150 ms
++  std::vector<OnlinePeerQuality> peers;
++  int opponent = -1;       // index in peers of the member the match traffic goes to, or -1
+ };
+ OnlineStatus GetOnlineStatus();
+ // Changes the online setting at run time (the settings page); the connection follows.
+diff --git a/src/system/xsocket.cpp b/src/system/xsocket.cpp
+--- a/src/system/xsocket.cpp
++++ b/src/system/xsocket.cpp
+@@ -11,6 +11,9 @@
+ 
+ #include <algorithm>
+ #include <chrono>
++#include <condition_variable>
++#include <ctime>
++#include <deque>
+ #include <random>
+ #include <thread>
+ #include <array>
+@@ -70,6 +73,13 @@
+ REXCVAR_DEFINE_BOOL(online_relay_only, false, "Network",
+                     "Online play: send all match traffic through the server instead of "
+                     "connecting the players directly");
++REXCVAR_DEFINE_INT32(online_utc_offset, -10000, "Network",
++                     "Online play: minutes east of UTC reported to the server for nearby "
++                     "matchmaking (default: this computer's time zone)");
++REXCVAR_DEFINE_INT32(online_test_delay_ms, 0, "Network",
++                     "Online play tests: delay every packet this machine sends by this many ms");
++REXCVAR_DEFINE_INT32(online_test_loss_percent, 0, "Network",
++                     "Online play tests: drop this share of the packets this machine sends");
+ REXCVAR_DEFINE_INT32(net_port_offset, 10000, "Network",
+                      "Added to every port the game uses, on all machines alike (Linux needs root "
+                      "for ports below 1024)");
+@@ -397,9 +407,26 @@
+     status.connected = welcomed_;
+     status.room_players = welcomed_ ? std::max(room_players_, int(peers_.size()) + 1) : 0;
+     status.players_online = players_online_;
++    status.server_rtt_ms = server_rtt_ms_;
++    status.nearby_players = nearby_players_;
++    const auto now = OnlineClock::now();
++    OnlineClock::time_point latest{};
+     for (const auto& peer : peers_) {
+-      (peer.direct ? status.direct_peers : status.relayed_peers)++;
++      (peer.direct && !relay_only_ ? status.direct_peers : status.relayed_peers)++;
++      OnlinePeerQuality quality;
++      quality.name = peer.name;
++      quality.rtt_ms = peer.rtt_ms < 0 ? -1 : int(peer.rtt_ms + 0.5);
++      quality.loss = Loss(peer, now);
++      quality.direct = peer.direct && !relay_only_;
++      // The opponent: the member the title sent match traffic to most recently (5 s), or the
++      // only member.
++      if (now - peer.last_game < std::chrono::seconds(5) && peer.last_game > latest) {
++        latest = peer.last_game;
++        status.opponent = int(status.peers.size());
++      }
++      status.peers.push_back(quality);
+     }
++    if (status.opponent < 0 && status.peers.size() == 1) status.opponent = 0;
+     return status;
+   }
+ 
+@@ -410,7 +437,8 @@
+     if (!welcomed_ || fd_ < 0) return;
+     const bool broadcast = dest == kOnlineBroadcast || (dest & 0xFF) == 0xFF;
+     if (!broadcast) {
+-      for (const auto& peer : peers_) {
++      for (auto& peer : peers_) {
++        if (peer.vip == dest) peer.last_game = OnlineClock::now();
+         if (peer.vip != dest || !peer.direct || relay_only_) continue;
+         Writer w(kDirect);
+         w.u32(id_);
+@@ -445,7 +473,130 @@
+     OnlineClock::time_point seen;           // first listed
+     OnlineClock::time_point last_punch{};
+     OnlineClock::time_point last_direct{};  // last packet received directly
++    OnlineClock::time_point last_game{};    // last match datagram the title sent to it
++    // Quality: pings once a second over the path in use (port 0 is reserved for them).
++    uint32_t ping_seq = 0;
++    OnlineClock::time_point last_ping{};
++    struct PingRecord {
++      uint32_t seq;
++      OnlineClock::time_point sent;
++      bool answered;
++    };
++    std::deque<PingRecord> pings;  // the last 20
++    double rtt_ms = -1.0;          // smoothed
++  };
++
++  // Share of the recent pings (older than 2 s, so their answers had time) without an answer.
++  static float Loss(const Peer& peer, OnlineClock::time_point now) {
++    int sent = 0, lost = 0;
++    for (const auto& ping : peer.pings) {
++      if (now - ping.sent < std::chrono::seconds(2)) continue;
++      ++sent;
++      if (!ping.answered) ++lost;
++    }
++    return sent ? float(lost) / float(sent) : 0.0f;
++  }
++
++  // Ping/pong between room members, in DIRECT or DATA/RELAYED messages to port 0:
++  // u8 kind (1 ping, 2 pong), u32 sequence, u64 sender's clock in microseconds (echoed).
++  static constexpr uint16_t kControlPort = 0;
++  static uint64_t NowMicros() {
++    return uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
++                        OnlineClock::now().time_since_epoch())
++                        .count());
++  }
++
++  void SendToPeer(const Peer& peer, uint16_t dst_port, const uint8_t* data, size_t len) {
++    if (peer.direct && !relay_only_) {
++      Writer w(kDirect);
++      w.u32(id_);
++      w.u64(token_);
++      w.u16(0);
++      w.u16(dst_port);
++      w.bytes(data, len);
++      SendRaw(peer.direct_addr, w.data);
++    } else {
++      Writer w(kData);
++      w.u32(id_);
++      w.u64(token_);
++      w.u32(peer.vip);
++      w.u16(0);
++      w.u16(dst_port);
++      w.bytes(data, len);
++      SendRaw(server_, w.data);
++    }
++  }
++
++  void SendPing(Peer& peer, OnlineClock::time_point now) {
++    uint8_t message[13];
++    message[0] = 1;
++    const uint32_t seq = ++peer.ping_seq;
++    const uint64_t t = NowMicros();
++    for (int i = 0; i < 4; ++i) message[1 + i] = uint8_t(seq >> (24 - 8 * i));
++    for (int i = 0; i < 8; ++i) message[5 + i] = uint8_t(t >> (56 - 8 * i));
++    peer.pings.push_back({seq, now, false});
++    while (peer.pings.size() > 20) peer.pings.pop_front();
++    peer.last_ping = now;
++    SendToPeer(peer, kControlPort, message, sizeof(message));
++  }
++
++  void HandleControl(Peer* peer, const uint8_t* data, size_t len) {
++    if (!peer || len < 13) return;
++    if (data[0] == 1) {
++      uint8_t reply[13];
++      std::memcpy(reply, data, sizeof(reply));
++      reply[0] = 2;
++      SendToPeer(*peer, kControlPort, reply, sizeof(reply));
++    } else if (data[0] == 2) {
++      uint32_t seq = 0;
++      uint64_t t = 0;
++      for (int i = 0; i < 4; ++i) seq = (seq << 8) | data[1 + i];
++      for (int i = 0; i < 8; ++i) t = (t << 8) | data[5 + i];
++      for (auto& ping : peer->pings) {
++        if (ping.seq != seq || ping.answered) continue;
++        ping.answered = true;
++        const double rtt = double(NowMicros() - t) / 1000.0;
++        peer->rtt_ms = peer->rtt_ms < 0 ? rtt : peer->rtt_ms * 0.8 + rtt * 0.2;
++        break;
++      }
++    }
++  }
++
++  // Test conditions (online_test_delay_ms, online_test_loss_percent): packets wait in a queue
++  // and a sender thread sends them when due.
++  struct Delayed {
++    OnlineClock::time_point due;
++    sockaddr_in to;
++    std::vector<uint8_t> data;
+   };
++  std::mutex delay_mutex_;
++  std::condition_variable delay_cv_;
++  std::deque<Delayed> delayed_;
++  bool delay_thread_ = false;
++
++  void DelayLoop() {
++    std::unique_lock<std::mutex> lock(delay_mutex_);
++    while (true) {
++      if (delayed_.empty()) {
++        delay_cv_.wait(lock);
++        continue;
++      }
++      const auto due = delayed_.front().due;
++      if (OnlineClock::now() < due) {
++        delay_cv_.wait_until(lock, due);
++        continue;
++      }
++      Delayed next = std::move(delayed_.front());
++      delayed_.pop_front();
++      const int fd = fd_;
++      lock.unlock();
++      if (fd >= 0) {
++        sendto(fd, reinterpret_cast<const char*>(next.data.data()), next.data.size(), 0,
++               reinterpret_cast<const sockaddr*>(&next.to), sizeof(next.to));
++      }
++      lock.lock();
++    }
++  }
+ 
+   OnlineClient() {
+     mode_ = REXCVAR_GET(online);
+@@ -454,6 +605,19 @@
+   }
+ 
+   void SendRaw(const sockaddr_in& to, const std::vector<uint8_t>& data) {
++    const int loss = REXCVAR_GET(online_test_loss_percent);
++    if (loss > 0 && int(std::random_device{}() % 100) < loss) return;
++    const int delay = REXCVAR_GET(online_test_delay_ms);
++    if (delay > 0) {
++      std::lock_guard<std::mutex> lock(delay_mutex_);
++      if (!delay_thread_) {
++        delay_thread_ = true;
++        std::thread([this] { DelayLoop(); }).detach();
++      }
++      delayed_.push_back({OnlineClock::now() + std::chrono::milliseconds(delay), to, data});
++      delay_cv_.notify_one();
++      return;
++    }
+     sendto(fd_, reinterpret_cast<const char*>(data.data()), data.size(), 0,
+            reinterpret_cast<const sockaddr*>(&to), sizeof(to));
+   }
+@@ -566,6 +730,7 @@
+         w.str(mode_ == "room" ? room_ : "");
+         w.u32(BaseAddress());
+         w.u16(local_port_);
++        w.u16(uint16_t(int16_t(UtcOffsetMinutes())));
+         SendRaw(server_, w.data);
+         if (now - last_server_ > std::chrono::seconds(10)) state_ = "NO ANSWER FROM SERVER";
+       }
+@@ -575,7 +740,24 @@
+           Writer w(kKeepAlive);
+           w.u32(id_);
+           w.u64(token_);
++          w.u16(server_rtt_ms_ < 0 ? 0xFFFF : uint16_t(std::min(server_rtt_ms_, 0xFFFE)));
+           SendRaw(server_, w.data);
++          keepalive_pending_ = true;
++        }
++        // Pings: every member of a small room, otherwise (public room) the members the match
++        // traffic went to in the last 30 s.
++        for (auto& peer : peers_) {
++          const bool wanted = peers_.size() <= 15 || now - peer.last_game < std::chrono::seconds(30);
++          if (wanted && now - peer.last_ping >= std::chrono::seconds(1)) SendPing(peer, now);
++        }
++        if (now - last_quality_log_ > std::chrono::seconds(10)) {
++          last_quality_log_ = now;
++          for (const auto& peer : peers_) {
++            REXKRNL_INFO("Online: {} round trip {} ms, loss {:.0f}%, {} (server {} ms)", peer.name,
++                         peer.rtt_ms < 0 ? -1 : int(peer.rtt_ms + 0.5), Loss(peer, now) * 100.0f,
++                         peer.direct && !relay_only_ ? "direct" : "through the server",
++                         server_rtt_ms_);
++          }
+         }
+         if (now - last_server_ > std::chrono::seconds(15)) {
+           REXKRNL_WARN("Online: lost the server, reconnecting");
+@@ -740,6 +922,16 @@
+           if (!from_server) return;
+           room_players_ = r.u16();
+           players_online_ = int(r.u32());
++          r.u16();  // rooms
++          const uint16_t nearby = r.u16();
++          if (r.ok) nearby_players_ = nearby;
++          if (keepalive_pending_) {
++            keepalive_pending_ = false;
++            const int rtt = int(std::chrono::duration_cast<std::chrono::milliseconds>(
++                                    OnlineClock::now() - last_keepalive_)
++                                    .count());
++            server_rtt_ms_ = server_rtt_ms_ < 0 ? rtt : (server_rtt_ms_ * 3 + rtt) / 4;
++          }
+           return;
+         }
+         case kError: {
+@@ -766,6 +958,12 @@
+           if (!r.ok) return;
+           payload = body + r.pos;
+           payload_len = len - r.pos;
++          if (dst_port == kControlPort) {
++            for (auto& peer : peers_) {
++              if (peer.vip == deliver_from) HandleControl(&peer, payload, payload_len);
++            }
++            return;
++          }
+           break;
+         }
+         case kPunch:
+@@ -798,6 +996,10 @@
+           deliver_from = peer->vip;
+           payload = body + r.pos;
+           payload_len = len - r.pos;
++          if (dst_port == kControlPort) {
++            HandleControl(peer, payload, payload_len);
++            return;
++          }
+           break;
+         }
+         default:
+@@ -826,8 +1028,21 @@
+   uint64_t hello_nonce_ = 0;
+   uint32_t id_ = 0, vip_ = 0;
+   uint64_t token_ = 0;
+-  int room_players_ = 0, players_online_ = 0;
++  int room_players_ = 0, players_online_ = 0, nearby_players_ = 0;
++  int server_rtt_ms_ = -1;
++  bool keepalive_pending_ = false;
++  OnlineClock::time_point last_quality_log_{};
+   std::vector<Peer> peers_;
++
++  // Minutes east of UTC for the server's nearby matchmaking: the time zone, nothing finer.
++  static int UtcOffsetMinutes() {
++    const int configured = REXCVAR_GET(online_utc_offset);
++    if (configured > -10000) return configured;
++    const std::time_t now = std::time(nullptr);
++    std::tm local{};
++    localtime_r(&now, &local);
++    return int(local.tm_gmtoff / 60);
++  }
+   OnlineClock::time_point last_hello_{}, last_keepalive_{}, last_server_{}, next_resolve_{};
+ };
+ }  // namespace

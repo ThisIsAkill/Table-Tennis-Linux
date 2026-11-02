@@ -93,6 +93,17 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   double confirm_at_ = 0.0;
 };
 
+// Connection quality to the other online player (bars, round trip, loss, a warning when the
+// match will feel delayed), shown outside matches while online.
+class ConnectionIndicator : public rex::ui::ImGuiDialog {
+ public:
+  explicit ConnectionIndicator(rex::ui::ImGuiDrawer* drawer);
+  ~ConnectionIndicator() override;
+
+ protected:
+  void OnDraw(ImGuiIO& io) override;
+};
+
 // The ONLINE prompt: PLAY ANYONE (public room) or PLAY WITH A FRIEND (show or enter a room
 // code), with the connection status; then the game's own PLAYER MATCH menu takes over.
 class OnlinePrompt : public rex::ui::ImGuiDialog {
