@@ -265,6 +265,13 @@ if [[ -n "$installed_version" && -x "$updater" && -z "${TT_UPDATE_DONE:-}" ]]; t
   fi
 fi
 
+# Versions before 1.1.1 left their 4.5 GB guest-memory file in /dev/shm after every exit; enough
+# of them fill /dev/shm, and then the game and Steam crash (SIGBUS). Remove this user's leftovers
+# when no copy of the game is running.
+if ! pgrep -x -u "$(id -u)" tabletennis >/dev/null 2>&1; then
+  find /dev/shm -maxdepth 1 -type f -name 'xenia_memory_*' -user "$(id -u)" -delete 2>/dev/null || true
+fi
+
 # Feral GameMode switches the CPU to its performance profile while the game runs. The GPU
 # command thread is single-threaded and CPU-bound on handhelds such as the Steam Deck, whose
 # balanced profile kept the cores near 2.4 GHz instead of boosting.

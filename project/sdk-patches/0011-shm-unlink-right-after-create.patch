@@ -1,0 +1,14 @@
+--- a/src/core/memory_posix.cpp
++++ b/src/core/memory_posix.cpp
+@@ -587,6 +587,11 @@
+     shm_unlink(full_path.c_str());
+     return kFileMappingHandleInvalid;
+   }
++  // Only the descriptor is used from here on, so remove the name at once: the memory then goes
++  // away with the process however it ends. Unlinking only in CloseFileMappingHandle left a
++  // multi-gigabyte file in /dev/shm after every exit that skipped it (and every crash), until
++  // /dev/shm filled up and other programs using shared memory died with SIGBUS.
++  shm_unlink(full_path.c_str());
+   return static_cast<FileMappingHandle>(ret);
+ #endif
+ }
