@@ -196,8 +196,11 @@ extern "C" void sub_8240E6D0(PPCContext& ctx, uint8_t* base) {
       out.push_back('%');
       continue;
     }
-    if (conversion == 'f' || conversion == 'g') {  // floating point arguments use FPRs
-      out += "<float>";
+    if (conversion == 'f' || conversion == 'g') {  // variadic doubles also occupy a GPR slot
+      const uint64_t bits = next < 8 ? regs[next++] : 0;
+      double number;
+      std::memcpy(&number, &bits, sizeof(number));
+      out += fmt::format("{:.4f}", number);
       continue;
     }
     const uint64_t value = next < 8 ? regs[next++] : 0;
