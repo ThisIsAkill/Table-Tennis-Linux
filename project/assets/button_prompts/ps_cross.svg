@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<defs>
+  <radialGradient id="face" cx="32" cy="26" r="34" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#55585f"/>
+    <stop offset="0.55" stop-color="#2c2e33"/>
+    <stop offset="1" stop-color="#121316"/>
+  </radialGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8a8d94"/>
+    <stop offset="1" stop-color="#1a1b1f"/>
+  </linearGradient>
+  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+    <stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/>
+  </linearGradient>
+</defs>
+<circle cx="32" cy="32.5" r="31" fill="#0a0a0c"/>
+<circle cx="32" cy="32.5" r="29.6" fill="url(#rim)"/>
+<circle cx="32" cy="32.5" r="28" fill="url(#face)"/>
+<ellipse cx="32" cy="17" rx="21" ry="12" fill="url(#gloss)"/>
+<g fill="none" stroke="#000000" stroke-opacity="0.6" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 0.8)"><path d="M18.5 19 L45.5 46 M45.5 19 L18.5 46"/></g>
+<g fill="none" stroke="#7fb4f0" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="miter"><path d="M18.5 19 L45.5 46 M45.5 19 L18.5 46"/></g>
+</svg>

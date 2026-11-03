@@ -5,6 +5,7 @@ A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows r
 - **Online and System Link play** through the game's own menus, with nothing to set up
 - **PC SETTINGS** in the game's OPTIONS menu: resolution, widescreen, VSync, brightness, anti-aliasing, sharpening and more, almost all applied at once
 - **Widescreen and ultrawide** pictures with a wider 3D view and menus kept in proportion
+- **PlayStation button icons** in every menu while a PlayStation controller is in use
 - **Achievements** with an unlock popup and a full list, **controller haptics** on every hit, and **in-game updates**
 
 <p align="center">
@@ -96,11 +97,15 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 | Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) |
 | Show FPS | on / off; also shows the game's own frame rate with its worst frame times |
 
-**GAME**: haptics (a pulse on every ball hit and a light tick in menus) and the achievement unlock sound, on or off.
+**GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a light tick in menus) and the achievement unlock sound, on or off.
 
 **ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), and the online server and connection status.
 
 **UPDATES**: check now, check at start, automatic updates, and the installed version.
+
+### PlayStation button icons
+
+With a PlayStation controller (DualShock 3 or 4, DualSense), the game's menus show cross, circle, square, triangle, L1 and R1 instead of the Xbox A, B, X, Y, LB and RB, and so do the PC SETTINGS page and the achievements list. **BUTTON PROMPTS** on the GAME tab chooses: **AUTO** (default) follows the controller you used last, **XBOX** and **PLAYSTATION** always show those icons. A change shows at once, also in a menu that is open. The icons are this project's own artwork (`project/assets/button_prompts/`), swapped in when the game loads its icon textures.
 
 ### Widescreen and ultrawide
 
@@ -176,12 +181,13 @@ Then one player chooses **PLAYER MATCH > CREATE MATCH**, sets up the match and w
 8. **System Link and online play**: networking for the game's own system link sessions, an online client for the matchmaking server, connection quality and packet redundancy.
 9. **Stability**: the 4.5 GB guest memory file no longer outlives a crashed game, and a fault nothing handles is reported instead of hanging silently.
 10. **Settings that apply at once**: anti-aliasing and sharpening switch while the game runs, and brightness is applied through the game's gamma ramp.
+11. **Texture hook**: the game can look at a texture just before it reaches the GPU, which the PlayStation button icons use.
 
 **Game-side changes** (in `project/src/` and as verified edits to the generated code):
 
 - **Frame pacing** from davidptrssvea's Windows version: each frame is held to a fixed schedule before it goes to the GPU, so every frame takes the same 16.67 ms instead of an occasional 24 ms hitch.
 - **Widescreen** from the same version, extended to narrower screens and to window resizing.
-- The PC SETTINGS page, achievements UI, haptics, update system, the ONLINE prompt, QUIT GAME and the player name editor.
+- The PC SETTINGS page, achievements UI, haptics, PlayStation button icons, update system, the ONLINE prompt, QUIT GAME and the player name editor.
 
 The [devlog](docs/DEVLOG.md) tells the story of the port.
 
@@ -196,11 +202,12 @@ Building from a checkout needs `python3`, `git`, `cmake`, `ninja` and `clang` 19
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
 
-`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
 
 | Path | What it is |
 |---|---|
-| `project/src/` | game-side code: PC SETTINGS, achievements UI, haptics, online prompt, widescreen, frame pacing, update popup, intro skip |
+| `project/src/` | game-side code: PC SETTINGS, achievements UI, haptics, button icons, online prompt, widescreen, frame pacing, update popup, intro skip |
+| `project/assets/button_prompts/` | the PlayStation button icons (SVG and PNG); `project/tools/make_button_art.py` turns them into `project/src/button_prompt_art.inc` |
 | `project/sdk-patches/` | the engine fixes listed above |
 | `project/tools/` | ISO reader, menu patch (PC SETTINGS, ONLINE, SYSTEM LINK, QUIT GAME), native edits |
 | `server/` | the online matchmaking and relay server ([README](server/README.md)) |

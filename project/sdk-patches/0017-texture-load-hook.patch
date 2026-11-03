@@ -1,0 +1,138 @@
+diff --git a/include/rex/system/interfaces/graphics.h b/include/rex/system/interfaces/graphics.h
+--- a/include/rex/system/interfaces/graphics.h
++++ b/include/rex/system/interfaces/graphics.h
+@@ -32,6 +32,23 @@
+ 
+ namespace rex::system {
+ 
++// Called before the base level of a guest texture is uploaded to the GPU, so an embedding
++// application can replace its data in guest memory first (for example button icons). The data at
++// the physical address `guest_address` has the guest layout: tiled when `tiled` (see
++// texture_util::GetTiledOffset2D), big-endian. Called on the GPU command thread; may write the
++// `size` bytes there. Writes made later are seen by the normal memory watch and load the texture
++// again.
++struct TextureLoadHookInfo {
++  uint32_t guest_address;
++  uint32_t size;
++  uint32_t width;
++  uint32_t height;
++  uint32_t pitch_texels;  // row pitch of the base level, a multiple of 32
++  uint32_t format;  // xenos::TextureFormat
++  bool tiled;
++};
++using TextureLoadHook = void (*)(const TextureLoadHookInfo& info);
++
+ class IGraphicsSystem {
+  public:
+   virtual ~IGraphicsSystem() = default;
+@@ -84,6 +101,10 @@
+   // it applies from the next frame. Default: not supported.
+   virtual void SetSwapPostEffectByName(const std::string& effect_name) { (void)effect_name; }
+ 
++  // Installs a function called before each guest texture is uploaded (see TextureLoadHookInfo);
++  // nullptr removes it. Default: not supported.
++  virtual void SetTextureLoadHook(TextureLoadHook hook) { (void)hook; }
++
+   // One-shot convenience for callers that don't care about the split.
+   X_STATUS Setup(runtime::FunctionDispatcher* function_dispatcher, KernelState* kernel_state,
+                  ui::WindowedAppContext* app_context, bool with_presentation) {
+diff --git a/include/rex/graphics/graphics_system.h b/include/rex/graphics/graphics_system.h
+--- a/include/rex/graphics/graphics_system.h
++++ b/include/rex/graphics/graphics_system.h
+@@ -64,6 +64,7 @@
+   bool has_presentation() const override { return presenter_ != nullptr; }
+   void Shutdown() override;
+   void SetSwapPostEffectByName(const std::string& effect_name) override;
++  void SetTextureLoadHook(system::TextureLoadHook hook) override;
+ 
+   // May be called from any thread any number of times, even during recovery
+   // from a device loss.
+diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
+--- a/src/graphics/graphics_system.cpp
++++ b/src/graphics/graphics_system.cpp
+@@ -22,6 +22,7 @@
+ #include <rex/cvar.h>
+ #include <rex/graphics/command_processor.h>
+ #include <rex/graphics/flags.h>
++#include <rex/graphics/pipeline/texture/cache.h>
+ #include <rex/kernel/xboxkrnl/video.h>
+ #include <rex/logging.h>
+ #include <rex/stream.h>
+@@ -184,6 +185,10 @@
+   }
+ }
+ 
++void GraphicsSystem::SetTextureLoadHook(system::TextureLoadHook hook) {
++  graphics::SetTextureLoadHook(hook);
++}
++
+ void GraphicsSystem::Shutdown() {
+   if (command_processor_) {
+     command_processor_->Shutdown();
+diff --git a/include/rex/graphics/pipeline/texture/cache.h b/include/rex/graphics/pipeline/texture/cache.h
+--- a/include/rex/graphics/pipeline/texture/cache.h
++++ b/include/rex/graphics/pipeline/texture/cache.h
+@@ -21,6 +21,7 @@
+ #include <rex/assert.h>
+ #include <rex/graphics/pipeline/texture/util.h>
+ #include <rex/graphics/register_file.h>
++#include <rex/system/interfaces/graphics.h>
+ #include <rex/graphics/shared_memory.h>
+ #include <rex/graphics/xenos.h>
+ #include <rex/hash.h>
+@@ -53,6 +54,11 @@
+ // TODO(Triang3l): Attach the largest LOD to existing textures with a valid
+ // mip_address but no base ever used yet (no base_address) to save memory
+ // because textures are streamed this way anyway.
++// Installed through IGraphicsSystem::SetTextureLoadHook (rex/system/interfaces/graphics.h).
++using system::TextureLoadHook;
++using system::TextureLoadHookInfo;
++void SetTextureLoadHook(TextureLoadHook hook);
++
+ class TextureCache {
+  public:
+   // Hard limit, originating from the half-pixel offset filling hack in the
+diff --git a/src/graphics/pipeline/texture/cache.cpp b/src/graphics/pipeline/texture/cache.cpp
+--- a/src/graphics/pipeline/texture/cache.cpp
++++ b/src/graphics/pipeline/texture/cache.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cstdint>
+ #include <utility>
+ 
+@@ -127,6 +128,13 @@
+ 
+ namespace rex::graphics {
+ 
++namespace {
++std::atomic<TextureLoadHook> texture_load_hook{nullptr};
++}  // namespace
++
++void SetTextureLoadHook(TextureLoadHook hook) { texture_load_hook.store(hook); }
++
++
+ const TextureCache::LoadShaderInfo TextureCache::load_shader_info_[kLoadShaderCount] = {
+     // k8bpb
+     {3, 4, 1, 4},
+@@ -396,6 +404,18 @@
+ 
+   TextureKey texture_key = texture.key();
+   if (base_outdated) {
++    if (TextureLoadHook hook = texture_load_hook.load();
++        hook && texture_key.dimension == xenos::DataDimension::k2DOrStacked && !texture_key.scaled_resolve) {
++      TextureLoadHookInfo info;
++      info.guest_address = texture_key.base_page << 12;
++      info.size = texture.GetGuestBaseSize();
++      info.width = texture_key.width_minus_1 + 1;
++      info.height = texture_key.height_minus_1 + 1;
++      info.pitch_texels = texture_key.pitch << 5;
++      info.format = uint32_t(texture_key.format);
++      info.tiled = texture_key.tiled != 0;
++      hook(info);
++    }
+     PendingSharedMemoryRange pending_range;
+     pending_range.start = texture_key.base_page << 12;
+     pending_range.length =

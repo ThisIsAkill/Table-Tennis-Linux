@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">
+<defs>
+  <linearGradient id="body" x1="0" y1="5" x2="0" y2="28.5" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffffff"/>
+    <stop offset="0.45" stop-color="#eceef0"/>
+    <stop offset="0.66" stop-color="#d6d8db"/>
+    <stop offset="0.7" stop-color="#b9bcc0"/>
+    <stop offset="1" stop-color="#9a9da2"/>
+  </linearGradient>
+  <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#000000" stop-opacity="0.10"/>
+    <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="1" stop-color="#000000" stop-opacity="0.12"/>
+  </linearGradient>
+</defs>
+<g>
+  <path d="M5 21.5 C5 15.5 28 7.5 53 5.5 C58.5 5 61 7.5 61 11.5 L61 23.5 C61 27 59 28.5 55 28.5 L11 28.5 C6.5 28.5 5 25.5 5 21.5 Z" fill="url(#body)" stroke="#2a2c30" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M5 21.5 C5 15.5 28 7.5 53 5.5 C58.5 5 61 7.5 61 11.5 L61 23.5 C61 27 59 28.5 55 28.5 L11 28.5 C6.5 28.5 5 25.5 5 21.5 Z" fill="url(#sheen)"/>
+  <path d="M9 20.5 C12 15.5 30 9 52.5 7.2" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="1.4" stroke-linecap="round"/>
+</g>
+<g fill="#16171a"><path transform="translate(0 21.5) scale(0.00757 -0.00757)" d="M4481.048387096775 1493H4866.048387096775V291H5542.048387096775V0H4481.048387096775ZM5838.048387096775 266H6178.048387096775V1231L5829.048387096775 1159V1421L6176.048387096775 1493H6542.048387096775V266H6882.048387096775V0H5838.048387096775Z"/></g>
+</svg>

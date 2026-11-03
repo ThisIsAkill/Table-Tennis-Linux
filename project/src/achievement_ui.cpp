@@ -2,6 +2,7 @@
 
 #include "generated/default/tabletennis_init.h"
 #include "achievement_ui.h"
+#include "button_prompts.h"
 #include "pc_features.h"
 #include "intro_skip.h"
 
@@ -350,6 +351,7 @@ void Halftone(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 col, float spacing, 
 // Xbox-style face button: dark ring, coloured disc, letter.
 void ButtonGlyph(ImDrawList* dl, ImVec2 center, float radius, ImU32 fill, const char* letter,
                  float alpha) {
+  if (tabletennis::prompts::DrawFace(dl, center, radius, letter, alpha)) return;
   dl->AddCircleFilled(center, radius, Col(20, 22, 28, 0.9f * alpha), 24);
   dl->AddCircleFilled(center, radius * 0.84f, fill, 24);
   dl->AddCircle(center, radius * 0.84f, White(0.35f * alpha), 24, radius * 0.12f);

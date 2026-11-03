@@ -10,6 +10,7 @@
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
 #                  [--post=fsr|cas|bilinear] [--aspect=auto|letterbox|fill]
 #                  [--achievement_sound=true|false] [--haptics=true|false]
+#                  [--button_prompts=auto|xbox|playstation]
 #                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
 #                  [--auto_update=true|false] [--system_link=true|false]
 #                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
@@ -59,6 +60,7 @@ post="bilinear"
 aspect="auto"
 achievement_sound="true"
 haptics="true"
+button_prompts="auto"
 render_scale="auto"
 gamemode="auto"
 check_updates="true"
@@ -91,6 +93,7 @@ set_option() {
     aspect) aspect="$value" ;;
     achievement_sound) achievement_sound="$value" ;;
     haptics) haptics="$value" ;;
+    button_prompts) button_prompts="$value" ;;
     render_scale) render_scale="$value" ;;
     gamemode) gamemode="$value" ;;
     check_updates) check_updates="$value" ;;
@@ -154,6 +157,7 @@ case "$post" in fsr|cas|bilinear) ;; *) die "unknown post '$post' (fsr, cas, bil
 case "$aspect" in auto|letterbox|fill) ;; *) die "unknown aspect '$aspect' (auto, letterbox, fill)" ;; esac
 case "$achievement_sound" in true|false) ;; *) die "achievement_sound must be true or false" ;; esac
 case "$haptics" in true|false) ;; *) die "haptics must be true or false" ;; esac
+case "$button_prompts" in auto|xbox|playstation) ;; *) die "button_prompts must be auto, xbox or playstation" ;; esac
 case "$gamemode" in auto|off) ;; *) die "gamemode must be auto or off" ;; esac
 case "$check_updates" in true|false) ;; *) die "check_updates must be true or false" ;; esac
 case "$auto_update" in true|false) ;; *) die "auto_update must be true or false" ;; esac
@@ -180,6 +184,7 @@ post=$post
 aspect=$aspect
 achievement_sound=$achievement_sound
 haptics=$haptics
+button_prompts=$button_prompts
 render_scale=$render_scale
 gamemode=$gamemode
 check_updates=$check_updates
@@ -202,7 +207,7 @@ args=(
   "--resolution_scale=$scale" "--draw_resolution_scale_x=$scale" "--draw_resolution_scale_y=$scale"
   "--window_width=$width" "--window_height=$height" "--fullscreen=$fullscreen"
   "--swap_post_effect=$aa" "--present_effect=$post"
-  "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound" "--haptics=$haptics"
+  "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound" "--haptics=$haptics" "--button_prompts=$button_prompts"
   --protect_zero=false --gpu_allow_invalid_fetch_constants=true
   # Letterbox other screen shapes (Steam Deck 16:10) instead of cropping up to 10% of the
   # edges as TV overscan. (SDK patch 0005 keeps the game's TV mode at 1280x720.)

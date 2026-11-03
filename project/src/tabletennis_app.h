@@ -13,6 +13,7 @@
 #include <rex/system/user_module.h>
 #include <rex/system/xex_module.h>
 #include <cstdio>
+#include "button_prompts.h"
 #include "offline_menu_device.h"
 #include "intro_skip.h"
 #include "achievement_ui.h"
@@ -60,6 +61,7 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
  protected:
   void OnDraw(ImGuiIO& io) override {
     tabletennis::intro::PollGamepads();
+    tabletennis::prompts::Update();
     if (tabletennis::intro::ShowTransition()) {
       const auto* viewport = ImGui::GetMainViewport();
       auto* draw = ImGui::GetForegroundDrawList();
@@ -317,6 +319,8 @@ class TabletennisApp : public rex::ReXApp {
     }
     // PICTURE (pc_features.h): the 3D camera and 2D layers follow the window's shape.
     tabletennis::pc::SetPicture(REXCVAR_GET(picture));
+    // BUTTON PROMPTS (button_prompts.h): Xbox or PlayStation icons in the menus.
+    tabletennis::prompts::Init(runtime()->memory(), runtime()->graphics_system());
     if (window()) {
       tabletennis::pc::SetSurfaceSize(window()->GetActualPhysicalWidth(), window()->GetActualPhysicalHeight());
     }

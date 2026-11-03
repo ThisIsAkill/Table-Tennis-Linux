@@ -1,6 +1,7 @@
 // pc_settings.cpp - see pc_settings.h.
 
 #include "pc_settings.h"
+#include "button_prompts.h"
 
 #include "pc_features.h"
 
@@ -78,7 +79,7 @@ struct Row {
 
 enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
-  kAchievementSound,
+  kAchievementSound, kButtonPrompts,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus,
   // UPDATES section
@@ -92,7 +93,7 @@ constexpr const char* kTabNames[kTabCount] = {"DISPLAY", "GAME", "ONLINE", "UPDA
 const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
       {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kAntiAliasing, kSharpening, kShowFps},
-      {kHaptics, kAchievementSound},
+      {kButtonPrompts, kHaptics, kAchievementSound},
       {kPlayerName, kOnlineServer, kOnlineStatus},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
   return rows[tab];
@@ -143,6 +144,10 @@ std::vector<Row> MakeRows() {
        Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        1},
+      {"button_prompts", "BUTTON PROMPTS", "Button icons in the menus. AUTO shows PlayStation icons "
+       "while a PlayStation controller is in use and Xbox icons otherwise.", Apply::kLive,
+       {{"auto", "AUTO"}, {"xbox", "XBOX"}, {"playstation", "PLAYSTATION"}},
+       0},
       {"player_name", "PLAYER NAME", "The name other players see online and in SYSTEM LINK. Press A "
        "to change it (player_name= in tt-recomp.ini).", Apply::kRestart, {}, 0},
       {"", "ONLINE SERVER", "The server ONLINE in the main menu plays through (server= in "
@@ -643,6 +648,7 @@ void Arrow(ImDrawList* dl, ImVec2 center, float size, bool right, ImU32 col) {
 }
 
 void FaceButton(ImDrawList* dl, ImVec2 center, float radius, ImU32 fill, const char* letter, float alpha) {
+  if (tabletennis::prompts::DrawFace(dl, center, radius, letter, alpha)) return;
   dl->AddCircleFilled(center, radius, Col(20, 22, 28, 0.9f * alpha), 24);
   dl->AddCircleFilled(center, radius * 0.82f, fill, 24);
   const float px = radius * 1.5f;
@@ -913,6 +919,9 @@ void SettingsPage::ApplyLive(int row_index) {
     case kHaptics:
       REXCVAR_SET(haptics, on);
       break;
+    case kButtonPrompts:
+      tabletennis::prompts::SetSetting(g_rows[kButtonPrompts].choices[g_rows[kButtonPrompts].current].value);
+      break;
     case kAntiAliasing:
       if (hooks_.set_anti_aliasing) hooks_.set_anti_aliasing(g_rows[row_index].choices[g_rows[row_index].current].value);
       break;
@@ -1165,10 +1174,10 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       x += w + gap;
     }
     const float hint_px = 17.0f * s;
-    AddText(dl, font, hint_px, ImVec2(label_x, CapsTop(tabs_cy, hint_px)), Col(128, 194, 238, in), "LB", kCondensed);
+    AddText(dl, font, hint_px, ImVec2(label_x, CapsTop(tabs_cy, hint_px)), Col(128, 194, 238, in), tabletennis::prompts::Shoulder(false), kCondensed);
     AddText(dl, font, hint_px,
-            ImVec2(value_right - TextWidth(font, hint_px, "RB", kCondensed), CapsTop(tabs_cy, hint_px)),
-            Col(128, 194, 238, in), "RB", kCondensed);
+            ImVec2(value_right - TextWidth(font, hint_px, tabletennis::prompts::Shoulder(true), kCondensed), CapsTop(tabs_cy, hint_px)),
+            Col(128, 194, 238, in), tabletennis::prompts::Shoulder(true), kCondensed);
     dl->AddLine(ImVec2(bx0 + 24.0f * s, tabs_cy + 24.0f * s), ImVec2(x1 - 24.0f * s, tabs_cy + 24.0f * s),
                 Col(255, 255, 255, 0.12f * in), 1.5f * s);
   }

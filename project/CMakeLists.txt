@@ -20,6 +20,7 @@ set(TABLETENNIS_SOURCES
     src/system_link.cpp
     src/pc_features.cpp
     src/frame_pacer.cpp
+    src/button_prompts.cpp
 )
 
 if(WIN32)
