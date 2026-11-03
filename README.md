@@ -65,6 +65,7 @@ The game's **OPTIONS** menu, both in the main menu and in the pause menu during 
 | Anti-aliasing | off / FXAA / FXAA extreme | at once |
 | Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) | at once |
 | VSync | auto (on for macOS, off elsewhere) / on / off: waits for the display, so the picture does not tear | at once |
+| Brightness | -2 to +5 (NORMAL is the picture as the game draws it; lightens dark and middle tones, white stays white) | at once |
 | Show FPS | on / off | at once |
 | Haptics | on / off | at once |
 | Achievement sound | on / off | at once |
@@ -159,7 +160,7 @@ Building from a checkout needs x86_64 Linux, `python3`, `git`, `cmake`, `ninja` 
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
 
-`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `keyboard`, `vsync`, `engine_flags`). `keyboard=on` adds keyboard controls for testing without a controller: W A S D or the arrow keys move, I J K L are the four spins in the controller's diamond, Q soft shot, E focus shot, F full focus, C camera, Space/Enter accept, Backspace back, P pause; command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`, `--save` writes them back, and anything after `--` goes straight to the engine.
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `keyboard`, `vsync`, `brightness`, `engine_flags`). `keyboard=on` adds keyboard controls for testing without a controller: W A S D or the arrow keys move, I J K L are the four spins in the controller's diamond, Q soft shot, E focus shot, F full focus, C camera, Space/Enter accept, Backspace back, P pause; command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`, `--save` writes them back, and anything after `--` goes straight to the engine.
 
 | Path | What it is |
 |---|---|

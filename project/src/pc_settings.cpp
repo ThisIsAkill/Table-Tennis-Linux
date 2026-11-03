@@ -77,7 +77,7 @@ struct Row {
 };
 
 enum RowId {
-  kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kShowFps, kHaptics,
+  kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
   kAchievementSound,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus,
@@ -112,6 +112,11 @@ std::vector<Row> MakeRows() {
        "tear. AUTO is on for macOS and off elsewhere (lowest latency).", Apply::kLive,
        {{"auto", "AUTO"}, {"on", "ON"}, {"off", "OFF"}},
        0},
+      {"brightness", "BRIGHTNESS", "Lightens dark and middle tones; white stays white. NORMAL is the "
+       "picture as the game draws it.", Apply::kLive,
+       {{"0.8", "-2"}, {"0.9", "-1"}, {"1.0", "NORMAL"}, {"1.15", "+1"}, {"1.3", "+2"}, {"1.5", "+3"},
+        {"1.75", "+4"}, {"2.0", "+5"}},
+       2},
       {"show_fps", "SHOW FPS", "Frame rate counter in the top left corner (F10).", Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        0},
@@ -869,6 +874,10 @@ void SettingsPage::ApplyLive(int row_index) {
     case kPicture:
       tabletennis::pc::SetPicture(g_rows[kPicture].choices[g_rows[kPicture].current].value);
       break;
+    case kBrightness:
+      // Applied through the gamma ramp from the next frame (SDK patch 0016).
+      rex::cvar::SetFlagByName("display_brightness", g_rows[kBrightness].choices[g_rows[kBrightness].current].value);
+      break;
     case kResolution: {
       int width = 0, height = 0;
       if (!RestartPending(kResolution) &&
@@ -1107,7 +1116,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const float big_px = 27.0f * s;
   ImFont* label_font = achievement_ui::HeadlineFont(label_px);
   ImFont* big_font = achievement_ui::HeadlineFont(big_px);
-  const float row_h = 26.0f * s;
+  const float row_h = 25.0f * s;
   const float section_h = 22.0f * s;
   const float rows_y0 = body_y0 + 16.0f * s;
   const float label_x = bx0 + 30.0f * s;

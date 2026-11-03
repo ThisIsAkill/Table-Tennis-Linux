@@ -1,0 +1,77 @@
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 001f36b..df87470 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <array>
+ #include <cstdint>
+ #include <cstring>
+@@ -47,6 +48,11 @@
+ #include <rex/ui/vulkan/util.h>
+ 
+ // Legacy backend compatibility aliases for shared readback controls.
++REXCVAR_DEFINE_DOUBLE(display_brightness, 1.0, "GPU",
++                      "Brightness applied through the guest gamma ramp: 1 leaves the picture as "
++                      "the game sets it, higher values lighten dark and middle tones (white stays "
++                      "white). Changes apply from the next frame");
++
+ REXCVAR_DEFINE_BOOL(vulkan_readback_resolve, false, "GPU/Vulkan",
+                     "Read render-to-texture results on the CPU")
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+@@ -2516,6 +2522,16 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontb
+         // TODO(Triang3l): FXAA can result in more than 8 bits of precision.
+         context.SetIs8bpc(!use_pwl_gamma_ramp && !use_fxaa);
+ 
++        // The brightness setting is applied to the gamma ramp as it is uploaded; a change re-uploads
++        // both ramps.
++        static double gamma_ramp_brightness = 1.0;
++        const double brightness = std::clamp(REXCVAR_GET(display_brightness), 0.25, 4.0);
++        if (brightness != gamma_ramp_brightness) {
++          gamma_ramp_brightness = brightness;
++          gamma_ramp_256_entry_table_current_frame_ = UINT32_MAX;
++          gamma_ramp_pwl_current_frame_ = UINT32_MAX;
++        }
++
+         // Update the gamma ramp if it's out of date.
+         uint32_t& gamma_ramp_frame_index_ref = use_pwl_gamma_ramp
+                                                    ? gamma_ramp_pwl_current_frame_
+@@ -2552,6 +2568,35 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontb
+                                            : static_cast<const void*>(gamma_ramp_256_entry_table()),
+                         gamma_ramp_size);
+           }
++          if (brightness != 1.0) {
++            // out = in^(1/brightness) on every value the ramp produces.
++            const double exponent = 1.0 / brightness;
++            auto curve = [exponent](double value, double one) {
++              return std::pow(std::clamp(value / one, 0.0, 1.0), exponent) * one;
++            };
++            if (use_pwl_gamma_ramp) {
++              // Upload layout: per entry R16 base, G16 delta over the segment's 8 steps; 65472 is
++              // 1.0 (the shader scales by 1.52737048e-05). Curve both ends of each segment.
++              auto* pwl = reinterpret_cast<uint16_t*>(gamma_ramp_frame_upload);
++              for (size_t i = 0; i < 128 * 3; ++i) {
++                const double base = pwl[i * 2], end = base + pwl[i * 2 + 1];
++                const double new_base = curve(base, 65472.0), new_end = curve(end, 65472.0);
++                pwl[i * 2] = uint16_t(std::lround(std::min(new_base, 65535.0)));
++                pwl[i * 2 + 1] = uint16_t(std::lround(std::clamp(new_end - new_base, 0.0, 65535.0)));
++              }
++            } else {
++              // 256 entries of 10-bit blue, green and red.
++              auto* table = reinterpret_cast<uint32_t*>(gamma_ramp_frame_upload);
++              for (size_t i = 0; i < 256; ++i) {
++                uint32_t entry = table[i], result = entry & 0xC0000000u;
++                for (uint32_t shift = 0; shift < 30; shift += 10) {
++                  const uint32_t value = uint32_t(std::lround(curve((entry >> shift) & 1023u, 1023.0)));
++                  result |= std::min(value, 1023u) << shift;
++                }
++                table[i] = result;
++              }
++            }
++          }
+           bool gamma_ramp_has_upload_buffer = gamma_ramp_upload_buffer_memory_ != VK_NULL_HANDLE;
+           VkPipelineStageFlags gamma_ramp_read_stage_mask =
+               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;

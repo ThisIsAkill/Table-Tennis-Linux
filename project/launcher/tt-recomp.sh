@@ -14,7 +14,7 @@
 #                  [--auto_update=true|false] [--system_link=true|false]
 #                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
 #                  [--online_redundancy=auto|on|off] [--keyboard=on|off]
-#                  [--vsync=auto|on|off] [--save]
+#                  [--vsync=auto|on|off] [--brightness=0.8..2.0] [--save]
 #                  [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
@@ -70,6 +70,7 @@ server=""
 online_redundancy="auto"
 keyboard="off"
 vsync="auto"
+brightness="1.0"
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -101,6 +102,7 @@ set_option() {
     online_redundancy) online_redundancy="$value" ;;
     keyboard) keyboard="$value" ;;
     vsync) vsync="$value" ;;
+    brightness) brightness="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -157,6 +159,7 @@ case "$auto_update" in true|false) ;; *) die "auto_update must be true or false"
 case "$system_link" in true|false) ;; *) die "system_link must be true or false" ;; esac
 case "$keyboard" in on|off) ;; *) die "keyboard must be on or off" ;; esac
 case "$vsync" in auto|on|off) ;; *) die "vsync must be auto, on or off" ;; esac
+[[ "$brightness" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "brightness must be a number (1.0 = normal)"
 [[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
 [[ "$server" =~ ^[A-Za-z0-9.:_-]*$ ]] || die "server must be a host name or address, optionally with :port"
 [[ "$lan_peers" =~ ^[0-9.,\ ]*$ ]] || die "lan_peers must be IPv4 addresses separated by commas"
@@ -188,6 +191,7 @@ server=$server
 online_redundancy=$online_redundancy
 keyboard=$keyboard
 vsync=$vsync
+brightness=$brightness
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -203,6 +207,7 @@ args=(
   # edges as TV overscan. (SDK patch 0005 keeps the game's TV mode at 1280x720.)
   --present_safe_area_x=100 --present_safe_area_y=100
   "--system_link=$system_link"
+  "--display_brightness=$brightness"
 )
 # vsync=on presents in step with the display (no tearing; mailbox or FIFO), off presents at once
 # (lowest latency). auto is on for macOS, where MoltenVK's immediate mode tears visibly, and off
