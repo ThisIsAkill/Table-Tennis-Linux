@@ -14,6 +14,10 @@
 # TT_JOIN_DELAY=seconds starts the joiner later (default 20), so the host is in its lobby first.
 # TT_SPEC_SCENARIO=FILE adds a third instance, Spectator (display :93, 127.0.0.4), started
 # TT_SPEC_DELAY seconds after the joiner (default 60); output in logs/runs/NAME/spec.
+# A match with a spectator (Table Tennis Network > Exhibition):
+#   TT_WINDOW=640x360 TT_JOIN_DELAY=15 TT_SPEC_DELAY=40 \
+#   TT_SPEC_SCENARIO=scripts/scenarios/lan-spectate.txt \
+#   scripts/lan-test.sh spectate scripts/scenarios/lan-host.txt scripts/scenarios/lan-join.txt
 # TT_HOST_FLAGS / TT_JOIN_FLAGS / TT_SPEC_FLAGS add engine flags to one instance only, e.g.
 # TT_JOIN_FLAGS="--online_test_delay_ms=300 --online_utc_offset=330" for a distant player.
 set -u

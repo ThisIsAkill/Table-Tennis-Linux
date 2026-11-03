@@ -139,6 +139,8 @@ Two players can play each other on the same network or over the internet. Both m
 
 Then one player chooses **PLAYER MATCH > CREATE MATCH**, sets up the match and waits in the lobby; the other chooses **PLAYER MATCH > QUICK MATCH**, which finds it and joins. The host starts the match.
 
+**Watching a match:** others can watch a match in progress. Choose **TABLE TENNIS NETWORK > EXHIBITION**, wait for the search, select the match with A and choose **SPECTATE MATCH**. The match plays live with the score, and the spectator controls (camera views, HUD) are shown on screen.
+
 - The game was made for local networks: every action waits for the other machine, so online matches play best between players in the same region. Outside matches, a small box in the bottom right corner shows the connection: bars, the round trip in milliseconds, packet loss, and whether it runs directly or through the server. In the public room the server pairs players who are close to each other first; the ONLINE prompt shows how many players are near you.
 - On lossy connections the game sends every match packet twice (`online_redundancy=` in `tt-recomp.ini`: `auto`, the default, only while packets get lost; `on`; `off`).
 - Every player is named after their computer with a short code (for example `steamdeck-4f2`) until they choose a name. The game tells players apart by name, so the server does not let two players with the same name into one room.

@@ -1,0 +1,19 @@
+# SYSTEM LINK > PLAYER MATCH > CREATE MATCH, accept the settings, wait, start when the guest is in
+menu 3 shift+Down
+menu 4 shift+Down
+menu 5 shift+Down
+menu 6 shift+Down
+menu 8 space
+menu 16 space
+menu 24 shift+Down
+menu 26 shift+Down
+menu 28 space
+menu 36 space
+menu 44 space
+menu 90 Return
+menu 96 space
+menu 102 space
+menu 110 space
+menu 118 space
+stop 330
+timeout 520

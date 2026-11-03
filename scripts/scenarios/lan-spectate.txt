@@ -1,0 +1,16 @@
+# SYSTEM LINK > TABLE TENNIS NETWORK > EXHIBITION, wait for the search, A on the player, A to spectate
+menu 3 shift+Down
+menu 4 shift+Down
+menu 5 shift+Down
+menu 6 shift+Down
+menu 8 space
+menu 16 shift+Down
+menu 18 shift+Down
+menu 20 space
+menu 30 space
+menu 50 space
+menu 62 space
+menu 76 space
+menu 90 space
+stop 200
+timeout 400

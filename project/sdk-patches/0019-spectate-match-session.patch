@@ -1,0 +1,112 @@
+diff --git a/include/rex/system/xsocket.h b/include/rex/system/xsocket.h
+--- a/include/rex/system/xsocket.h
++++ b/include/rex/system/xsocket.h
+@@ -49,6 +49,17 @@
+ // console the key exchange tells XNet which session a peer belongs to, and XNetInAddrToXnAddr
+ // reports that XNKID; here every peer counts as a member of the latest session.
+ void RegisterSessionKey(const uint8_t kid[8]);
++// Sessions this machine hosts (XSESSION_INFO: 60 bytes) and their XSESSION_CREATE_* flags, for
++// RewriteSessionAnnouncement. HostedSessionModified records a host's XSessionModify flags.
++void RegisterHostedSession(const uint8_t info[60], uint32_t flags);
++void HostedSessionModified(uint32_t flags);
++// Spectating over system link: on Xbox LIVE a spectator found the match session through
++// matchmaking (the match session is created with XSESSION_CREATE_USES_MATCHMAKING, the lobby is
++// not); over system link the title answers every search with its lobby, which has no room for a
++// spectator once the match runs. While the hosted lobby is closed to joins in progress and a
++// match session exists, a search answer naming the lobby names the match session instead.
++// Returns true and fills `out` when the datagram was changed.
++bool RewriteSessionAnnouncement(const uint8_t* data, size_t size, std::vector<uint8_t>& out);
+ void UnregisterSessionKey(const uint8_t kid[8]);
+ bool CurrentSessionKey(uint8_t kid[8]);
+ // Security associations. On the console XNetXnAddrToInAddr hands out a different IN_ADDR for
+diff --git a/src/kernel/xam/apps/xgi_app.cpp b/src/kernel/xam/apps/xgi_app.cpp
+--- a/src/kernel/xam/apps/xgi_app.cpp
++++ b/src/kernel/xam/apps/xgi_app.cpp
+@@ -137,6 +137,7 @@
+         rex::system::net::EthernetAddress(address, host + 10);
+         uint8_t* key = info + 44;
+         for (int i = 0; i < 16; ++i) key[i] = uint8_t(random());
++        rex::system::net::RegisterHostedSession(info, flags);
+         REXKRNL_INFO("XGISessionCreate: system link session {:016X} hosted at {}.{}.{}.{}",
+                      memory::load_and_swap<uint64_t>(kid), address >> 24, (address >> 16) & 0xFF,
+                      (address >> 8) & 0xFF, address & 0xFF);
+@@ -225,6 +226,7 @@
+ 
+       REXKRNL_DEBUG("XSessionModify({:08X}, {:08X}, {:08X}, {:08X})", obj_ptr, flags,
+                     maxPublicSlots, maxPrivateSlots);
++      rex::system::net::HostedSessionModified(flags);
+ 
+       return X_E_SUCCESS;
+     }
+diff --git a/src/system/xsocket.cpp b/src/system/xsocket.cpp
+--- a/src/system/xsocket.cpp
++++ b/src/system/xsocket.cpp
+@@ -205,6 +205,57 @@
+ std::vector<std::array<uint8_t, 8>> session_keys;
+ }  // namespace
+ 
++namespace {
++constexpr uint32_t kSessionHost = 0x001;
++constexpr uint32_t kSessionUsesMatchmaking = 0x008;
++constexpr uint32_t kSessionJoinInProgressDisabled = 0x400;
++std::mutex hosted_mutex;
++std::array<uint8_t, 60> hosted_lobby{}, hosted_match{};
++bool have_lobby = false, have_match = false;
++uint32_t lobby_flags = 0;
++}  // namespace
++
++void RegisterHostedSession(const uint8_t info[60], uint32_t flags) {
++  std::lock_guard<std::mutex> lock(hosted_mutex);
++  if (flags & kSessionUsesMatchmaking) {
++    std::memcpy(hosted_match.data(), info, 60);
++    have_match = true;
++  } else {
++    std::memcpy(hosted_lobby.data(), info, 60);
++    have_lobby = true;
++    have_match = false;  // a new lobby: any earlier match is over
++    lobby_flags = flags;
++  }
++}
++
++void HostedSessionModified(uint32_t flags) {
++  // The host's lobby is the hosted session without matchmaking (the match session's flags have
++  // the matchmaking bit).
++  if (!(flags & kSessionHost) || (flags & kSessionUsesMatchmaking)) return;
++  std::lock_guard<std::mutex> lock(hosted_mutex);
++  lobby_flags = flags;
++}
++
++bool RewriteSessionAnnouncement(const uint8_t* data, size_t size, std::vector<uint8_t>& out) {
++  // The title's search answer: tag D1 4A at offset 4, message type 0x62 at offset 11.
++  constexpr uint8_t kSearchAnswer = 0x62;
++  if (size < 12 + 60 || data[4] != 0xD1 || data[5] != 0x4A || data[11] != kSearchAnswer) return false;
++  std::lock_guard<std::mutex> lock(hosted_mutex);
++  if (!have_lobby || !have_match || !(lobby_flags & kSessionJoinInProgressDisabled)) return false;
++  const uint8_t* end = data + size;
++  const uint8_t* found = std::search(data, end, hosted_lobby.begin(), hosted_lobby.end());
++  if (found == end) return false;
++  out.assign(data, end);
++  std::memcpy(out.data() + (found - data), hosted_match.data(), 60);
++  static std::atomic<int> logged{0};
++  if (logged.fetch_add(1) < 3) {
++    REXKRNL_INFO("XNet: search answer names match session {:016X} instead of lobby {:016X}",
++                 memory::load_and_swap<uint64_t>(hosted_match.data()),
++                 memory::load_and_swap<uint64_t>(hosted_lobby.data()));
++  }
++  return true;
++}
++
+ void RegisterSessionKey(const uint8_t kid[8]) {
+   std::array<uint8_t, 8> key;
+   std::memcpy(key.data(), kid, 8);
+@@ -1623,6 +1674,10 @@
+ }
+ 
+ int XSocket::SendTo(const uint8_t* buf, uint32_t buf_len, uint32_t flags, const XSOCKADDR_IN* to) {
++  std::vector<uint8_t> rewritten;
++  if (type_ == X_SOCK_DGRAM && net::RewriteSessionAnnouncement(buf, buf_len, rewritten)) {
++    buf = rewritten.data();
++  }
+   if (!to) {
+     return send(native_handle_, reinterpret_cast<const char*>(buf), buf_len, flags);
+   }

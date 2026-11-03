@@ -1,0 +1,14 @@
+# SYSTEM LINK > PLAYER MATCH > QUICK MATCH, then accept whatever comes
+menu 3 shift+Down
+menu 4 shift+Down
+menu 5 shift+Down
+menu 6 shift+Down
+menu 8 space
+menu 16 space
+menu 24 space
+menu 70 space
+menu 80 space
+menu 90 space
+menu 100 space
+stop 310
+timeout 500
