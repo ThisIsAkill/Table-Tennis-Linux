@@ -84,6 +84,10 @@ sdk_patches=("$root"/project/sdk-patches/*.patch)
 # runs AMD's Windows compiler under Wine and fails with current glslang. Explicit so a reused
 # build tree cannot inherit another setting.
 sdk_options=(-DREXGLUE_ENABLE_FIDELITYFX=ON)
+# On macOS, build MoltenVK with Metal's private API so it can disable primitive restart on
+# triangle strips, which Metal otherwise forces on. Without it the game spams thousands of
+# failed-pipeline warnings per frame and some strip geometry is drawn with restart forced on.
+[[ "$platform" == mac ]] && sdk_options+=(-DMVK_USE_METAL_PRIVATE_API=ON)
 patch_stamp="$({ cat "${sdk_patches[@]}" 2>/dev/null; echo "${sdk_options[*]}"; } | sha256 | cut -c1-16)"
 if [[ -z "$sdk" ]]; then
   sdk="$root/.tools/rexglue-sdk"

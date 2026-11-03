@@ -361,6 +361,9 @@ launch=("$here/tabletennis")
 if [[ "$gamemode" == auto ]] && command -v gamemoderun >/dev/null 2>&1; then
   launch=(gamemoderun "$here/tabletennis")
 fi
+# macOS: let MoltenVK use Metal's private API to disable primitive restart (see build.sh). The
+# bundled MoltenVK is built for it; without this flag it keeps restart on and warns every frame.
+[[ "$(uname -s)" == Darwin ]] && export MVK_CONFIG_USE_METAL_PRIVATE_API=1
 # The game runs as a child (not exec) so an update the player asked for can run after it exits.
 "${launch[@]}" ${args[@]+"${args[@]}"} ${extra[@]+"${extra[@]}"} &
 game=$!
