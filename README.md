@@ -177,7 +177,7 @@ Then one player chooses **PLAYER MATCH > CREATE MATCH**, sets up the match and w
 1. **Lighting (above).** The Vulkan shader translator read each texture's exponent adjustment from the wrong word of the texture descriptor, so textures with a LOD bias came out far too dark: a black arena floor, dark skin, a dark character select. (Upstream PR rexglue/rexglue-sdk#490.)
 2. **Full-speed gameplay.** Every game write to memory the GPU watches looked up page permissions by parsing `/proc/self/maps` as text, which held the Steam Deck to 24-27 game frames per second (slow motion). It now uses the kernel's `PROCMAP_QUERY` call (Linux 6.11+), with the old method as a fallback.
 3. **Correct picture shape.** The SDK reported the window size to the game as its TV mode, which stretched the picture on 16:10 screens and switched small windows to the 4:3 SD layout.
-4. **CPU and battery.** The audio thread spun a whole CPU core waiting for work, a debug-only lookup ran on every GPU register write, and the game's wait for the GPU spun a core at full speed (it now sleeps between polls).
+4. **CPU use.** The audio thread spun a whole CPU core waiting for work, a debug-only lookup ran on every GPU register write, and the game's wait for the GPU spun a core at full speed (it now sleeps between polls).
 5. **Controller rumble.** Gamepads report whether they can rumble, and failed rumble requests are logged.
 6. **RenderDoc.** An installed RenderDoc was injected into every run. (Upstream PR rexglue/rexglue-sdk#522.)
 7. **FSR and CAS** work on Linux (the FidelityFX runtime for temporal FSR 2/3, whose shader build needs a Windows compiler, is left out).
