@@ -64,7 +64,7 @@ start=$(date +%s)
 # TT_RENDERDOC=1 launches under renderdoccmd; press F12 in the scenario to capture a frame
 # (captures land in logs/runs/NAME/capture_frameN.rdc).
 wrap=()
-[[ -n "${TT_RENDERDOC:-}" ]] && wrap=(renderdoccmd capture -c "$out/capture" -w)
+[[ -n "${TT_RENDERDOC:-}" ]] && wrap=(renderdoccmd capture --opt-hook-children -c "$out/capture" -w)
 ro=()
 [[ -n "${TT_RO_BIND:-}" ]] && ro=(--ro-bind "$TT_RO_BIND" "$TT_RO_BIND")
 timeout "$hard" bwrap --bind / / --dev-bind /dev /dev "${ro[@]}" --die-with-parent \
