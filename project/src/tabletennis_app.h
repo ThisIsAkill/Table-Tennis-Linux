@@ -26,6 +26,9 @@
 #include <rex/logging.h>
 #include <rex/memory.h>
 #include <rex/rex_app.h>
+#include <rex/runtime.h>
+#include <rex/system/interfaces/graphics.h>
+#include <rex/ui/presenter.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
 #include <rex/ui/keybinds.h>
@@ -418,6 +421,17 @@ class TabletennisApp : public rex::ReXApp {
       hooks.get_show_fps = [this] { return fps_overlay_ && fps_overlay_->IsVisible(); };
       hooks.set_show_fps = [this](bool on) {
         if (fps_overlay_) fps_overlay_->SetVisible(on);
+      };
+      hooks.set_anti_aliasing = [this](const std::string& name) {
+        if (auto* graphics = runtime() ? runtime()->graphics_system() : nullptr) {
+          graphics->SetSwapPostEffectByName(name);
+        }
+      };
+      hooks.set_sharpening = [this](const std::string& name) {
+        auto* graphics = runtime() ? runtime()->graphics_system() : nullptr;
+        if (auto* presenter = graphics ? graphics->presenter() : nullptr) {
+          presenter->SetGuestOutputEffectFromUIThread(name);
+        }
       };
       pc_settings_ = std::make_unique<tabletennis::pc_settings::SettingsPage>(drawer, window(),
                                                                              std::move(hooks));

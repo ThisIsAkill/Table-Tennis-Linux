@@ -97,11 +97,11 @@ std::vector<Row> MakeRows() {
        "screen's shape and widens the 3D view (experimental).", Apply::kRestart,
        {{"letterbox", "LETTERBOX"}, {"fill", "FILL SCREEN"}},
        0},
-      {"aa", "ANTI-ALIASING", "Smooths jagged edges with FXAA after each frame.", Apply::kRestart,
+      {"aa", "ANTI-ALIASING", "Smooths jagged edges with FXAA after each frame.", Apply::kLive,
        {{"none", "OFF"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
        0},
       {"post", "SHARPENING", "CAS sharpens the picture (best on the Steam Deck); FSR upscales "
-       "it to large screens and sharpens it.", Apply::kRestart,
+       "it to large screens and sharpens it.", Apply::kLive,
        {{"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
        0},
       {"vsync", "VSYNC", "Waits for the display before showing each frame, so the picture does not "
@@ -835,6 +835,12 @@ void SettingsPage::ApplyLive(int row_index) {
       break;
     case kHaptics:
       REXCVAR_SET(haptics, on);
+      break;
+    case kAntiAliasing:
+      if (hooks_.set_anti_aliasing) hooks_.set_anti_aliasing(g_rows[row_index].choices[g_rows[row_index].current].value);
+      break;
+    case kSharpening:
+      if (hooks_.set_sharpening) hooks_.set_sharpening(g_rows[row_index].choices[g_rows[row_index].current].value);
       break;
 
     default:

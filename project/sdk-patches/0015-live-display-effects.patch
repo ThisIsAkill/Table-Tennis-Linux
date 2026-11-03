@@ -1,0 +1,92 @@
+diff --git a/include/rex/graphics/graphics_system.h b/include/rex/graphics/graphics_system.h
+index ac6b056..0957310 100644
+--- a/include/rex/graphics/graphics_system.h
++++ b/include/rex/graphics/graphics_system.h
+@@ -63,6 +63,7 @@ class GraphicsSystem : public system::IGraphicsSystem {
+                          system::KernelState* kernel_state) override;
+   bool has_presentation() const override { return presenter_ != nullptr; }
+   void Shutdown() override;
++  void SetSwapPostEffectByName(const std::string& effect_name) override;
+ 
+   // May be called from any thread any number of times, even during recovery
+   // from a device loss.
+diff --git a/include/rex/system/interfaces/graphics.h b/include/rex/system/interfaces/graphics.h
+index d54df86..0193845 100644
+--- a/include/rex/system/interfaces/graphics.h
++++ b/include/rex/system/interfaces/graphics.h
+@@ -13,6 +13,7 @@
+ 
+ #include <cstdint>
+ #include <filesystem>
++#include <string>
+ 
+ #include <rex/system/xtypes.h>
+ 
+@@ -79,6 +80,10 @@ class IGraphicsSystem {
+     (void)blocking;
+   }
+ 
++  // Switches the swap post effect (anti-aliasing: none, fxaa, fxaa_extreme) while the game runs;
++  // it applies from the next frame. Default: not supported.
++  virtual void SetSwapPostEffectByName(const std::string& effect_name) { (void)effect_name; }
++
+   // One-shot convenience for callers that don't care about the split.
+   X_STATUS Setup(runtime::FunctionDispatcher* function_dispatcher, KernelState* kernel_state,
+                  ui::WindowedAppContext* app_context, bool with_presentation) {
+diff --git a/include/rex/ui/presenter.h b/include/rex/ui/presenter.h
+index afb4a30..042699f 100644
+--- a/include/rex/ui/presenter.h
++++ b/include/rex/ui/presenter.h
+@@ -21,6 +21,7 @@
+ #include <functional>
+ #include <map>
+ #include <memory>
++#include <string>
+ #include <mutex>
+ #include <thread>
+ #include <utility>
+@@ -367,6 +368,10 @@ class Presenter {
+   }
+   // For simplicity, may be called repeatedly even if no changes have been made.
+   void SetGuestOutputPaintConfigFromUIThread(const GuestOutputPaintConfig& new_config);
++  // Switches the guest output effect by its present_effect name (bilinear, cas, fsr) while the
++  // game runs. The name is parsed here, inside the runtime, so callers do not depend on which
++  // effects this build was compiled with.
++  void SetGuestOutputEffectFromUIThread(const std::string& effect_name);
+ 
+   void AddUIDrawerFromUIThread(UIDrawer* drawer, size_t z_order);
+   void RemoveUIDrawerFromUIThread(UIDrawer* drawer);
+diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
+index 8f2fcb0..d7dd56d 100644
+--- a/src/graphics/graphics_system.cpp
++++ b/src/graphics/graphics_system.cpp
+@@ -178,6 +178,12 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
+   return X_STATUS_SUCCESS;
+ }
+ 
++void GraphicsSystem::SetSwapPostEffectByName(const std::string& effect_name) {
++  if (command_processor_) {
++    command_processor_->SetDesiredSwapPostEffect(ParseSwapPostEffect(effect_name));
++  }
++}
++
+ void GraphicsSystem::Shutdown() {
+   if (command_processor_) {
+     command_processor_->Shutdown();
+diff --git a/src/ui/presenter.cpp b/src/ui/presenter.cpp
+index 7360ed9..7641ba5 100644
+--- a/src/ui/presenter.cpp
++++ b/src/ui/presenter.cpp
+@@ -649,6 +649,12 @@ bool Presenter::RefreshGuestOutput(
+   return is_active;
+ }
+ 
++void Presenter::SetGuestOutputEffectFromUIThread(const std::string& effect_name) {
++  GuestOutputPaintConfig config = guest_output_paint_config_;
++  config.SetEffect(ParsePresentEffect(effect_name));
++  SetGuestOutputPaintConfigFromUIThread(config);
++}
++
+ void Presenter::SetGuestOutputPaintConfigFromUIThread(const GuestOutputPaintConfig& new_config) {
+   // For simplicity, this may be called externally repeatedly.
+   // Lock the mutex only when something has been modified, and also don't
