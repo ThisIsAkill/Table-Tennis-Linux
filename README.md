@@ -59,12 +59,12 @@ The game's **OPTIONS** menu, both in the main menu and in the pause menu during 
 
 | Setting | Values | Applies |
 |---|---|---|
-| Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160 | after a restart |
+| Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160 | at once (1440p and 4K, which also raise the internal render resolution: after a restart) |
 | Fullscreen | on / off | at once |
 | Picture | letterbox (the original 16:9) / fill screen (experimental) | after a restart |
 | Anti-aliasing | off / FXAA / FXAA extreme | at once |
 | Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) | at once |
-| VSync | auto (on for macOS, off elsewhere) / on / off: waits for the display, so the picture does not tear | after a restart |
+| VSync | auto (on for macOS, off elsewhere) / on / off: waits for the display, so the picture does not tear | at once |
 | Show FPS | on / off | at once |
 | Haptics | on / off | at once |
 | Achievement sound | on / off | at once |

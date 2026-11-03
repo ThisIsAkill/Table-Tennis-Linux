@@ -427,6 +427,17 @@ class TabletennisApp : public rex::ReXApp {
           graphics->SetSwapPostEffectByName(name);
         }
       };
+      hooks.set_vsync = [this](bool on) {
+        // The swapchain picks its present mode when it is created: change the setting, then
+        // rebuild the swapchain after this UI frame (not from inside a drawer).
+        rex::cvar::SetFlagByName("vulkan_allow_present_mode_immediate", on ? "false" : "true");
+        auto* graphics = runtime() ? runtime()->graphics_system() : nullptr;
+        auto* presenter = graphics ? graphics->presenter() : nullptr;
+        if (presenter && window()) {
+          window()->app_context().CallInUIThreadDeferred(
+              [presenter] { presenter->OnSurfaceResizeFromUIThread(); });
+        }
+      };
       hooks.set_sharpening = [this](const std::string& name) {
         auto* graphics = runtime() ? runtime()->graphics_system() : nullptr;
         if (auto* presenter = graphics ? graphics->presenter() : nullptr) {

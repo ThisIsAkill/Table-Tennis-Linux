@@ -86,7 +86,8 @@ enum RowId {
 
 std::vector<Row> MakeRows() {
   return {
-      {"resolution", "RESOLUTION", "Window size and rendering resolution.", Apply::kRestart,
+      {"resolution", "RESOLUTION", "Window size. 1440P and 4K also render the game at a higher "
+       "internal resolution, which applies after a restart.", Apply::kLive,
        {{"720p", "1280 X 720"}, {"800p", "1280 X 800"}, {"1080p", "1920 X 1080"},
         {"1440p", "2560 X 1440"}, {"4k", "3840 X 2160"}},
        2},
@@ -105,7 +106,7 @@ std::vector<Row> MakeRows() {
        {{"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
        0},
       {"vsync", "VSYNC", "Waits for the display before showing each frame, so the picture does not "
-       "tear. AUTO is on for macOS and off elsewhere (lowest latency).", Apply::kRestart,
+       "tear. AUTO is on for macOS and off elsewhere (lowest latency).", Apply::kLive,
        {{"auto", "AUTO"}, {"on", "ON"}, {"off", "OFF"}},
        0},
       {"show_fps", "SHOW FPS", "Frame rate counter in the top left corner (F10).", Apply::kLive,
@@ -466,11 +467,47 @@ std::map<std::string, std::string> ReadIni() {
   return values;
 }
 
+// The game's internal render scale for a resolution choice, as the launcher sets it.
+int RenderScale(const std::string& resolution) {
+  return resolution == "4k" ? 3 : resolution == "1440p" ? 2 : 1;
+}
+
+bool WindowSize(const std::string& resolution, int& width, int& height) {
+  static const std::map<std::string, std::pair<int, int>> sizes = {
+      {"720p", {1280, 720}}, {"800p", {1280, 800}}, {"1080p", {1920, 1080}},
+      {"1440p", {2560, 1440}}, {"4k", {3840, 2160}}};
+  const auto it = sizes.find(resolution);
+  if (it == sizes.end()) return false;
+  width = it->second.first;
+  height = it->second.second;
+  return true;
+}
+
+// Resizes the game window (its windowed size, kept for when fullscreen is turned off). The page
+// draws on the UI thread, where SDL video calls belong.
+void ResizeGameWindow(int width, int height) {
+  int count = 0;
+  SDL_Window** windows = SDL_GetWindows(&count);
+  if (windows && count > 0) SDL_SetWindowSize(windows[0], width, height);
+  SDL_free(windows);
+}
+
 int FindChoice(const Row& row, const std::string& value) {
   for (size_t i = 0; i < row.choices.size(); ++i) {
     if (value == row.choices[i].value) return int(i);
   }
   return -1;
+}
+
+// True when a row's chosen value differs from what this session runs with and only a restart
+// applies it. Resolution changes apply at once unless they change the internal render scale.
+bool RestartPending(int i) {
+  const Row& row = g_rows[i];
+  if (i == kPlayerName) return g_player_name != g_player_name_running;
+  if (i == kResolution) {
+    return RenderScale(row.choices[row.current].value) != RenderScale(row.choices[row.running].value);
+  }
+  return row.apply == Apply::kRestart && row.current != row.running;
 }
 
 // --- Controller tap ---------------------------------------------------------------------------
@@ -826,6 +863,14 @@ void SettingsPage::ApplyLive(int row_index) {
     case kFullscreen:
       if (window_) window_->SetFullscreen(on);
       break;
+    case kResolution: {
+      int width = 0, height = 0;
+      if (!RestartPending(kResolution) &&
+          WindowSize(g_rows[kResolution].choices[g_rows[kResolution].current].value, width, height)) {
+        ResizeGameWindow(width, height);
+      }
+      break;
+    }
     case kShowFps:
       REXCVAR_SET(show_fps, on);
       if (hooks_.set_show_fps) hooks_.set_show_fps(on);
@@ -842,6 +887,17 @@ void SettingsPage::ApplyLive(int row_index) {
     case kSharpening:
       if (hooks_.set_sharpening) hooks_.set_sharpening(g_rows[row_index].choices[g_rows[row_index].current].value);
       break;
+    case kVsync: {
+      // auto is on for macOS and off elsewhere, as in the launcher.
+      const std::string value = g_rows[row_index].choices[g_rows[row_index].current].value;
+#if defined(__APPLE__)
+      const bool vsync_on = value != "off";
+#else
+      const bool vsync_on = value == "on";
+#endif
+      if (hooks_.set_vsync) hooks_.set_vsync(vsync_on);
+      break;
+    }
 
     default:
       break;
@@ -1107,8 +1163,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
                         : i == kOnlineStatus ? status_value.c_str()
                         : i == kCheckNow     ? check_value.c_str()
                                              : version_value.c_str();
-    const bool pending = row.apply == Apply::kRestart &&
-                         (i == kPlayerName ? g_player_name != g_player_name_running : row.current != row.running);
+    const bool pending = RestartPending(i);
     float value_left = 0.0f;
     if (row.choices.empty()) {
       // No arrows: these are not choices. Rows that A acts on (an available update, the name,
@@ -1218,8 +1273,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     } else if (!save_error_.empty()) {
       status = save_error_.c_str();
       status_col = Col(240, 90, 80, in);
-    } else if (row.apply == Apply::kRestart &&
-               (selected_ == kPlayerName ? g_player_name != g_player_name_running : row.current != row.running)) {
+    } else if (RestartPending(selected_)) {
       status = "APPLIES AFTER RESTART";
     } else if (row.apply == Apply::kLive) {
       status = "APPLIES NOW";

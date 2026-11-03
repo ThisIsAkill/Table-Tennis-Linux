@@ -62,6 +62,7 @@ struct LiveHooks {
   // Display effects that switch while the game runs (names as in tt-recomp.ini).
   std::function<void(const std::string&)> set_anti_aliasing;  // none, fxaa, fxaa_extreme
   std::function<void(const std::string&)> set_sharpening;     // bilinear, cas, fsr
+  std::function<void(bool)> set_vsync;                         // rebuilds the swapchain
 };
 
 class SettingsPage : public rex::ui::ImGuiDialog {
