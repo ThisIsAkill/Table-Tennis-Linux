@@ -392,5 +392,17 @@
         "insert": "\t// PC PORT: hold the frame to the pacing schedule before it is swapped and\n\t// kicked to the GPU, so frames reach the screen at fixed intervals.\n\ttabletennis::pacing::BeforeSwap();\n"
       }
     ]
+  },
+  {
+    "name": "sub_82359DC0",
+    "input_sha256": "be8f2e24b3dd6ffdd46412d50d9cc1c68082aed5ff5953f7415d8c49a562f0d5",
+    "output_sha256": "d024d314e0459c2ad13b34282d75c0d2e71683d6eacf04d460eda0adef8b5006",
+    "edits": [
+      {
+        "offset": 1807,
+        "delete": 0,
+        "insert": "\t// PC PORT: db16cyc in the delay loop below does nothing on a PC, so this wait for the\n\t// GPU's write-back value spun a core at full speed; pause briefly before each poll.\n\ttabletennis::pacing::GpuWaitPause();\n"
+      }
+    ]
   }
 ]

@@ -16,6 +16,9 @@
 #include <immintrin.h>
 #endif
 
+REXCVAR_DEFINE_INT32(gpu_wait_pause_us, 100, "Video",
+                     "Sleep before each poll of the GPU's write-back value in the game's GPU wait "
+                     "(microseconds; 0 = spin like the original delay loop)");
 REXCVAR_DECLARE(int32_t, framerate);
 REXCVAR_DECLARE(bool, pace_before_swap);
 
@@ -134,5 +137,10 @@ void RecordGameFrame() {
 }
 
 Stats GetStats() { return g_history.Summarize(120); }
+
+void GpuWaitPause() {
+  const int32_t us = REXCVAR_GET(gpu_wait_pause_us);
+  if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
+}
 
 }  // namespace tabletennis::pacing

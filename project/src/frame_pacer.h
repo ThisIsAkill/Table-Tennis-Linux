@@ -22,6 +22,11 @@ void BeforeSwap();
 // a summary every five seconds.
 void RecordGameFrame();
 
+// Called by the game's wait for the GPU's write-back value (native edit in sub_82359DC0) before
+// each poll: on the Xbox its delay loop paused the hardware thread, on a PC it spins, so this
+// sleeps briefly instead (gpu_wait_pause_us; 0 spins as before).
+void GpuWaitPause();
+
 struct Stats {
   float fps = 0.0f;     // over the last ~2 seconds
   float avg_ms = 0.0f;  // mean frame interval
