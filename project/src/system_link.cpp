@@ -146,8 +146,48 @@ void ShortenServeDelay(uint8_t* base) {
 }
 }  // namespace
 
+// Reconnect after a short drop: a reliable message the other machine does not acknowledge is
+// sent again maxRetries times, retransTimeout ms apart, and then the connection counts as lost
+// and the match ends. In a match that is 20 x 150 ms (inGame) and for a spectator 10 x 300 ms
+// (spectator): any Wi-Fi drop over about 3 s ended the match. More retries ride out drops of
+// about 15 s with the same retransmission timing. Each policy in the tuning starts with
+// retransTimeout, connectTimeout, maxRetries and keepAliveInterval; the two are found by their
+// shipped values, so nothing changes if they differ.
+namespace {
+struct RetryPolicy {
+  const char* name;
+  uint32_t retrans_ms, shipped_retries, connect_ms, keepalive_ms, retries;
+};
+constexpr RetryPolicy kRetryPolicies[] = {
+    {"inGame", 150, 20, 2000, 2000, 100},
+    {"spectator", 300, 10, 2000, 2000, 50},
+};
+constexpr uint32_t kTuningSearchBytes = 512;
+
+void LengthenRetries(uint8_t* base) {
+  const uint32_t pongnet = REX_LOAD_U32(kPongNet);
+  if (!pongnet) return;
+  const uint32_t tuning = REX_LOAD_U32(pongnet + 4);
+  if (!tuning) return;
+  for (const RetryPolicy& policy : kRetryPolicies) {
+    for (uint32_t offset = 0; offset + 16 <= kTuningSearchBytes; offset += 4) {
+      const uint32_t at = tuning + offset;
+      if (REX_LOAD_U32(at) != policy.retrans_ms || REX_LOAD_U32(at + 4) != policy.connect_ms ||
+          REX_LOAD_U32(at + 8) != policy.shipped_retries || REX_LOAD_U32(at + 12) != policy.keepalive_ms) {
+        continue;
+      }
+      REX_STORE_U32(at + 8, policy.retries);
+      REXLOG_INFO("Tabletennis: {} connection retries {} (game default {}; {} ms apart, tuning +{})",
+                  policy.name, policy.retries, policy.shipped_retries, policy.retrans_ms, offset);
+      break;
+    }
+  }
+}
+}  // namespace
+
 extern "C" void sub_82394268(PPCContext& ctx, uint8_t* base) {
   ShortenServeDelay(base);
+  LengthenRetries(base);
   __imp__sub_82394268(ctx, base);
 }
 
