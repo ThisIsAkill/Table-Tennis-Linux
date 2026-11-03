@@ -2,6 +2,7 @@
 
 #include "generated/default/tabletennis_init.h"
 #include "achievement_ui.h"
+#include "menu_style.h"
 #include "button_prompts.h"
 #include "pc_features.h"
 #include "intro_skip.h"
@@ -29,6 +30,8 @@
 #include <string_view>
 
 REXCVAR_DEFINE_BOOL(achievement_sound, true, "UI", "Play a chime when an achievement unlocks");
+
+using namespace tabletennis::menu_style;
 
 namespace tabletennis::achievement_ui {
 namespace {
@@ -157,17 +160,6 @@ using Clock = std::chrono::steady_clock;
 constexpr float kPi = 3.14159265f;
 
 // --- Palette, picked from the game's menus and HUD --------------------------------------------
-ImU32 Col(int r, int g, int b, float a = 1.0f) {
-  return IM_COL32(r, g, b, int(std::clamp(a, 0.0f, 1.0f) * 255.0f + 0.5f));
-}
-ImU32 Navy(float a = 1.0f) { return Col(10, 24, 44, a); }
-ImU32 NavyLight(float a = 1.0f) { return Col(26, 58, 100, a); }
-ImU32 Blue(float a = 1.0f) { return Col(56, 138, 205, a); }
-ImU32 BlueLight(float a = 1.0f) { return Col(128, 194, 238, a); }
-ImU32 Yellow(float a = 1.0f) { return Col(255, 204, 0, a); }
-ImU32 Outline(float a = 1.0f) { return Col(16, 18, 28, a); }
-ImU32 White(float a = 1.0f) { return Col(255, 255, 255, a); }
-ImU32 Grey(float a = 1.0f) { return Col(158, 164, 174, a); }
 ImU32 PanelDark(float a = 1.0f) { return Col(5, 9, 16, a); }
 ImU32 FooterLight(float a = 1.0f) { return Col(212, 215, 220, a); }
 ImU32 FooterText(float a = 1.0f) { return Col(28, 30, 36, a); }
@@ -222,37 +214,6 @@ ImFont* LoadFirst(ImFontAtlas* atlas, const std::vector<std::filesystem::path>& 
 // --- Text helpers -----------------------------------------------------------------------------
 // Caps sit between roughly 26% and 78% of the line height in Noto Sans; this returns the text
 // origin that centers capitals on `center_y`.
-float CapsTop(float center_y, float px) { return center_y - 0.525f * px; }
-
-float TextWidth(ImFont* font, float px, const char* text, float x_scale = 1.0f) {
-  return font->CalcTextSizeA(px, FLT_MAX, 0.0f, text).x * x_scale;
-}
-
-// Draws text, then squeezes the glyphs it added horizontally around the text origin.
-void AddText(ImDrawList* dl, ImFont* font, float px, ImVec2 pos, ImU32 col, const char* text,
-             float x_scale = 1.0f, float wrap_width = 0.0f) {
-  const int first = dl->VtxBuffer.Size;
-  dl->AddText(font, px, pos, col, text, nullptr, wrap_width > 0.0f ? wrap_width / x_scale : 0.0f);
-  if (x_scale != 1.0f) {
-    for (int i = first; i < dl->VtxBuffer.Size; ++i) {
-      auto& v = dl->VtxBuffer[i];
-      v.pos.x = pos.x + (v.pos.x - pos.x) * x_scale;
-    }
-  }
-}
-
-void AddOutlinedText(ImDrawList* dl, ImFont* font, float px, ImVec2 pos, ImU32 col,
-                     ImU32 outline_col, float outline, const char* text, float x_scale = 1.0f) {
-  if (outline > 0.0f) {
-    static const float kDirs[8][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1},
-                                      {0.7f, 0.7f}, {-0.7f, 0.7f}, {0.7f, -0.7f}, {-0.7f, -0.7f}};
-    for (const auto& d : kDirs) {
-      AddText(dl, font, px, ImVec2(pos.x + d[0] * outline, pos.y + d[1] * outline), outline_col,
-              text, x_scale);
-    }
-  }
-  AddText(dl, font, px, pos, col, text, x_scale);
-}
 
 std::string Upper(std::string_view text) {
   std::string out(text);

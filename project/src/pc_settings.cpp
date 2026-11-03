@@ -1,6 +1,7 @@
 // pc_settings.cpp - see pc_settings.h.
 
 #include "pc_settings.h"
+#include "menu_style.h"
 #include "button_prompts.h"
 
 #include "pc_features.h"
@@ -52,6 +53,8 @@ extern char** environ;
 REXCVAR_DECLARE(bool, achievement_sound);
 REXCVAR_DECLARE(bool, haptics);
 REXCVAR_DECLARE(bool, show_fps);
+
+using namespace tabletennis::menu_style;
 
 namespace tabletennis::pc_settings {
 namespace {
@@ -606,39 +609,8 @@ void SetPromptOpen(bool open, bool pass_b_to_game = false) {
 }
 
 // --- Drawing helpers --------------------------------------------------------------------------
-ImU32 Col(int r, int g, int b, float a) {
-  return IM_COL32(r, g, b, int(std::clamp(a, 0.0f, 1.0f) * 255.0f + 0.5f));
-}
 constexpr float kCondensed = 0.84f;
 
-float CapsTop(float center_y, float px) { return center_y - 0.525f * px; }
-
-float TextWidth(ImFont* font, float px, const char* text, float x_scale = 1.0f) {
-  return font->CalcTextSizeA(px, FLT_MAX, 0.0f, text).x * x_scale;
-}
-
-void AddText(ImDrawList* dl, ImFont* font, float px, ImVec2 pos, ImU32 col, const char* text,
-             float x_scale = 1.0f, float wrap_width = 0.0f) {
-  const int first = dl->VtxBuffer.Size;
-  dl->AddText(font, px, pos, col, text, nullptr, wrap_width > 0.0f ? wrap_width / x_scale : 0.0f);
-  if (x_scale != 1.0f) {
-    for (int i = first; i < dl->VtxBuffer.Size; ++i) {
-      auto& v = dl->VtxBuffer[i];
-      v.pos.x = pos.x + (v.pos.x - pos.x) * x_scale;
-    }
-  }
-}
-
-void AddOutlinedText(ImDrawList* dl, ImFont* font, float px, ImVec2 pos, ImU32 col, ImU32 outline_col,
-                     float outline, const char* text, float x_scale = 1.0f) {
-  static const float kDirs[8][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1},
-                                    {0.7f, 0.7f}, {-0.7f, 0.7f}, {0.7f, -0.7f}, {-0.7f, -0.7f}};
-  for (const auto& d : kDirs) {
-    AddText(dl, font, px, ImVec2(pos.x + d[0] * outline, pos.y + d[1] * outline), outline_col, text,
-            x_scale);
-  }
-  AddText(dl, font, px, pos, col, text, x_scale);
-}
 
 void Arrow(ImDrawList* dl, ImVec2 center, float size, bool right, ImU32 col) {
   const float d = right ? 1.0f : -1.0f;
