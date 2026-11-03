@@ -1,0 +1,104 @@
+diff --git a/include/rex/system/xsocket.h b/include/rex/system/xsocket.h
+--- a/include/rex/system/xsocket.h
++++ b/include/rex/system/xsocket.h
+@@ -97,6 +97,9 @@
+ void SetOnline(const std::string& mode, const std::string& room_code);
+ // True while online play is switched on, connected or not.
+ bool OnlineEnabled();
++// Round trip in ms to the room member with this room address: measured, or estimated through
++// the server while not measured yet; -1 if no such member.
++int OnlinePeerRtt(uint32_t address);
+ // The machine's own LAN address (net_address or the default route's), also while online.
+ uint32_t BaseAddress();
+ // Used by XSocket: send a title datagram online; register the socket bound to a guest port.
+diff --git a/src/kernel/xam/apps/xgi_app.cpp b/src/kernel/xam/apps/xgi_app.cpp
+--- a/src/kernel/xam/apps/xgi_app.cpp
++++ b/src/kernel/xam/apps/xgi_app.cpp
+@@ -125,11 +125,14 @@
+         uint8_t* info = memory_->TranslateVirtual<uint8_t*>(session_info_ptr);
+         uint64_t id = random();
+         uint8_t* kid = info;
+-        for (int i = 0; i < 8; ++i) kid[i] = uint8_t(id >> (i * 8));
++        uint32_t address = rex::system::net::LocalAddress();
++        // Random first four bytes, then the host's address: the title's match list keeps the
++        // XNKID but not always the host's XNADDR, and XNetQosLookup finds the host from it.
++        for (int i = 0; i < 4; ++i) kid[i] = uint8_t(id >> (i * 8));
++        memory::store_and_swap<uint32_t>(kid + 4, address);
+         kid[0] &= 0x0F;
+         uint8_t* host = info + 8;  // XNADDR, 36 bytes
+         std::memset(host, 0, 36);
+-        uint32_t address = rex::system::net::LocalAddress();
+         memory::store_and_swap<uint32_t>(host + 0, address);
+         rex::system::net::EthernetAddress(address, host + 10);
+         uint8_t* key = info + 44;
+diff --git a/src/kernel/xam/xam_net.cpp b/src/kernel/xam/xam_net.cpp
+--- a/src/kernel/xam/xam_net.cpp
++++ b/src/kernel/xam/xam_net.cpp
+@@ -768,7 +768,14 @@
+   std::vector<uint32_t> targets;
+   for (uint32_t i = 0; i < count; ++i) {
+     auto* xna = REX_KERNEL_MEMORY()->TranslateVirtual<XNADDR*>(xnaddrs[i]);
+-    targets.push_back(ntohl(xna->ina.s_addr));
++    uint32_t address = ntohl(xna->ina.s_addr);
++    // The match list passes the session's XNKID with an empty XNADDR: the host's address is in
++    // the XNKID's last four bytes (XGISessionCreate).
++    if (!address && xnkids && xnkids[i]) {
++      const uint8_t* kid = REX_KERNEL_MEMORY()->TranslateVirtual<const uint8_t*>(xnkids[i]);
++      if ((kid[0] & 0xF0) == 0) address = memory::load_and_swap<uint32_t>(kid + 4);
++    }
++    targets.push_back(address);
+   }
+   {
+     std::lock_guard<std::mutex> lock(qos::mutex);
+@@ -782,11 +789,15 @@
+     for (size_t i = 0; i < targets.size(); ++i) {
+       std::vector<uint8_t> data;
+       uint32_t received = 0;
+-      // Online, room addresses are not reachable outside the online client; the title joins
+-      // without a measurement.
+-      int rtt = targets[i] && !net::OnlineEnabled()
+-                    ? qos::Probe(targets[i], probes, &data, &received)
+-                    : -1;
++      // Online, room addresses are not reachable outside the online client: it reports its
++      // own measurement of that player instead (no QoS data).
++      int rtt = -1;
++      if (targets[i] && net::OnlineEnabled()) {
++        rtt = net::OnlinePeerRtt(targets[i]);
++        received = rtt >= 0 ? std::max(probes, 2u) : 0;
++      } else if (targets[i]) {
++        rtt = qos::Probe(targets[i], probes, &data, &received);
++      }
+       XNQOSINFO& info = result->info[i];
+       info.probes_xmit = uint16_t(std::max(probes, 2u));
+       info.probes_recv = uint16_t(received);
+diff --git a/src/system/xsocket.cpp b/src/system/xsocket.cpp
+--- a/src/system/xsocket.cpp
++++ b/src/system/xsocket.cpp
+@@ -410,6 +410,16 @@
+     return welcomed_ ? vip_ : 0;
+   }
+ 
++  int PeerRtt(uint32_t vip) {
++    std::lock_guard<std::mutex> lock(mutex_);
++    for (const auto& peer : peers_) {
++      if (peer.vip != vip) continue;
++      if (peer.rtt_ms >= 0) return int(peer.rtt_ms + 0.5);
++      return server_rtt_ms_ >= 0 ? server_rtt_ms_ * 2 : 100;
++    }
++    return -1;
++  }
++
+   OnlineStatus Status() {
+     std::lock_guard<std::mutex> lock(mutex_);
+     OnlineStatus status;
+@@ -1249,6 +1259,10 @@
+   return OnlineClient::Get().Address();
+ }
+ 
++int OnlinePeerRtt(uint32_t address) {
++  return OnlineEnabled() ? OnlineClient::Get().PeerRtt(address) : -1;
++}
++
+ OnlineStatus GetOnlineStatus() {
+   return OnlineClient::Get().Status();
+ }

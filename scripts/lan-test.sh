@@ -12,7 +12,9 @@
 #
 # Output: logs/runs/NAME/host and logs/runs/NAME/join (frames, logs, summary.txt, as autotest).
 # TT_JOIN_DELAY=seconds starts the joiner later (default 20), so the host is in its lobby first.
-# TT_HOST_FLAGS / TT_JOIN_FLAGS add engine flags to one instance only, e.g.
+# TT_SPEC_SCENARIO=FILE adds a third instance, Spectator (display :93, 127.0.0.4), started
+# TT_SPEC_DELAY seconds after the joiner (default 60); output in logs/runs/NAME/spec.
+# TT_HOST_FLAGS / TT_JOIN_FLAGS / TT_SPEC_FLAGS add engine flags to one instance only, e.g.
 # TT_JOIN_FLAGS="--online_test_delay_ms=300 --online_utc_offset=330" for a distant player.
 set -u
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,6 +49,8 @@ stage() {
 }
 stage host
 stage join
+spec_scenario="${TT_SPEC_SCENARIO:-}"
+[[ -n "$spec_scenario" ]] && stage spec
 
 run() {
   local role="$1" display="$2" scenario="$3" self="$4" peer="$5" player="$6"
@@ -58,11 +62,24 @@ run() {
 }
 read -r -a host_flags <<< "${TT_HOST_FLAGS:-}"
 read -r -a join_flags <<< "${TT_JOIN_FLAGS:-}"
-run host :95 "$host_scenario" 127.0.0.2 127.0.0.3 Host "$@" "${host_flags[@]}" &
+read -r -a spec_flags <<< "${TT_SPEC_FLAGS:-}"
+host_peers=127.0.0.3 join_peers=127.0.0.2
+if [[ -n "$spec_scenario" ]]; then
+  host_peers=127.0.0.3,127.0.0.4 join_peers=127.0.0.2,127.0.0.4
+fi
+run host :95 "$host_scenario" 127.0.0.2 "$host_peers" Host "$@" "${host_flags[@]}" &
 host_pid=$!
 sleep "${TT_JOIN_DELAY:-20}"
-run join :94 "$join_scenario" 127.0.0.3 127.0.0.2 Guest "$@" "${join_flags[@]}" &
+run join :94 "$join_scenario" 127.0.0.3 "$join_peers" Guest "$@" "${join_flags[@]}" &
 join_pid=$!
+spec_pid=
+if [[ -n "$spec_scenario" ]]; then
+  sleep "${TT_SPEC_DELAY:-60}"
+  run spec :93 "$spec_scenario" 127.0.0.4 127.0.0.2,127.0.0.3 Spectator "$@" "${spec_flags[@]}" &
+  spec_pid=$!
+fi
 wait "$host_pid"; wait "$join_pid"
+[[ -n "$spec_pid" ]] && wait "$spec_pid"
 
 cat "$out/host.out" "$out/join.out"
+[[ -n "$spec_pid" ]] && cat "$out/spec.out"
