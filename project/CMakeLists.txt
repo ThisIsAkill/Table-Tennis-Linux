@@ -18,6 +18,7 @@ set(TABLETENNIS_SOURCES
     src/pc_settings.cpp
     src/haptics.cpp
     src/system_link.cpp
+    src/pc_features.cpp
 )
 
 if(WIN32)

@@ -61,7 +61,7 @@ The game's **OPTIONS** menu, both in the main menu and in the pause menu during 
 |---|---|---|
 | Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160 | at once (1440p and 4K, which also raise the internal render resolution: after a restart) |
 | Fullscreen | on / off | at once |
-| Picture | letterbox (the original 16:9) / fill screen (experimental) | after a restart |
+| Picture | for screens that are not 16:9: auto (fill wider screens, letterbox narrower ones) / letterbox (the original picture with bars) / fill screen (wider: the 3D view widens and menus stay 16:9; narrower such as the Steam Deck: more of the view at the top and bottom, menus stretch slightly). Follows the window as it is resized. The widescreen camera and menu handling come from davidptrssvea's v1.1.0 | at once |
 | Anti-aliasing | off / FXAA / FXAA extreme | at once |
 | Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) | at once |
 | VSync | auto (on for macOS, off elsewhere) / on / off: waits for the display, so the picture does not tear | at once |

@@ -2,6 +2,8 @@
 
 #include "pc_settings.h"
 
+#include "pc_features.h"
+
 #include "generated/default/tabletennis_init.h"
 #include "haptics.h"
 #include "intro_skip.h"
@@ -49,7 +51,6 @@ extern char** environ;
 REXCVAR_DECLARE(bool, achievement_sound);
 REXCVAR_DECLARE(bool, haptics);
 REXCVAR_DECLARE(bool, show_fps);
-REXCVAR_DECLARE(double, display_aspect);
 
 namespace tabletennis::pc_settings {
 namespace {
@@ -94,9 +95,11 @@ std::vector<Row> MakeRows() {
       {"fullscreen", "FULLSCREEN", "Fill the whole display instead of a window.", Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        0},
-      {"aspect", "PICTURE", "Letterbox keeps the game's 16:9 picture. Fill stretches it to the "
-       "screen's shape and widens the 3D view (experimental).", Apply::kRestart,
-       {{"letterbox", "LETTERBOX"}, {"fill", "FILL SCREEN"}},
+      {"aspect", "PICTURE", "Screens that are not 16:9. FILL widens the 3D view on wider screens "
+       "(menus stay 16:9) and shows more at the top and bottom on narrower ones such as the Steam "
+       "Deck (menus stretch slightly). LETTERBOX keeps the original picture with bars. AUTO fills "
+       "wider screens and letterboxes narrower ones.", Apply::kLive,
+       {{"auto", "AUTO"}, {"letterbox", "LETTERBOX"}, {"fill", "FILL SCREEN"}},
        0},
       {"aa", "ANTI-ALIASING", "Smooths jagged edges with FXAA after each frame.", Apply::kLive,
        {{"none", "OFF"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
@@ -863,6 +866,9 @@ void SettingsPage::ApplyLive(int row_index) {
     case kFullscreen:
       if (window_) window_->SetFullscreen(on);
       break;
+    case kPicture:
+      tabletennis::pc::SetPicture(g_rows[kPicture].choices[g_rows[kPicture].current].value);
+      break;
     case kResolution: {
       int width = 0, height = 0;
       if (!RestartPending(kResolution) &&
@@ -1044,10 +1050,9 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
 }
 
 void SettingsPage::Draw(ImGuiIO& io, float in) {
-  // The presenter letterboxes the game's 16:9 frame (or the display_aspect shape when filling
-  // the screen) into the window; lay out in 720p units inside that picture.
-  const double configured = REXCVAR_GET(display_aspect);
-  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  // The presenter letterboxes the game's 16:9 frame (or the whole window when FILL
+  // stretches it to a narrower screen) into the window; lay out in 720p units inside that picture.
+  const float aspect = float(tabletennis::pc::OverlayAspect());
   const float pic_w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
   const float pic_h = pic_w / aspect;
   const float pic_x = (io.DisplaySize.x - pic_w) * 0.5f;
@@ -1672,8 +1677,7 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
   const float alpha = ease_in * (1.0f - exit);
 
   // Bottom right of the game picture, like the achievement popup.
-  const double configured = REXCVAR_GET(display_aspect);
-  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  const float aspect = float(tabletennis::pc::OverlayAspect());
   const float pic_w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
   const float pic_h = pic_w / aspect;
   const float pic_x = (io.DisplaySize.x - pic_w) * 0.5f;
@@ -1791,8 +1795,7 @@ void ConnectionIndicator::OnDraw(ImGuiIO& io) {
   const auto& peer = status.peers[size_t(status.opponent)];
   if (peer.rtt_ms < 0) return;
 
-  const double configured = REXCVAR_GET(display_aspect);
-  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  const float aspect = float(tabletennis::pc::OverlayAspect());
   const float pic_w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
   const float pic_h = pic_w / aspect;
   const float pic_x = (io.DisplaySize.x - pic_w) * 0.5f;
@@ -1974,8 +1977,7 @@ void OnlinePrompt::OnDraw(ImGuiIO& io) {
 }
 
 void OnlinePrompt::Draw(ImGuiIO& io, float in) {
-  const double configured = REXCVAR_GET(display_aspect);
-  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  const float aspect = float(tabletennis::pc::OverlayAspect());
   const float pic_w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
   const float pic_h = pic_w / aspect;
   const float pic_x = (io.DisplaySize.x - pic_w) * 0.5f;

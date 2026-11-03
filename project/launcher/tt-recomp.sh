@@ -8,7 +8,7 @@
 #   ./tt-recomp.sh [--iso=PATH] [--resolution=720p|800p|1080p|1440p|4k]
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
-#                  [--post=fsr|cas|bilinear] [--aspect=letterbox|fill]
+#                  [--post=fsr|cas|bilinear] [--aspect=auto|letterbox|fill]
 #                  [--achievement_sound=true|false] [--haptics=true|false]
 #                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
 #                  [--auto_update=true|false] [--system_link=true|false]
@@ -55,7 +55,7 @@ fullscreen="false"
 show_fps="false"
 aa="none"
 post="bilinear"
-aspect="letterbox"
+aspect="auto"
 achievement_sound="true"
 haptics="true"
 render_scale="auto"
@@ -148,7 +148,7 @@ case "$fullscreen" in true|false) ;; *) die "fullscreen must be true or false" ;
 case "$show_fps" in true|false) ;; *) die "show_fps must be true or false" ;; esac
 case "$aa" in none|fxaa|fxaa_extreme) ;; *) die "unknown aa '$aa' (none, fxaa, fxaa_extreme)" ;; esac
 case "$post" in fsr|cas|bilinear) ;; *) die "unknown post '$post' (fsr, cas, bilinear)" ;; esac
-case "$aspect" in letterbox|fill) ;; *) die "unknown aspect '$aspect' (letterbox, fill)" ;; esac
+case "$aspect" in auto|letterbox|fill) ;; *) die "unknown aspect '$aspect' (auto, letterbox, fill)" ;; esac
 case "$achievement_sound" in true|false) ;; *) die "achievement_sound must be true or false" ;; esac
 case "$haptics" in true|false) ;; *) die "haptics must be true or false" ;; esac
 case "$gamemode" in auto|off) ;; *) die "gamemode must be auto or off" ;; esac
@@ -248,14 +248,11 @@ if [[ -z "$player_name" ]]; then
 fi
 [[ -n "$player_name" ]] && args+=("--user_name=$player_name")
 [[ -n "${lan_peers// /}" ]] && args+=("--net_peers=${lan_peers// /}")
-# aspect=fill renders the 3D view for the screen's shape and stretches the picture to fill it.
-# The game keeps its horizontal view, so screens narrower than 16:9 (Steam Deck 16:10) show
-# more at the top and bottom; 2D menus and HUD are stretched slightly. Wider screens would
-# lose some of the top and bottom.
-if [[ "$aspect" == fill ]]; then
-  ratio="$(awk -v w="$width" -v h="$height" 'BEGIN { printf "%.4f", w / h }')"
-  args+=("--display_aspect=$ratio" --present_letterbox=false)
-fi
+# Screens that are not 16:9 (the game follows the window's shape, see project/src/pc_features.h):
+# fill widens the 3D view on wider screens with the menus kept 16:9, and shows more at the top
+# and bottom on narrower ones (Steam Deck 16:10) with the menus stretched slightly; letterbox keeps
+# the original picture with bars; auto fills wider screens and letterboxes narrower ones.
+args+=("--picture=$aspect")
 # engine_flags= in the ini adds engine options (for example --occlusion_query_enable=false);
 # flags after -- on the command line still come last and win.
 if [[ -n "$engine_flags" ]]; then

@@ -16,6 +16,7 @@
 #include "offline_menu_device.h"
 #include "intro_skip.h"
 #include "achievement_ui.h"
+#include "pc_features.h"
 #include "pc_settings.h"
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -44,7 +45,7 @@
 
 REXCVAR_DECLARE(bool, show_fps);
 REXCVAR_DECLARE(int32_t, framerate);
-REXCVAR_DECLARE(double, display_aspect);
+REXCVAR_DECLARE(std::string, picture);
 
 class FpsOverlayDialog : public rex::ui::ImGuiDialog {
  public:
@@ -288,45 +289,6 @@ class TabletennisApp : public rex::ReXApp {
     REXLOG_INFO("TabletennisApp::OnPreSetup - GPU plugin: {}, protect_zero: false", config.gpu_plugin);
   }
 
-  // The game's projection uses a widescreen aspect constant (16/9 at 0x82079F9C, chosen in
-  // sub_82482C68 and sub_82228F30 against 4/3). Replacing it makes the game render its 3D view
-  // for another screen shape inside the same 1280x720 image; stretched to that shape by the
-  // presenter, geometry keeps its proportions and the screen is filled.
-  void ApplyDisplayAspect() {
-    const double aspect = REXCVAR_GET(display_aspect);
-    if (aspect <= 0.0) {
-      return;
-    }
-    constexpr uint32_t kAspectAddress = 0x82079F9C;
-    constexpr uint32_t kNativeAspectBits = 0x3FE38E39;  // 16/9 as a float
-    auto* word = runtime()->memory()->TranslateVirtual<uint8_t*>(kAspectAddress);
-    uint32_t current = (uint32_t(word[0]) << 24) | (uint32_t(word[1]) << 16) |
-                       (uint32_t(word[2]) << 8) | uint32_t(word[3]);
-    if (current != kNativeAspectBits) {
-      REXLOG_WARN("Tabletennis: display_aspect not applied, unexpected value {:08X} at {:08X}",
-                  current, kAspectAddress);
-      return;
-    }
-    float value = float(std::clamp(aspect, 1.0, 4.0));
-    uint32_t bits;
-    std::memcpy(&bits, &value, sizeof(bits));
-    // The constant lives in read-only data; open the page for the write and restore it.
-    auto* heap = runtime()->memory()->LookupHeap(kAspectAddress);
-    uint32_t old_protect = 0;
-    if (!heap || !heap->Protect(kAspectAddress, 4,
-                                rex::memory::kMemoryProtectRead | rex::memory::kMemoryProtectWrite,
-                                &old_protect)) {
-      REXLOG_WARN("Tabletennis: display_aspect not applied, cannot unprotect {:08X}", kAspectAddress);
-      return;
-    }
-    word[0] = uint8_t(bits >> 24);
-    word[1] = uint8_t(bits >> 16);
-    word[2] = uint8_t(bits >> 8);
-    word[3] = uint8_t(bits);
-    heap->Protect(kAspectAddress, 4, old_protect);
-    REXLOG_INFO("Tabletennis: 3D view aspect set to {:.4f} (native 16:9)", value);
-  }
-
   void OnPostLoadXexImage() override {
     // TT_DUMP_IMAGE=path writes the loaded (decompressed) executable image to a file, for
     // locating constants when developing patches. Off unless set; the file is game data and
@@ -344,7 +306,11 @@ class TabletennisApp : public rex::ReXApp {
         }
       }
     }
-    ApplyDisplayAspect();
+    // PICTURE (pc_features.h): the 3D camera and 2D layers follow the window's shape.
+    tabletennis::pc::SetPicture(REXCVAR_GET(picture));
+    if (window()) {
+      tabletennis::pc::SetSurfaceSize(window()->GetActualPhysicalWidth(), window()->GetActualPhysicalHeight());
+    }
     auto vfs = runtime()->kernel_state()->file_system();
     if (vfs) {
       vfs->RegisterSymbolicLink("cache:", "\\Device\\Harddisk0\\Cache0");
@@ -405,6 +371,11 @@ class TabletennisApp : public rex::ReXApp {
     if (!imgui_drawer() || !runtime() || !runtime()->kernel_state()) return nullptr;
     return std::make_unique<tabletennis::achievement_ui::AchievementToast>(
         imgui_drawer(), immediate_drawer(), runtime(), &achievements(), window());
+  }
+
+  // The window's drawable size changed (resize, fullscreen): the picture follows its shape.
+  void OnWindowPixelSizeChanged(uint32_t width, uint32_t height) override {
+    tabletennis::pc::SetSurfaceSize(width, height);
   }
 
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {

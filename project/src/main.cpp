@@ -13,9 +13,9 @@
 
 REXCVAR_DEFINE_BOOL(show_fps, false, "UI", "Show in-game FPS counter");
 REXCVAR_DEFINE_INT32(framerate, 60, "Video", "Target framerate limit (60, 120, 144, 240, 0=unlimited)");
-REXCVAR_DEFINE_DOUBLE(display_aspect, 0.0, "Video",
-                      "Aspect ratio the game renders its 3D view for (0 = native 16:9). With "
-                      "present_letterbox=false the picture then fills screens of that shape");
+REXCVAR_DEFINE_STRING(picture, "auto", "Video",
+                      "Picture on screens that are not 16:9: auto (fill wider screens, letterbox "
+                      "narrower ones), letterbox or fill");
 
 #undef __imp__VdSwap
 extern "C" REX_FUNC(__imp__VdSwap);

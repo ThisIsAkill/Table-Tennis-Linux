@@ -2,6 +2,7 @@
 
 #include "generated/default/tabletennis_init.h"
 #include "achievement_ui.h"
+#include "pc_features.h"
 #include "intro_skip.h"
 
 #include <SDL3/SDL.h>
@@ -26,7 +27,6 @@
 #include <ctime>
 #include <string_view>
 
-REXCVAR_DECLARE(double, display_aspect);
 REXCVAR_DEFINE_BOOL(achievement_sound, true, "UI", "Play a chime when an achievement unlocks");
 
 namespace tabletennis::achievement_ui {
@@ -141,13 +141,12 @@ void PlayUnlockChime() {
 }
 
 // The rectangle the game picture occupies in the window: the presenter letterboxes the
-// game's 16:9 frame (or the display_aspect shape when filling the screen) into the window.
+// game's 16:9 frame (or the whole window when FILL stretches it to a narrower screen) into the window.
 struct PictureRect {
   float x, y, w, h;
 };
 PictureRect GamePicture(const ImGuiIO& io) {
-  const double configured = REXCVAR_GET(display_aspect);
-  const float aspect = configured > 0.0 ? float(configured) : 16.0f / 9.0f;
+  const float aspect = float(tabletennis::pc::OverlayAspect());
   const float w = std::min(io.DisplaySize.x, io.DisplaySize.y * aspect);
   const float h = w / aspect;
   return {(io.DisplaySize.x - w) * 0.5f, (io.DisplaySize.y - h) * 0.5f, w, h};
