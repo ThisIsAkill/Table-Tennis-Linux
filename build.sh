@@ -129,6 +129,11 @@ stage "Finishing installation"
 dist="$root/dist"
 if [[ "$platform" == mac ]]; then libext=dylib; else libext=so; fi
 install -m 755 "$root/build/tabletennis" "$root/build/librexruntime.$libext" "$root/build/librexgpu-xenos.$libext" "$dist/"
+if [[ "$platform" == mac ]]; then
+  # The Vulkan loader and MoltenVK (Vulkan on Metal) that the SDK staged next to the build.
+  rm -rf "$dist/vulkan"
+  cp -R "$root/build/vulkan" "$dist/vulkan"
+fi
 install -m 755 "$root/project/launcher/tt-recomp.sh" "$dist/tt-recomp.sh"
 install -m 644 "$root/project/assets/tabletennis.ico" "$dist/tabletennis.ico"
 mkdir -p "$dist/fonts"

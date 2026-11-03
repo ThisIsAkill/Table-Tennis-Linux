@@ -59,5 +59,7 @@ def patch(folder):
     if seen != rules.keys():
         raise ValueError(f'Missing generated functions: {rules.keys() - seen}')
     for path, text in pending.items():
-        path.write_text(text, encoding='utf-8', newline='\n')
+        # open() instead of write_text(newline=), which needs Python 3.10 (macOS ships 3.9).
+        with open(path, 'w', encoding='utf-8', newline='\n') as out:
+            out.write(text)
     print(f'Verified all {len(rules)} native edits; updated {len(pending)} local files.', flush=True)

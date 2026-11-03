@@ -52,9 +52,10 @@ if(TARGET tabletennis_recomp)
     target_include_directories(tabletennis_recomp BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sdk-overrides")
 endif()
 
-# Linux: the host loads librexruntime.so through its $ORIGIN rpath and dlopens
-# librexgpu-xenos.so (Vulkan backend) from its own folder, so stage both next to it.
-if(UNIX AND NOT APPLE)
+# Linux and macOS: the host loads librexruntime through its $ORIGIN / @executable_path rpath
+# and dlopens librexgpu-xenos (Vulkan backend) from its own folder, so stage both next to it.
+# On macOS the SDK also stages the Vulkan loader and MoltenVK in vulkan/ next to it.
+if(UNIX)
     add_custom_command(TARGET tabletennis POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:rex::runtime>
