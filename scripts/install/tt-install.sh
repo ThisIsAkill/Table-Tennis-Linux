@@ -244,7 +244,8 @@ fi
 fi
 prefix="$(realpath -m -- "$prefix")"
 cache="$(realpath -m -- "$cache")"
-case "$prefix/" in "$src/"*) die "Choose an install folder outside the installer's own folder." ;; esac
+# (--sdk-only installs nothing: its "prefix" is the cache, which the release build keeps in the repo.)
+((sdk_only)) || case "$prefix/" in "$src/"*) die "Choose an install folder outside the installer's own folder." ;; esac
 [[ "$prefix" != / && "$prefix" != "$HOME" ]] || die "Choose a dedicated install folder, for example $HOME/Games/TableTennis."
 
 on_steamos=0
