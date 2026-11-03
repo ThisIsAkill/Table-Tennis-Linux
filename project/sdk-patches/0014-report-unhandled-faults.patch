@@ -1,0 +1,47 @@
+diff --git a/src/core/exception_handler_posix.cpp b/src/core/exception_handler_posix.cpp
+index 8b1c76a..d5e0d02 100644
+--- a/src/core/exception_handler_posix.cpp
++++ b/src/core/exception_handler_posix.cpp
+@@ -22,7 +22,9 @@
+ #include <signal.h>
+ 
+ #include <cstdint>
++#include <cstdio>
+ #include <cstring>
++#include <unistd.h>
+ 
+ #include <rex/assert.h>
+ #include <rex/logging.h>
+@@ -417,6 +419,32 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
+       return;
+     }
+   }
++
++  // No handler took the fault. Returning would run the faulting instruction again, forever: the
++  // thread spins at full CPU and the program hangs without a word. Report the fault on stderr
++  // and restore the default action, so the retry ends the process with the system's crash
++  // report. (snprintf is not async-signal-safe, but the process is about to die anyway.)
++  {
++#if REX_ARCH_AMD64
++    const uint64_t fault_pc = thread_context.rip;
++#elif REX_ARCH_ARM64
++    const uint64_t fault_pc = thread_context.pc;
++#else
++    const uint64_t fault_pc = 0;
++#endif
++    char line[192];
++    const int length = std::snprintf(
++        line, sizeof(line), "ReXGlue: unhandled signal %d (code %d) at pc 0x%llx, address 0x%llx\n",
++        signal_number, signal_info->si_code, static_cast<unsigned long long>(fault_pc),
++        reinterpret_cast<unsigned long long>(signal_info->si_addr));
++    if (length > 0) {
++      (void)!write(STDERR_FILENO, line, size_t(length) < sizeof(line) ? size_t(length) : sizeof(line) - 1);
++    }
++    struct sigaction default_action;
++    std::memset(&default_action, 0, sizeof(default_action));
++    default_action.sa_handler = SIG_DFL;
++    sigaction(signal_number, &default_action, nullptr);
++  }
+ }
+ 
+ void ExceptionHandler::Install(Handler fn, void* data) {
