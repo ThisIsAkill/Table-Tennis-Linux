@@ -86,7 +86,7 @@ enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
   kAchievementSound, kButtonPrompts,
   // ONLINE section
-  kPlayerName, kOnlineServer, kOnlineStatus,
+  kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat,
   // UPDATES section
   kCheckUpdates, kAutoUpdate, kCheckNow, kVersion,
 };
@@ -99,7 +99,7 @@ const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
       {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kAntiAliasing, kSharpening, kShowFps},
       {kButtonPrompts, kHaptics, kAchievementSound},
-      {kPlayerName, kOnlineServer, kOnlineStatus},
+      {kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
   return rows[tab];
 }
@@ -158,6 +158,10 @@ std::vector<Row> MakeRows() {
       {"", "ONLINE SERVER", "The server ONLINE in the main menu plays through (server= in "
        "tt-recomp.ini).", Apply::kInfo, {}, 0},
       {"", "ONLINE STATUS", "", Apply::kInfo, {}, 0},
+      {"voice_chat", "VOICE CHAT", "Headset voice chat during ONLINE and SYSTEM LINK matches. "
+       "Needs a microphone; others hear you while you talk.", Apply::kLive,
+       {{"false", "OFF"}, {"true", "ON"}},
+       1},
       {"check_updates", "CHECK AT START", "Look for a new version each time the game starts.",
        Apply::kSaved,
        {{"false", "OFF"}, {"true", "ON"}},
@@ -793,6 +797,10 @@ void SettingsPage::Open() {
   g_rows[kShowFps].current = hooks_.get_show_fps && hooks_.get_show_fps() ? 1 : 0;
   g_rows[kAchievementSound].current = REXCVAR_GET(achievement_sound) ? 1 : 0;
   g_rows[kHaptics].current = REXCVAR_GET(haptics) ? 1 : 0;
+  {
+    const std::string voice = rex::cvar::GetFlagByName("voice_chat");
+    g_rows[kVoiceChat].current = (voice == "true" || voice == "1") ? 1 : 0;
+  }
   if (window_) g_rows[kFullscreen].current = window_->IsFullscreen() ? 1 : 0;
   selected_ = TabRows(g_tab).front();
   held_direction_ = 0;
@@ -887,6 +895,10 @@ void SettingsPage::ApplyLive(int row_index) {
       break;
     case kHaptics:
       REXCVAR_SET(haptics, on);
+      break;
+    case kVoiceChat:
+      // SDK cvar (see xam_voice / voice_chat), so set it by name like display_brightness.
+      rex::cvar::SetFlagByName("voice_chat", on ? "true" : "false");
       break;
     case kButtonPrompts:
       tabletennis::prompts::SetSetting(g_rows[kButtonPrompts].choices[g_rows[kButtonPrompts].current].value);

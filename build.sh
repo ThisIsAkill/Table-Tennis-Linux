@@ -99,6 +99,9 @@ if [[ -z "$sdk" ]]; then
     [[ "$(git -C "$src" rev-parse HEAD)" == "$rexglue_commit" ]] \
       || die "$src is not ReXGlue $rexglue_tag ($rexglue_commit)"
     git -C "$src" checkout -q -- .
+    # Drop any files a previous patch set created (e.g. a new source file), so patches that add
+    # files re-apply cleanly. -fd only; no -x, so the ignored build tree (out/) is kept.
+    git -C "$src" clean -qfd
     for p in "${sdk_patches[@]}"; do
       [[ -f "$p" ]] || continue
       git -C "$src" apply "$p" || die "SDK patch does not apply: $p"

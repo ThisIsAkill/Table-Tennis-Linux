@@ -1,0 +1,589 @@
+diff --git a/include/rex/system/voice_chat.h b/include/rex/system/voice_chat.h
+new file mode 100644
+index 0000000..4edb168
+--- /dev/null
++++ b/include/rex/system/voice_chat.h
+@@ -0,0 +1,54 @@
++// voice_chat.h - headset voice chat for multiplayer, independent of the game's own (disabled)
++// Xbox voice. Captures the microphone with SDL, sends 20 ms PCM frames to the other players in
++// the room through the online client's transport, and plays what the others send.
++//
++// Audio format: 16 kHz, signed 16-bit, mono, 20 ms frames (320 samples). On the wire each frame
++// is an independent IMA ADPCM block (~164 bytes, ~64 kbit/s) so one lost packet costs one frame.
++//
++// Testing without audio hardware: with voice_test=true the capture source is a generated tone
++// instead of the microphone and every frame played is also written to a WAV file, so the whole
++// capture -> transport -> playback path can be checked on a headless machine.
++
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++
++namespace rex::system::voice {
++
++// 16 kHz, 20 ms frames.
++inline constexpr int kSampleRate = 16000;
++inline constexpr int kFrameSamples = 320;             // 20 ms
++inline constexpr int kFrameBytes = kFrameSamples * 2;  // signed 16-bit mono
++
++// Starts the microphone capture and playback (idempotent). If there is no audio device, or
++// voice_chat is off, it still runs so test mode and the data path work; it just captures/plays
++// nothing real. Call once the online client is up.
++void Start();
++void Stop();
++
++// Gates real capture/playback on being in a multiplayer room. Frames are only captured and sent
++// while in a session. Used as a fallback when no session query is set (see SetSessionQuery).
++void SetInSession(bool in_session);
++
++// The transport registers this; the capture thread calls it each tick to decide whether a match
++// with other players is in progress. When set, it takes precedence over SetInSession so session
++// start/end is detected without the transport having to push it.
++using SessionQueryFn = bool (*)();
++void SetSessionQuery(SessionQueryFn query);
++
++// The transport registers this; the capture thread calls it with a ready 20 ms frame
++// (kFrameBytes) to send to every other player in the match. The transport decides whether that
++// is the online relay or the System Link peers.
++using SendFrameFn = void (*)(const uint8_t* frame, size_t bytes);
++void SetSender(SendFrameFn sender);
++
++// The transport delivers an incoming frame from a room member for playback.
++void OnIncomingFrame(uint32_t from_id, const uint8_t* frame, size_t bytes);
++
++// For the UI: voice_chat on, and whether the local mic or a remote player is currently audible.
++bool Enabled();
++bool LocalTalking();
++bool RemoteTalking();
++
++}  // namespace rex::system::voice
+diff --git a/src/system/CMakeLists.txt b/src/system/CMakeLists.txt
+index fc46d86..34cc952 100644
+--- a/src/system/CMakeLists.txt
++++ b/src/system/CMakeLists.txt
+@@ -17,6 +17,7 @@ set(REXSYSTEM_SOURCES
+     xnotifylistener.cpp
+     xenumerator.cpp
+     xsocket.cpp
++    voice_chat.cpp
+     xsymboliclink.cpp
+     xobject.cpp
+     xmodule.cpp
+diff --git a/src/system/voice_chat.cpp b/src/system/voice_chat.cpp
+new file mode 100644
+index 0000000..499c710
+--- /dev/null
++++ b/src/system/voice_chat.cpp
+@@ -0,0 +1,300 @@
++// voice_chat.cpp - see rex/system/voice_chat.h.
++
++#include <rex/system/voice_chat.h>
++
++#include <rex/cvar.h>
++#include <rex/logging.h>
++
++#include <SDL3/SDL.h>
++
++#include <atomic>
++#include <cmath>
++#include <cstdio>
++#include <cstring>
++#include <mutex>
++#include <thread>
++#include <vector>
++
++REXCVAR_DEFINE_BOOL(voice_chat, true, "Voice", "Headset voice chat in multiplayer matches");
++REXCVAR_DEFINE_INT32(voice_mic_gate, 600, "Voice",
++                     "Microphone noise gate: frames quieter than this (0-32767 RMS) are not sent");
++REXCVAR_DEFINE_BOOL(voice_test, false, "Voice",
++                    "Test mode: send a generated tone instead of the mic and write played audio "
++                    "to voice-in.wav (for checking the path without audio hardware)");
++REXCVAR_DEFINE_BOOL(voice_monitor, false, "Voice",
++                    "Loop your own microphone back to your speakers so you can test the mic "
++                    "without a match (use headphones to avoid feedback)");
++
++namespace rex::system::voice {
++namespace {
++
++std::atomic<bool> g_started{false};
++std::atomic<bool> g_in_session{false};
++std::atomic<SessionQueryFn> g_session_query{nullptr};
++std::atomic<SendFrameFn> g_sender{nullptr};
++std::atomic<bool> g_local_talking{false};
++std::atomic<int64_t> g_last_remote_ns{0};
++
++SDL_AudioStream* g_capture = nullptr;   // mic (nullptr in test mode or with no device)
++SDL_AudioStream* g_playback = nullptr;  // speaker/headset
++std::thread g_capture_thread;
++std::atomic<bool> g_run{false};
++
++// Test mode: tone phase and a WAV of everything played.
++double g_tone_phase = 0.0;
++std::FILE* g_wav = nullptr;
++uint32_t g_wav_bytes = 0;
++std::mutex g_wav_mutex;
++
++int64_t NowNs() {
++  return std::chrono::duration_cast<std::chrono::nanoseconds>(
++             std::chrono::steady_clock::now().time_since_epoch())
++      .count();
++}
++
++SDL_AudioSpec FrameSpec() {
++  SDL_AudioSpec spec{};
++  spec.format = SDL_AUDIO_S16;
++  spec.channels = 1;
++  spec.freq = kSampleRate;
++  return spec;
++}
++
++// --- test-mode WAV ----------------------------------------------------------------------------
++void WavOpen() {
++  g_wav = std::fopen("voice-in.wav", "wb");
++  if (!g_wav) return;
++  const uint8_t header[44] = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ',
++                              16, 0, 0, 0, 1, 0, 1, 0, 0x80, 0x3E, 0, 0, 0, 0x7D, 0, 0, 2, 0, 16, 0,
++                              'd', 'a', 't', 'a', 0, 0, 0, 0};  // 16 kHz mono S16
++  std::fwrite(header, 1, sizeof(header), g_wav);
++  g_wav_bytes = 0;
++}
++void WavWrite(const uint8_t* pcm, size_t bytes) {
++  std::lock_guard<std::mutex> lock(g_wav_mutex);
++  if (!g_wav) return;
++  std::fwrite(pcm, 1, bytes, g_wav);
++  g_wav_bytes += uint32_t(bytes);
++  // Keep the size fields current so the file is a valid WAV even if the process is killed before
++  // WavClose (as the headless test harness does).
++  auto put = [&](long at, uint32_t v) {
++    std::fseek(g_wav, at, SEEK_SET);
++    uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)};
++    std::fwrite(b, 1, 4, g_wav);
++  };
++  put(4, 36 + g_wav_bytes);
++  put(40, g_wav_bytes);
++  std::fseek(g_wav, 0, SEEK_END);
++}
++void WavClose() {
++  std::lock_guard<std::mutex> lock(g_wav_mutex);
++  if (!g_wav) return;
++  auto patch = [&](long at, uint32_t v) {
++    std::fseek(g_wav, at, SEEK_SET);
++    uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)};
++    std::fwrite(b, 1, 4, g_wav);
++  };
++  patch(4, 36 + g_wav_bytes);
++  patch(40, g_wav_bytes);
++  std::fclose(g_wav);
++  g_wav = nullptr;
++}
++
++int Rms(const int16_t* s, int n) {
++  if (n <= 0) return 0;
++  double sum = 0.0;
++  for (int i = 0; i < n; ++i) sum += double(s[i]) * s[i];
++  return int(std::sqrt(sum / n));
++}
++
++// --- IMA ADPCM --------------------------------------------------------------------------------
++// Each 20 ms frame is an independent block so a lost UDP packet costs only that frame: a verbatim
++// first sample + step index, then one 4-bit code per remaining sample (~4x smaller than raw PCM,
++// so ~64 kbit/s instead of 256). Both ends run this code, so the format needs no negotiation.
++const int kStep[89] = {
++    7,     8,     9,     10,    11,    12,    13,    14,    16,    17,    19,    21,    23,    25,
++    28,    31,    34,    37,    41,    45,    50,    55,    60,    66,    73,    80,    88,    97,
++    107,   118,   130,   143,   157,   173,   190,   209,   230,   253,   279,   307,   337,   371,
++    408,   449,   494,   544,   598,   658,   724,   796,   876,   963,   1060,  1166,  1282,  1411,
++    1552,  1707,  1878,  2066,  2272,  2499,  2749,  3024,  3327,  3660,  4026,  4428,  4871,  5358,
++    5894,  6484,  7132,  7845,  8630,  9493,  10442, 11487, 12635, 13899, 15289, 16818, 18500,
++    20350, 22385, 24623, 27086, 29794, 32767};
++const int kIndexAdj[16] = {-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8};
++
++int Clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
++
++// Encodes n PCM samples into out (at most 4 + n/2 + 1 bytes); returns the byte count.
++size_t AdpcmEncode(const int16_t* pcm, int n, uint8_t* out) {
++  int predictor = pcm[0];
++  int index = 0;
++  out[0] = uint8_t(predictor & 0xFF);
++  out[1] = uint8_t((predictor >> 8) & 0xFF);
++  out[2] = uint8_t(index);
++  out[3] = 0;
++  size_t op = 4;
++  bool high = false;
++  uint8_t cache = 0;
++  for (int i = 1; i < n; ++i) {
++    const int step = kStep[index];
++    int diff = pcm[i] - predictor;
++    int code = 0;
++    if (diff < 0) { code = 8; diff = -diff; }
++    int tmp = step;
++    if (diff >= tmp) { code |= 4; diff -= tmp; }
++    tmp >>= 1;
++    if (diff >= tmp) { code |= 2; diff -= tmp; }
++    tmp >>= 1;
++    if (diff >= tmp) { code |= 1; }
++    int diffq = step >> 3;
++    if (code & 4) diffq += step;
++    if (code & 2) diffq += step >> 1;
++    if (code & 1) diffq += step >> 2;
++    predictor = Clamp(predictor + ((code & 8) ? -diffq : diffq), -32768, 32767);
++    index = Clamp(index + kIndexAdj[code], 0, 88);
++    if (!high) { cache = uint8_t(code & 0x0F); high = true; }
++    else { out[op++] = uint8_t(cache | (code << 4)); high = false; }
++  }
++  if (high) out[op++] = cache;
++  return op;
++}
++
++// Decodes an ADPCM block into pcm (up to max samples); returns the sample count.
++int AdpcmDecode(const uint8_t* in, size_t len, int16_t* pcm, int max) {
++  if (len < 4 || max < 1) return 0;
++  int predictor = int16_t(uint16_t(in[0]) | (uint16_t(in[1]) << 8));
++  int index = Clamp(in[2], 0, 88);
++  int n = 0;
++  pcm[n++] = int16_t(predictor);
++  size_t ip = 4;
++  bool high = false;
++  uint8_t cur = 0;
++  while (n < max && ip < len) {
++    int code;
++    if (!high) { cur = in[ip]; code = cur & 0x0F; high = true; }
++    else { code = (cur >> 4) & 0x0F; high = false; ++ip; }
++    const int step = kStep[index];
++    int diffq = step >> 3;
++    if (code & 4) diffq += step;
++    if (code & 2) diffq += step >> 1;
++    if (code & 1) diffq += step >> 2;
++    predictor = Clamp(predictor + ((code & 8) ? -diffq : diffq), -32768, 32767);
++    index = Clamp(index + kIndexAdj[code], 0, 88);
++    pcm[n++] = int16_t(predictor);
++  }
++  return n;
++}
++
++// Fills `out` (kFrameSamples) with the next capture frame. Returns false when there is nothing to
++// send this tick (no device, or not enough captured audio yet).
++bool NextCaptureFrame(int16_t* out) {
++  if (REXCVAR_GET(voice_test)) {
++    const double step = 2.0 * M_PI * 440.0 / kSampleRate;  // 440 Hz test tone
++    for (int i = 0; i < kFrameSamples; ++i) {
++      out[i] = int16_t(8000.0 * std::sin(g_tone_phase));
++      g_tone_phase += step;
++      if (g_tone_phase > 2.0 * M_PI) g_tone_phase -= 2.0 * M_PI;
++    }
++    return true;
++  }
++  if (!g_capture) return false;
++  if (SDL_GetAudioStreamAvailable(g_capture) < kFrameBytes) return false;
++  return SDL_GetAudioStreamData(g_capture, out, kFrameBytes) == kFrameBytes;
++}
++
++void CaptureLoop() {
++  std::vector<int16_t> frame(kFrameSamples);
++  int64_t last_loud_ns = 0;
++  while (g_run.load()) {
++    bool sent = false;
++    SessionQueryFn query = g_session_query.load();
++    const bool monitor = REXCVAR_GET(voice_monitor);
++    const bool active = monitor || (query ? query() : g_in_session.load());
++    if (active && REXCVAR_GET(voice_chat)) {
++      while (NextCaptureFrame(frame.data())) {
++        const int rms = Rms(frame.data(), kFrameSamples);
++        // Noise gate with a hangover: once speech crosses the threshold, keep sending the real
++        // (quieter) audio for a short while so brief pauses between words do not cut the stream
++        // and leave the far end's buffer to underrun and crackle.
++        if (rms >= REXCVAR_GET(voice_mic_gate)) last_loud_ns = NowNs();
++        const bool talking = NowNs() - last_loud_ns < 300'000'000;  // 300 ms
++        g_local_talking.store(talking);
++        if (talking) {
++          uint8_t encoded[kFrameBytes];  // ADPCM is always smaller than the raw frame
++          const size_t n = AdpcmEncode(frame.data(), kFrameSamples, encoded);
++          if (monitor) {
++            OnIncomingFrame(0, encoded, n);  // play it straight back so you hear yourself
++          } else if (SendFrameFn fn = g_sender.load()) {
++            fn(encoded, n);
++          }
++          sent = true;
++        }
++        if (REXCVAR_GET(voice_test)) break;  // one tone frame per tick
++      }
++    } else {
++      g_local_talking.store(false);
++    }
++    std::this_thread::sleep_for(std::chrono::milliseconds(sent ? 18 : 8));
++  }
++}
++
++}  // namespace
++
++void Start() {
++  bool expected = false;
++  if (!g_started.compare_exchange_strong(expected, true)) return;
++
++  if (REXCVAR_GET(voice_test)) WavOpen();
++
++  if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
++    REXLOG_WARN("Voice: no audio subsystem ({}); voice chat disabled", SDL_GetError());
++  } else {
++    SDL_AudioSpec spec = FrameSpec();
++    g_playback = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
++    if (g_playback) SDL_ResumeAudioStreamDevice(g_playback);
++    else REXLOG_WARN("Voice: no playback device ({})", SDL_GetError());
++    if (!REXCVAR_GET(voice_test)) {
++      g_capture = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &spec, nullptr, nullptr);
++      if (g_capture) SDL_ResumeAudioStreamDevice(g_capture);
++      else REXLOG_WARN("Voice: no microphone ({}); you will hear others but not be heard", SDL_GetError());
++    }
++  }
++
++  g_run.store(true);
++  g_capture_thread = std::thread(CaptureLoop);
++  REXLOG_INFO("Voice: started ({}, {} Hz, {} ms frames){}", REXCVAR_GET(voice_chat) ? "on" : "off",
++              kSampleRate, kFrameSamples * 1000 / kSampleRate, REXCVAR_GET(voice_test) ? " [TEST]" : "");
++}
++
++void Stop() {
++  if (!g_started.exchange(false)) return;
++  g_run.store(false);
++  if (g_capture_thread.joinable()) g_capture_thread.join();
++  if (g_capture) SDL_DestroyAudioStream(g_capture);
++  if (g_playback) SDL_DestroyAudioStream(g_playback);
++  g_capture = g_playback = nullptr;
++  WavClose();
++}
++
++void SetInSession(bool in_session) { g_in_session.store(in_session); }
++
++void SetSessionQuery(SessionQueryFn query) { g_session_query.store(query); }
++
++void SetSender(SendFrameFn sender) { g_sender.store(sender); }
++
++void OnIncomingFrame(uint32_t from_id, const uint8_t* frame, size_t bytes) {
++  (void)from_id;
++  if (!REXCVAR_GET(voice_chat) || bytes < 4 || bytes > kFrameBytes) return;
++  int16_t pcm[kFrameSamples];
++  const int n = AdpcmDecode(frame, bytes, pcm, kFrameSamples);
++  if (n <= 0) return;
++  const size_t pcm_bytes = size_t(n) * 2;
++  g_last_remote_ns.store(NowNs());
++  if (REXCVAR_GET(voice_test)) WavWrite(reinterpret_cast<const uint8_t*>(pcm), pcm_bytes);
++  if (g_playback) SDL_PutAudioStreamData(g_playback, pcm, int(pcm_bytes));
++}
++
++bool Enabled() { return REXCVAR_GET(voice_chat); }
++bool LocalTalking() { return g_local_talking.load(); }
++bool RemoteTalking() { return NowNs() - g_last_remote_ns.load() < 300'000'000; }
++
++}  // namespace rex::system::voice
+diff --git a/src/system/xsocket.cpp b/src/system/xsocket.cpp
+index 378c210..1b996e4 100644
+--- a/src/system/xsocket.cpp
++++ b/src/system/xsocket.cpp
+@@ -27,6 +27,7 @@
+ #include <rex/kernel/xam/module.h>
+ #include <rex/platform.h>
+ #include <rex/system/kernel_state.h>
++#include <rex/system/voice_chat.h>
+ #include <rex/system/xsocket.h>
+ // #include <rex/system/xnet.h>
+ 
+@@ -283,6 +284,10 @@ std::mutex association_mutex;
+ std::vector<Association> associations;  // index = address - kSecureBase - 1
+ }  // namespace
+ 
++// Brings the voice module up and points it at the right transport (defined after OnlineClient).
++// Idempotent; called whenever a match forms, over online or System Link.
++void EnsureVoiceStarted();
++
+ uint32_t SecureAddress(uint32_t real, const uint8_t kid[8]) {
+   std::lock_guard<std::mutex> lock(association_mutex);
+   for (size_t i = 0; i < associations.size(); ++i) {
+@@ -297,6 +302,7 @@ uint32_t SecureAddress(uint32_t real, const uint8_t kid[8]) {
+   const uint32_t address = kSecureBase + uint32_t(associations.size());
+   REXKRNL_INFO("XNet: {} in session {:016X} is {}", FormatAddress(real),
+                memory::load_and_swap<uint64_t>(kid), FormatAddress(address));
++  EnsureVoiceStarted();  // a System Link peer just appeared; make sure voice is running
+   return address;
+ }
+ 
+@@ -317,6 +323,88 @@ bool CurrentSessionKey(uint8_t kid[8]) {
+   return true;
+ }
+ 
++// --- System Link voice transport --------------------------------------------------------------
++// Online voice rides the relay (OnlineClient::SendVoiceToRoom); System Link peers are on the LAN,
++// so voice goes straight to them over a dedicated UDP socket on kVoiceUdpPort. The peers are the
++// secure associations registered under the current session key.
++namespace {
++constexpr uint16_t kVoiceUdpPort = 0xADA0;  // 44448
++constexpr uint8_t kVoiceUdpMagic[4] = {'T', 'T', 'V', 'C'};
++std::mutex voice_socket_mutex;
++int voice_fd = -1;
++std::thread voice_recv_thread;
++std::atomic<bool> voice_recv_run{false};
++
++void VoiceRecvLoop() {
++  uint8_t buf[2048];
++  while (voice_recv_run.load()) {
++    sockaddr_in from{};
++    socklen_t from_len = sizeof(from);
++    const ssize_t n = recvfrom(voice_fd, reinterpret_cast<char*>(buf), sizeof(buf), 0,
++                               reinterpret_cast<sockaddr*>(&from), &from_len);
++    if (n > 4 && std::memcmp(buf, kVoiceUdpMagic, 4) == 0) {
++      rex::system::voice::OnIncomingFrame(ntohl(from.sin_addr.s_addr), buf + 4, size_t(n - 4));
++    }
++  }
++}
++
++// Opens the voice socket once, bound to our own address, so two instances on one machine (the
++// System Link loopback test) can share the port on different loopback addresses. A 100 ms receive
++// timeout lets the thread notice shutdown.
++void EnsureVoiceSocket() {
++  std::lock_guard<std::mutex> lock(voice_socket_mutex);
++  if (voice_fd >= 0) return;
++  int fd = int(::socket(AF_INET, SOCK_DGRAM, 0));
++  if (fd < 0) return;
++  int one = 1;
++  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&one), sizeof(one));
++  timeval tv{0, 100000};
++  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
++  sockaddr_in local{};
++  local.sin_family = AF_INET;
++  local.sin_addr.s_addr = htonl(LocalAddress());
++  local.sin_port = htons(kVoiceUdpPort);
++  if (bind(fd, reinterpret_cast<sockaddr*>(&local), sizeof(local)) < 0) {
++    rex::net::socket_close(fd);
++    return;
++  }
++  voice_fd = fd;
++  voice_recv_run.store(true);
++  voice_recv_thread = std::thread(VoiceRecvLoop);
++  REXKRNL_INFO("Voice: System Link socket on {}:{}", FormatAddress(LocalAddress()), kVoiceUdpPort);
++}
++
++// Real addresses of the peers in the current System Link session.
++std::vector<uint32_t> CurrentSessionPeers() {
++  std::vector<uint32_t> result;
++  uint8_t kid[8];
++  if (!CurrentSessionKey(kid)) return result;
++  std::lock_guard<std::mutex> lock(association_mutex);
++  for (const auto& a : associations) {
++    if (std::memcmp(a.kid.data(), kid, 8) == 0) result.push_back(a.real);
++  }
++  return result;
++}
++
++void SendVoiceSystemLink(const uint8_t* frame, size_t bytes) {
++  const std::vector<uint32_t> peers = CurrentSessionPeers();
++  if (peers.empty()) return;
++  EnsureVoiceSocket();
++  if (voice_fd < 0) return;
++  std::vector<uint8_t> packet(4 + bytes);
++  std::memcpy(packet.data(), kVoiceUdpMagic, 4);
++  std::memcpy(packet.data() + 4, frame, bytes);
++  for (uint32_t real : peers) {
++    sockaddr_in to{};
++    to.sin_family = AF_INET;
++    to.sin_addr.s_addr = htonl(real);
++    to.sin_port = htons(kVoiceUdpPort);
++    sendto(voice_fd, reinterpret_cast<const char*>(packet.data()), packet.size(), 0,
++           reinterpret_cast<sockaddr*>(&to), sizeof(to));
++  }
++}
++}  // namespace
++
+ uint32_t LastError() {
+ #if REX_PLATFORM_WIN32
+   return WSAGetLastError();
+@@ -613,6 +701,9 @@ class OnlineClient {
+   // Ping/pong between room members, in DIRECT or DATA/RELAYED messages to port 0:
+   // u8 kind (1 ping, 2 pong), u32 sequence, u64 sender's clock in microseconds (echoed).
+   static constexpr uint16_t kControlPort = 0;
++  // Reserved destination port for voice-chat frames. Rides the same direct/relay transport as
++  // match data but is intercepted on arrival (like kControlPort) and never handed to the title.
++  static constexpr uint16_t kVoicePort = 0x7FFE;
+   static uint64_t NowMicros() {
+     return uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+                         OnlineClock::now().time_since_epoch())
+@@ -640,6 +731,22 @@ class OnlineClient {
+     }
+   }
+ 
++  // Sends one voice frame to every other player in the room, over each one's active path. Called
++  // from the voice capture thread, so it takes the client lock like the main loop does.
++ public:
++  void SendVoiceToRoom(const uint8_t* frame, size_t bytes) {
++    std::lock_guard<std::mutex> lock(mutex_);
++    if (!welcomed_) return;
++    for (auto& peer : peers_) SendToPeer(peer, kVoicePort, frame, bytes);
++  }
++
++  bool InRoom() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    return welcomed_;
++  }
++
++ private:
++
+   // Pings and pongs carry two more bytes after the 13 above, which older clients ignore and
+   // leave out of their pongs: bit 0 = speaks tagged datagrams, and the share (percent, 255 =
+   // unknown) of first copies lost on the way from that player.
+@@ -1119,6 +1226,7 @@ class OnlineClient {
+           }
+           welcomed_ = true;
+           state_ = "CONNECTED";
++          EnsureVoiceStarted();
+           return;
+         }
+         case kMembers: {
+@@ -1216,6 +1324,10 @@ class OnlineClient {
+             }
+             return;
+           }
++          if (dst_port == kVoicePort) {
++            voice::OnIncomingFrame(deliver_from, payload, payload_len);
++            return;
++          }
+           if (src_port & kTaggedPort) {
+             auto it = std::find_if(peers_.begin(), peers_.end(),
+                                    [&](const Peer& p) { return p.vip == deliver_from; });
+@@ -1257,6 +1369,10 @@ class OnlineClient {
+             HandleControl(peer, payload, payload_len);
+             return;
+           }
++          if (dst_port == kVoicePort) {
++            voice::OnIncomingFrame(peer->vip, payload, payload_len);
++            return;
++          }
+           if ((src_port & kTaggedPort) && !Untag(*peer, src_port, payload, payload_len)) return;
+           break;
+         }
+@@ -1331,6 +1447,27 @@ void OnlineSend(uint32_t dest, uint16_t src_port, uint16_t dst_port, const uint8
+   OnlineClient::Get().Send(dest, src_port, dst_port, data, len);
+ }
+ 
++// --- voice transport glue (registered with the voice module by EnsureVoiceStarted) ------------
++// One sender for both modes: online voice goes through the relay to the room, System Link voice
++// straight to the LAN peers.
++static void VoiceSendFrame(const uint8_t* frame, size_t bytes) {
++  if (OnlineEnabled()) OnlineClient::Get().SendVoiceToRoom(frame, bytes);
++  else SendVoiceSystemLink(frame, bytes);
++}
++
++// Whether a match with other players is in progress, so the mic should be live.
++static bool VoiceActive() {
++  if (OnlineEnabled()) return OnlineClient::Get().InRoom();
++  uint8_t kid[8];
++  return CurrentSessionKey(kid);
++}
++
++void EnsureVoiceStarted() {
++  rex::system::voice::SetSender(&VoiceSendFrame);
++  rex::system::voice::SetSessionQuery(&VoiceActive);
++  rex::system::voice::Start();
++}
++
+ void RegisterBoundSocket(uint16_t port, XSocket* socket) {
+   std::lock_guard<std::mutex> lock(bound_mutex);
+   bound_sockets.erase(std::remove_if(bound_sockets.begin(), bound_sockets.end(),

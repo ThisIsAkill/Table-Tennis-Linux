@@ -20,6 +20,8 @@
 #include "frame_pacer.h"
 #include "pc_features.h"
 #include "pc_settings.h"
+
+#include <rex/system/voice_chat.h>
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -393,6 +395,9 @@ class TabletennisApp : public rex::ReXApp {
 
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
     imgui_drawer_ = drawer;
+    // voice_monitor loops the mic back to the speakers for testing; it needs no match, so start
+    // the voice module here rather than waiting for one to begin.
+    if (rex::cvar::GetFlagByName("voice_monitor") == "true") rex::system::voice::Start();
     if (drawer) {
       fps_overlay_ = std::make_unique<FpsOverlayDialog>(drawer, loading_font_);
       bool initial_visible = REXCVAR_GET(show_fps);
