@@ -56,8 +56,9 @@ PACKET_RATE = 400
 BYTE_RATE = 256 * 1024
 BROADCAST_RATE = 20
 HELLO_RATE_PER_IP = 5
+NAME_RECLAIM = 6.0  # seconds without keepalives (sent every 3 s) before a reconnect may take a name
 
-ERR_VERSION, ERR_FULL, ERR_ROOM, ERR_LIMIT, ERR_UNKNOWN = 1, 2, 3, 4, 5
+ERR_VERSION, ERR_FULL, ERR_ROOM, ERR_LIMIT, ERR_UNKNOWN, ERR_NAME = 1, 2, 3, 4, 5, 6
 
 # Online protocol versions this server accepts (the version byte in HELLO). The version covers
 # everything players exchange, with the server and with each other, on every platform: bump it
@@ -272,6 +273,19 @@ class Server(asyncio.DatagramProtocol):
             return
         key = room_key(version, room)
         members = self.rooms.setdefault(key, {})
+        # The game tells players apart only by name (every copy has the same Xbox ID), so two
+        # players with one name must never share a room. A silent entry from the same address
+        # is this player reconnecting from a new port, which replaces it.
+        clash = next((m for m in members.values() if m.name.casefold() == name.casefold()), None)
+        if clash is not None:
+            if clash.addr[0] == addr[0] and time.monotonic() - clash.last_seen > NAME_RECLAIM:
+                self.remove(clash, "reconnected")
+                members = self.rooms.setdefault(key, {})
+            else:
+                if not members:
+                    del self.rooms[key]
+                self.error(addr, ERR_NAME, "the name %s is taken here - change it in pc settings" % name)
+                return
         limit = MAX_PUBLIC_ROOM if room == PUBLIC_ROOM else MAX_PRIVATE_ROOM
         if len(members) >= limit:
             self.error(addr, ERR_FULL, "room is full")
