@@ -2,7 +2,7 @@
 
 A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows recompilation](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC). The game's code is recompiled to native code with ReXGlue SDK v0.10.0 and rendered with Vulkan. It plays at a steady, evenly paced 60 FPS on Linux PCs and the Steam Deck, from **your own Xbox 360 disc image**, with:
 
-- **Online and System Link play** through the game's own menus, with nothing to set up
+- **Online and System Link play** through the game's own menus, with nothing to set up, and **headset voice chat** between players
 - **PC SETTINGS** in the game's OPTIONS menu: resolution, widescreen, VSync, brightness, anti-aliasing, sharpening and more, almost all applied at once
 - **Widescreen and ultrawide** pictures with a wider 3D view and menus kept in proportion
 - **PlayStation button icons** in every menu while a PlayStation controller is in use
@@ -99,7 +99,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 **GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a light tick in menus) and the achievement unlock sound, on or off.
 
-**ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), and the online server and connection status.
+**ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), **voice chat** on or off (see below), and the online server and connection status.
 
 **UPDATES**: check now, check at start, automatic updates, and the installed version.
 
@@ -140,6 +140,8 @@ Two players can play each other on the same network or over the internet. Both m
 Then one player chooses **PLAYER MATCH > CREATE MATCH**, sets up the match and waits in the lobby; the other chooses **PLAYER MATCH > QUICK MATCH**, which finds it and joins. The host starts the match.
 
 **Watching a match:** others can watch a match in progress. Choose **TABLE TENNIS NETWORK > EXHIBITION**, wait for the search, select the match with A and choose **SPECTATE MATCH**. The match plays live with the score, and the spectator controls (camera views, HUD) are shown on screen.
+
+**Voice chat:** with a microphone or headset plugged in, players in a match hear each other, over both ONLINE and SYSTEM LINK. It is on by default; turn it off at **OPTIONS > PC SETTINGS > ONLINE > VOICE CHAT**, or with `voice_chat=false` in `tt-recomp.ini` (`--voice_chat=false` on the launcher). Your microphone only sends while you are speaking, and the audio is compressed so it fits alongside the match traffic over the internet. To check your microphone and speakers without a match, launch with `--voice_monitor=true` and you will hear yourself played back (use headphones to avoid an echo).
 
 - The game was made for local networks: every action waits for the other machine, so online matches play best between players in the same region. Outside matches, a small box in the bottom right corner shows the connection: bars, the round trip in milliseconds, packet loss, and whether it runs directly or through the server. In the public room the server pairs players who are close to each other first; the ONLINE prompt shows how many players are near you.
 - A short connection drop (Wi-Fi hiccup, switching networks) no longer ends a match: the game waits up to about 15 seconds for the other player to come back, where it gave up after 3. A player who really leaves is noticed after those 15 seconds.
@@ -205,7 +207,7 @@ Building from a checkout needs `python3`, `git`, `cmake`, `ninja` and `clang` 19
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
 
-`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `voice_chat`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
 
 | Path | What it is |
 |---|---|
