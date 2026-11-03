@@ -1,5 +1,6 @@
 // tabletennis - ReXGlue Recompiled Project
 
+#include "frame_pacer.h"
 #include "generated/default/tabletennis_init.h"
 #include <rex/cvar.h>
 #include <chrono>
@@ -13,6 +14,9 @@
 
 REXCVAR_DEFINE_BOOL(show_fps, false, "UI", "Show in-game FPS counter");
 REXCVAR_DEFINE_INT32(framerate, 60, "Video", "Target framerate limit (60, 120, 144, 240, 0=unlimited)");
+REXCVAR_DEFINE_BOOL(pace_before_swap, true, "Video",
+                    "Hold each frame to the framerate schedule before it goes to the GPU "
+                    "(frame_pacer.h); false limits after the swap instead");
 REXCVAR_DEFINE_STRING(picture, "auto", "Video",
                       "Picture on screens that are not 16:9: auto (fill wider screens, letterbox "
                       "narrower ones), letterbox or fill");
@@ -21,28 +25,17 @@ REXCVAR_DEFINE_STRING(picture, "auto", "Video",
 extern "C" REX_FUNC(__imp__VdSwap);
 
 extern "C" void Tabletennis_VdSwap_Hook(PPCContext& ctx, uint8_t* base) {
+  // The frame reaches the GPU here: record its interval (frame-time statistics and the guest
+  // frame rate in the log, which the presenter's FPS counter does not measure).
+  tabletennis::pacing::RecordGameFrame();
+
   // Call original VdSwap to commit guest frame to GPU
   __imp__VdSwap(ctx, base);
 
-  // Log the game's own frame rate (guest swaps per second) every five seconds. The
-  // presenter's FPS counter measures host presentation, which can differ.
-  {
-    using clock = std::chrono::steady_clock;
-    static auto window_start = clock::now();
-    static uint32_t swaps = 0;
-    ++swaps;
-    const auto elapsed = clock::now() - window_start;
-    if (elapsed >= std::chrono::seconds(5)) {
-      const double seconds = std::chrono::duration<double>(elapsed).count();
-      REXLOG_INFO("Tabletennis: guest frames {:.1f}/s", swaps / seconds);
-      swaps = 0;
-      window_start = clock::now();
-    }
-  }
-
-  // High-precision frame limiter for high refresh rate modes
+  // Frames are normally paced before the swap (frame_pacer.cpp); this older limiter after it
+  // runs only with pace_before_swap=false.
   int32_t target_fps = REXCVAR_GET(framerate);
-  if (target_fps > 0) {
+  if (target_fps > 0 && !REXCVAR_GET(pace_before_swap)) {
     using clock = std::chrono::steady_clock;
     static auto last_swap = clock::now();
     const auto target_duration = std::chrono::nanoseconds(1'000'000'000LL / target_fps);

@@ -16,6 +16,7 @@
 #include "offline_menu_device.h"
 #include "intro_skip.h"
 #include "achievement_ui.h"
+#include "frame_pacer.h"
 #include "pc_features.h"
 #include "pc_settings.h"
 #if defined(_WIN32)
@@ -76,7 +77,9 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
                           viewport->Pos.y + (viewport->Size.y - size.y) * 0.5f),
                     IM_COL32(255, 255, 255, 255), message);
     }
-    // Pace presentation thread to target framerate limit
+    // Pace presentation thread to target framerate limit. Needed here even with the game paced
+    // before its swap (frame_pacer.h): without it, the UI thread repaints at 100+ FPS whenever an
+    // overlay is shown (immediate present mode) and starves the game, measured at 22-30 FPS.
     int32_t target_fps = REXCVAR_GET(framerate);
     if (target_fps > 0) {
       using clock = std::chrono::steady_clock;
@@ -135,6 +138,12 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
       ImGui::TextColored(color, "FPS: %.1f", fps);
       ImGui::SameLine();
       ImGui::TextDisabled("(%.2f ms)", ms);
+      // The game's own frames (as they reach the GPU), with the worst intervals of the last two
+      // seconds: steady pacing shows the same value three times.
+      const auto game = tabletennis::pacing::GetStats();
+      if (game.fps > 0.0f) {
+        ImGui::TextDisabled("GAME %.1f  1%% %.1f ms  MAX %.1f ms", game.fps, game.p99_ms, game.max_ms);
+      }
     }
     ImGui::End();
 
