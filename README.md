@@ -49,7 +49,7 @@ The same install runs without a window with `scripts/install/tt-install.sh --iso
 
 The game checks for a new release in the background when it starts, at most every six hours. When there is one, the main menu shows an **UPDATE AVAILABLE** popup. Go to **OPTIONS > PC SETTINGS** and choose the version row (**UPDATE TO ...**) to see what is new and update: the game closes, updates in about a minute and starts again. Your saves and settings are kept, and if an update fails the current version keeps working.
 
-In PC SETTINGS, **CHECK FOR UPDATES** turns the check off and **AUTOMATIC UPDATES** installs new versions by itself when the game starts. Releases are signed, and the game only installs updates signed with this project's key. The check only downloads the public release information from GitHub; nothing about you or your game is sent.
+In PC SETTINGS, **CHECK NOW** looks for a new version right away and offers it if there is one, **CHECK AT START** turns the check at start off and **AUTOMATIC UPDATES** installs new versions by itself when the game starts. Releases are signed, and the game only installs updates signed with this project's key. The check only downloads the public release information from GitHub; nothing about you or your game is sent.
 
 ## Features
 
@@ -67,7 +67,9 @@ The game's **OPTIONS** menu, both in the main menu and in the pause menu during 
 | Show FPS | on / off | at once |
 | Haptics | on / off | at once |
 | Achievement sound | on / off | at once |
-| Check for updates, automatic updates | on / off | next start |
+| Player name | the name others see online and in System Link (press A, then the D-pad or a keyboard) | after a restart |
+| Check at start, automatic updates | on / off | next start |
+| Check now | looks for a new version right away | at once |
 
 Use the D-pad to choose and change, **X** to restore the defaults (1280x800 fullscreen on a Steam Deck) and **B** to go back. Changes are saved to `tt-recomp.ini`.
 
@@ -105,7 +107,7 @@ Notes:
 
 - Online play works out of the box: the game connects to the project's online server by itself, with nothing to set up. PC SETTINGS shows the server and the connection status under ONLINE. To use a different server (for example your own, see [server/README.md](server/README.md)), set `server=` in `tt-recomp.ini`.
 - The game was made for local networks: every action waits for the other machine, so online matches play well between players in the same region and feel delayed across continents. While online, a small box in the bottom right corner (outside matches) shows the connection to the other player: bars, the round trip in milliseconds, packet loss and whether it runs directly or through the server, with a warning above 150 ms or 2% loss, and REDUNDANT while the game sends every match packet twice to cover packet loss (`online_redundancy=` in `tt-recomp.ini`: `auto`, the default, does this only while packets get lost; `on` or `off`). In the public room the server first pairs players who are close to each other and only looks further away when you keep searching (see [server/README.md](server/README.md#nearby-matchmaking)); the ONLINE prompt shows how many players are near you.
-- Each player is named automatically after the computer, with a short code so that two Steam Decks get different names (for example `steamdeck-4f2`). `player_name=` in `tt-recomp.ini` sets your own.
+- Each player is named automatically after the computer, with a short code so that two Steam Decks get different names (for example `steamdeck-4f2`). To choose your own, open **PC SETTINGS > PLAYER NAME** (up to 15 letters, digits, `-` and `_`; it is saved as `player_name=` in `tt-recomp.ini` and used from the next start). The game tells players apart by name, so the online server does not let two players with the same name into one room.
 - System Link uses UDP ports 11000, 11001 and 13075 on the local network. A PC firewall must allow them, for example `sudo ufw allow 11000:11001/udp` and `sudo ufw allow 13075/udp`. SteamOS has no firewall by default. Online play needs no open ports.
 - If machines on the same network do not find each other (some access points and VPNs drop broadcasts), add `lan_peers=` with the other machine's IP address to `tt-recomp.ini` on both.
 - PLAYER MATCH works; RANKED MATCH, TABLE TENNIS NETWORK and LEADERBOARDS were Xbox LIVE services. `system_link=false` turns both entries off and brings back the offline behaviour of earlier versions.
@@ -155,7 +157,7 @@ Building from a checkout needs x86_64 Linux, `python3`, `git`, `cmake`, `ninja` 
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
 
-`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `engine_flags`); command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`, `--save` writes them back, and anything after `--` goes straight to the engine.
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `achievement_sound`, `haptics`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `engine_flags`); command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`, `--save` writes them back, and anything after `--` goes straight to the engine.
 
 | Path | What it is |
 |---|---|

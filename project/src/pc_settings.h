@@ -78,6 +78,14 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   void Save();
   void Draw(ImGuiIO& io, float alpha);
   void DrawConfirm(ImDrawList* dl, float s, float cx, float cy, float alpha);
+  // CHECK NOW: runs the launcher's update check while the page stays usable.
+  void StartUpdateCheck();
+  void PollUpdateCheck();
+  // PLAYER NAME editor (D-pad like the room code entry, or the keyboard).
+  void OpenNameEditor();
+  void EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double now);
+  void SaveName();
+  void DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, float alpha);
 
   rex::ui::Window* window_ = nullptr;
   LiveHooks hooks_;
@@ -91,6 +99,10 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   double notice_until_ = 0.0;
   bool confirm_ = false;  // "update now?" box showing
   double confirm_at_ = 0.0;
+  bool naming_ = false;   // name editor showing
+  double naming_at_ = 0.0;
+  std::string name_edit_;
+  int name_pos_ = 0;
 };
 
 // Connection quality to the other online player (bars, round trip, loss, a warning when the

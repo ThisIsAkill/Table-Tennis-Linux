@@ -37,6 +37,15 @@
 #include <system_error>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
+
 REXCVAR_DECLARE(bool, achievement_sound);
 REXCVAR_DECLARE(bool, haptics);
 REXCVAR_DECLARE(bool, show_fps);
@@ -70,9 +79,9 @@ enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kShowFps, kHaptics,
   kAchievementSound,
   // ONLINE section
-  kOnlineServer, kOnlineStatus,
+  kPlayerName, kOnlineServer, kOnlineStatus,
   // UPDATES section
-  kCheckUpdates, kAutoUpdate, kVersion,
+  kCheckUpdates, kAutoUpdate, kCheckNow, kVersion,
 };
 
 std::vector<Row> MakeRows() {
@@ -106,10 +115,12 @@ std::vector<Row> MakeRows() {
        Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        1},
+      {"player_name", "PLAYER NAME", "The name other players see online and in SYSTEM LINK. Press A "
+       "to change it (player_name= in tt-recomp.ini).", Apply::kRestart, {}, 0},
       {"", "ONLINE SERVER", "The server ONLINE in the main menu plays through (server= in "
        "tt-recomp.ini).", Apply::kInfo, {}, 0},
       {"", "ONLINE STATUS", "", Apply::kInfo, {}, 0},
-      {"check_updates", "CHECK FOR UPDATES", "Look for a new version each time the game starts.",
+      {"check_updates", "CHECK AT START", "Look for a new version each time the game starts.",
        Apply::kSaved,
        {{"false", "OFF"}, {"true", "ON"}},
        1},
@@ -117,6 +128,7 @@ std::vector<Row> MakeRows() {
        Apply::kSaved,
        {{"false", "OFF"}, {"true", "ON"}},
        0},
+      {"", "CHECK NOW", "", Apply::kInfo, {}, 0},
       {"", "VERSION", "", Apply::kInfo, {}, 0},
   };
 }
@@ -125,6 +137,26 @@ std::vector<Row> MakeRows() {
 std::vector<Row> g_rows;
 bool g_loaded = false;
 std::string g_room_code;  // this session's private room code (ONLINE > PLAY WITH A FRIEND)
+
+// PLAYER NAME: player_name= in the ini ("" = the launcher's automatic name), and the value the
+// game started with. The game reads the name into its profile once, so a change needs a restart.
+// The game tells network players apart only by name; the online server refuses a name that is
+// already in the room.
+std::string g_player_name;
+std::string g_player_name_running;
+constexpr const char* kNameChars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+constexpr int kNameMax = 15;  // the Xbox gamertag limit
+bool IsNameChar(unsigned c) { return c && c < 128 && std::strchr(kNameChars, int(c)); }
+
+// CHECK NOW: the launcher's update check (tools/tt-update.sh --check-only), run from the game.
+enum class Check { kIdle, kRunning, kUpToDate, kFound, kFailed };
+Check g_check = Check::kIdle;
+double g_check_started = 0.0;
+std::string g_check_error;
+#if !defined(_WIN32)
+pid_t g_check_pid = -1;
+#endif
 
 constexpr const char* kRoomAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";  // no 0/O, 1/I/L
 constexpr int kRoomLength = 6;
@@ -357,6 +389,31 @@ bool WriteUpdateRequest(const std::string& version) {
   out.close();
   return bool(out);
 }
+
+std::filesystem::path UpdaterScript() { return InstallDir() / "tools" / "tt-update.sh"; }
+
+// CHECK NOW needs an installed version (not a development build) with its updater. The Windows
+// launcher has its own update path, so the page does not offer it there.
+bool CanCheckForUpdates() {
+#if defined(_WIN32)
+  return false;
+#else
+  std::error_code ec;
+  return !InstalledVersion().empty() && std::filesystem::exists(UpdaterScript(), ec);
+#endif
+}
+
+// The last "@@error ..." line the updater printed, for the page's help text.
+std::string UpdaterError(const std::filesystem::path& log) {
+  std::istringstream text(ReadFile(log));
+  std::string line, error;
+  while (std::getline(text, line)) {
+    if (line.rfind("@@error ", 0) == 0) error = line.substr(8);
+  }
+  return error;
+}
+
+std::filesystem::path UpdateCheckLog() { return InstallDir() / "logs" / "update-check.log"; }
 
 // Front end showing (not a match, not the pause menu): the front-end update ran within the last
 // half second, the pause menu's not within two seconds, and no rally is in play.
@@ -687,6 +744,8 @@ void SettingsPage::Open() {
       const int found = it == ini.end() ? -1 : FindChoice(row, it->second);
       row.current = row.running = found >= 0 ? found : row.fallback;
     }
+    const auto name = ini.find("player_name");
+    g_player_name = g_player_name_running = name == ini.end() ? std::string() : name->second;
     g_loaded = true;
   }
   // Live rows show the state in effect now (F10 and other paths can change it).
@@ -793,10 +852,17 @@ void SettingsPage::Save() {
     }
   }
   std::vector<bool> written(g_rows.size(), false);
+  // player_name is only written once it was changed here, or when the file already has it.
+  bool name_written = false;
   for (auto& line : lines) {
     const auto key_end = line.find('=');
     if (key_end == std::string::npos) continue;
     const std::string key = Trim(line.substr(0, key_end));
+    if (key == "player_name") {
+      if (!name_written) line = "player_name=" + g_player_name;
+      name_written = true;
+      continue;
+    }
     for (size_t i = 0; i < g_rows.size(); ++i) {
       if (g_rows[i].choices.empty() || key != g_rows[i].key) continue;
       if (!written[i]) line = key + "=" + g_rows[i].choices[g_rows[i].current].value;
@@ -806,6 +872,7 @@ void SettingsPage::Save() {
   for (size_t i = 0; i < g_rows.size(); ++i) {
     if (!written[i] && !g_rows[i].choices.empty()) lines.push_back(std::string(g_rows[i].key) + "=" + g_rows[i].choices[g_rows[i].current].value);
   }
+  if (!name_written && g_player_name != g_player_name_running) lines.push_back("player_name=" + g_player_name);
 
   auto temp = path;
   temp += ".tmp";
@@ -830,9 +897,12 @@ void SettingsPage::Save() {
 
 void SettingsPage::OnDraw(ImGuiIO& io) {
   PollUpdate();
+  PollUpdateCheck();  // also while the page is closed, so a started check always finishes
   if (!g_open.load()) {
     shown_ = false;
     confirm_ = false;
+    if (naming_ && window_) window_->SetTextInputActive(false);
+    naming_ = false;
     return;
   }
   if (!shown_) Open();
@@ -849,6 +919,12 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
       RequestUpdate();
     }
     held_direction_ = 0;
+    Draw(io, alpha_in);
+    return;
+  }
+  // So does the name editor.
+  if (naming_) {
+    EditName(io, pressed, held, now);
     Draw(io, alpha_in);
     return;
   }
@@ -876,6 +952,10 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
   }
   if (pressed & kPadA) {
     if (selected_ == kOnlineServer || selected_ == kOnlineStatus) {
+    } else if (selected_ == kPlayerName) {
+      OpenNameEditor();
+    } else if (selected_ == kCheckNow) {
+      StartUpdateCheck();
     } else if (selected_ == kVersion) {
       if (g_update) {
         confirm_ = true;
@@ -956,17 +1036,17 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const float big_px = 27.0f * s;
   ImFont* label_font = achievement_ui::HeadlineFont(label_px);
   ImFont* big_font = achievement_ui::HeadlineFont(big_px);
-  const float row_h = 28.0f * s;
-  const float section_h = 25.0f * s;
+  const float row_h = 26.0f * s;
+  const float section_h = 22.0f * s;
   const float rows_y0 = body_y0 + 16.0f * s;
   const float label_x = bx0 + 30.0f * s;
   const float value_right = x1 - 34.0f * s;
   auto row_center = [&](int i) {
-    return rows_y0 + row_h * (float(i) + 0.5f) + (i >= kOnlineServer ? section_h : 0.0f) +
+    return rows_y0 + row_h * (float(i) + 0.5f) + (i >= kPlayerName ? section_h : 0.0f) +
            (i >= kCheckUpdates ? section_h : 0.0f);
   };
   // Section headings.
-  for (const auto& [first, title] : {std::pair<int, const char*>{kOnlineServer, "ONLINE"},
+  for (const auto& [first, title] : {std::pair<int, const char*>{kPlayerName, "ONLINE"},
                                      std::pair<int, const char*>{kCheckUpdates, "UPDATES"}}) {
     const float cy = row_center(first) - row_h * 0.5f - section_h * 0.45f;
     const float px = 17.0f * s;
@@ -984,6 +1064,18 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       InstalledVersion().empty() ? "DEV BUILD"
       : g_update                 ? "UPDATE TO " + g_update->version
                                  : InstalledVersion();
+  // The name in use; after it was cleared, the launcher picks the automatic name at the next start.
+  const std::string auto_name = rex::cvar::GetFlagByName("user_name");
+  const std::string name_value = !g_player_name.empty() ? g_player_name
+                                 : g_player_name_running.empty() && !auto_name.empty() ? auto_name
+                                                                                       : "AUTOMATIC";
+  const bool can_check = CanCheckForUpdates();
+  const std::string check_value = !can_check                   ? "NOT AVAILABLE"
+                                  : g_check == Check::kRunning  ? "CHECKING..."
+                                  : g_check == Check::kUpToDate ? "UP TO DATE"
+                                  : g_check == Check::kFound && g_update ? "FOUND " + g_update->version
+                                  : g_check == Check::kFailed   ? "FAILED"
+                                                                : "CHECK";
   for (int i = 0; i < int(g_rows.size()); ++i) {
     const Row& row = g_rows[i];
     const bool selected = i == selected_;
@@ -1000,23 +1092,31 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
             kCondensed);
 
     const char* value = !row.choices.empty() ? row.choices[row.current].label
+                        : i == kPlayerName   ? name_value.c_str()
                         : i == kOnlineServer ? server_value.c_str()
                         : i == kOnlineStatus ? status_value.c_str()
+                        : i == kCheckNow     ? check_value.c_str()
                                              : version_value.c_str();
+    const bool pending = row.apply == Apply::kRestart &&
+                         (i == kPlayerName ? g_player_name != g_player_name_running : row.current != row.running);
     float value_left = 0.0f;
     if (row.choices.empty()) {
-      // No arrows: the version is not a choice. An available update is yellow, with A to start it.
+      // No arrows: these are not choices. Rows that A acts on (an available update, the name,
+      // CHECK NOW) show the A button when chosen; an available update is yellow.
       const bool update = i == kVersion && bool(g_update);
+      const bool action = update || i == kPlayerName ||
+                          (i == kCheckNow && can_check && g_check != Check::kRunning);
       ImFont* font = selected ? big_font : label_font;
       const float px = selected ? big_px : value_px;
       const float w = TextWidth(font, px, value, kCondensed);
       value_left = value_right - w;
-      const ImU32 col = update ? Col(255, 204, 0, in) : Col(222, 224, 228, in);
-      if (selected && update) {
+      const ImU32 col = update || (selected && action) ? Col(255, 204, 0, in) : Col(222, 224, 228, in);
+      if (selected && action) {
         AddOutlinedText(dl, font, px, ImVec2(value_left, CapsTop(cy, px)), col, Col(16, 18, 28, in), 1.8f * s,
                         value, kCondensed);
         const float r = 11.0f * s;
         FaceButton(dl, ImVec2(value_left - 10.0f * s - r, cy), r, Col(90, 186, 40, in), "A", in);
+        value_left -= 10.0f * s + 2.0f * r;  // keep the AFTER RESTART tag clear of the button
       } else {
         AddText(dl, font, px, ImVec2(value_left, CapsTop(cy, px)), col, value, kCondensed);
       }
@@ -1037,7 +1137,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       value_left = value_right - w;
     }
     // A changed restart setting is marked on its row until the game is restarted.
-    if (row.apply == Apply::kRestart && row.current != row.running) {
+    if (pending) {
       const float tag_px = 15.0f * s;
       const char* tag = "AFTER RESTART";
       const float w = TextWidth(label_font, tag_px, tag, kCondensed);
@@ -1070,8 +1170,8 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       if (InstalledVersion().empty()) {
         line("Development build: updates are not offered.", Col(176, 182, 192, in));
       } else if (!g_update) {
-        line("Installed version " + InstalledVersion() + ". New versions are found when the game starts.",
-             Col(176, 182, 192, in));
+        line("Installed version " + InstalledVersion() + ". New versions are found when the game starts, "
+             "or with CHECK NOW.", Col(176, 182, 192, in));
       } else {
         std::string heading = g_update->title.empty() ? "Version " + g_update->version
                                                       : g_update->version + ": " + g_update->title;
@@ -1080,7 +1180,23 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
         for (const auto& note : g_update->notes) line("- " + note, Col(176, 182, 192, in));
       }
     } else {
-      const char* help = selected_ == kOnlineStatus ? status_help.c_str() : row.help;
+      std::string extra;
+      if (selected_ == kPlayerName) {
+        extra = std::string(row.help) + " Two players in one room cannot use the same name.";
+      } else if (selected_ == kCheckNow) {
+        extra = !can_check                    ? (InstalledVersion().empty()
+                                                     ? "Development build: updates are not offered."
+                                                     : "Checking from the game is not available here.")
+                : g_check == Check::kRunning  ? "Looking for a new version..."
+                : g_check == Check::kUpToDate ? "Version " + InstalledVersion() + " is the latest."
+                : g_check == Check::kFound && g_update ? "Version " + g_update->version +
+                                                             " is available: see VERSION below, or press A on it."
+                : g_check == Check::kFailed   ? g_check_error
+                                              : "Look for a new version now.";
+      }
+      const char* help = selected_ == kOnlineStatus ? status_help.c_str()
+                         : !extra.empty()           ? extra.c_str()
+                                                    : row.help;
       AddText(dl, body, help_px, ImVec2(label_x, help_y), Col(176, 182, 192, in), help, 1.0f,
               value_right - label_x);
     }
@@ -1092,7 +1208,8 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     } else if (!save_error_.empty()) {
       status = save_error_.c_str();
       status_col = Col(240, 90, 80, in);
-    } else if (row.apply == Apply::kRestart && row.current != row.running) {
+    } else if (row.apply == Apply::kRestart &&
+               (selected_ == kPlayerName ? g_player_name != g_player_name_running : row.current != row.running)) {
       status = "APPLIES AFTER RESTART";
     } else if (row.apply == Apply::kLive) {
       status = "APPLIES NOW";
@@ -1141,8 +1258,273 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   if (confirm_ && g_update) {
     DrawConfirm(dl, s, X(582), (header_y0 + footer_y1) * 0.5f, in);
   }
+  if (naming_) {
+    DrawNameEditor(dl, s, X(582), (header_y0 + footer_y1) * 0.5f, in);
+  }
 
   Rotate(dl, first_vertex, ImVec2((x0 + x1) * 0.5f, (header_y0 + footer_y1) * 0.5f), -0.03f);
+}
+
+// --- CHECK NOW ----------------------------------------------------------------------------------
+// The check runs as its own process (network timeouts of a few seconds) while the game keeps
+// drawing; PollUpdateCheck collects it. It writes .tt-update.json exactly like the launcher's
+// check at start, and the result is read the same way.
+void SettingsPage::StartUpdateCheck() {
+#if !defined(_WIN32)
+  if (!CanCheckForUpdates() || g_check == Check::kRunning) return;
+  std::error_code ec;
+  std::filesystem::create_directories(UpdateCheckLog().parent_path(), ec);
+  posix_spawn_file_actions_t files;
+  posix_spawn_file_actions_init(&files);
+  posix_spawn_file_actions_addopen(&files, 0, "/dev/null", O_RDONLY, 0);
+  posix_spawn_file_actions_addopen(&files, 1, UpdateCheckLog().c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  posix_spawn_file_actions_adddup2(&files, 1, 2);
+  const std::string script = UpdaterScript().string(), dir = InstallDir().string();
+  char* argv[] = {const_cast<char*>("bash"), const_cast<char*>(script.c_str()),
+                  const_cast<char*>(dir.c_str()), const_cast<char*>("--check-only"), nullptr};
+  // Without LD_PRELOAD: Steam's overlay library would otherwise be loaded into every tool the
+  // script runs (the launcher clears it for the updater the same way).
+  std::vector<char*> env;
+  for (char** e = environ; *e; ++e) {
+    if (std::strncmp(*e, "LD_PRELOAD=", 11) != 0) env.push_back(*e);
+  }
+  env.push_back(nullptr);
+  pid_t pid = -1;
+  const int err = posix_spawnp(&pid, "bash", &files, nullptr, argv, env.data());
+  posix_spawn_file_actions_destroy(&files);
+  if (err != 0) {
+    g_check = Check::kFailed;
+    g_check_error = "The update check could not be started.";
+    REXLOG_WARN("Tabletennis: cannot start {}: {}", script, std::strerror(err));
+    return;
+  }
+  g_check_pid = pid;
+  g_check = Check::kRunning;
+  g_check_started = ImGui::GetTime();
+  REXLOG_INFO("Tabletennis: checking for updates (CHECK NOW)");
+#endif
+}
+
+void SettingsPage::PollUpdateCheck() {
+#if !defined(_WIN32)
+  if (g_check != Check::kRunning) return;
+  int status = 0;
+  const pid_t done = waitpid(g_check_pid, &status, WNOHANG);
+  if (done == 0) {
+    if (ImGui::GetTime() - g_check_started < 45.0) return;
+    kill(g_check_pid, SIGTERM);
+    waitpid(g_check_pid, &status, 0);
+    g_check_pid = -1;
+    g_check = Check::kFailed;
+    g_check_error = "The check took too long. Check your internet connection and try again.";
+    REXLOG_WARN("Tabletennis: update check timed out");
+    return;
+  }
+  g_check_pid = -1;
+  const std::string error = UpdaterError(UpdateCheckLog());
+  // An exit status we cannot collect (ECHILD) is judged by the log alone.
+  const bool failed = done > 0 ? !WIFEXITED(status) || WEXITSTATUS(status) != 0 : !error.empty();
+  if (failed) {
+    g_check = Check::kFailed;
+    g_check_error = !error.empty() ? error : "The update check failed (see logs/update-check.log).";
+    REXLOG_WARN("Tabletennis: update check failed: {}", g_check_error);
+    return;
+  }
+  auto info = ParseUpdate(ReadFile(InstallDir() / ".tt-update.json"));
+  if (info && IsNewer(info->version, InstalledVersion())) {
+    REXLOG_INFO("Tabletennis: update check found {} (installed {})", info->version, InstalledVersion());
+    g_update = std::move(info);
+    g_check = Check::kFound;
+    if (g_open.load() && !naming_) {  // offer it right away, as at start
+      confirm_ = true;
+      confirm_at_ = ImGui::GetTime();
+    }
+  } else {
+    REXLOG_INFO("Tabletennis: update check: {} is up to date", InstalledVersion());
+    g_check = Check::kUpToDate;
+  }
+#endif
+}
+
+// --- PLAYER NAME --------------------------------------------------------------------------------
+// D-pad: up/down change the letter under the cursor, left/right move (right past the end adds
+// a letter), X deletes. A keyboard types and deletes (Backspace) directly. A saves, B cancels.
+// Empty means the launcher's automatic name.
+void SettingsPage::OpenNameEditor() {
+  std::string start = g_player_name;
+  if (start.empty() && g_player_name_running.empty()) start = rex::cvar::GetFlagByName("user_name");
+  name_edit_.clear();
+  for (char c : start) {
+    if (IsNameChar(uint8_t(c)) && int(name_edit_.size()) < kNameMax) name_edit_ += c;
+  }
+  name_pos_ = std::max(0, int(name_edit_.size()) - 1);
+  naming_ = true;
+  naming_at_ = ImGui::GetTime();
+  held_direction_ = 0;
+  ImGui::GetIO().InputQueueCharacters.resize(0);
+}
+
+void SettingsPage::EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double now) {
+  // SDL only delivers typed characters while text input is on; the engine turns it on for its
+  // own text fields only, so the editor does it while it is open.
+  if (window_ && !window_->IsTextInputActive()) window_->SetTextInputActive(true);
+  // With keyboard controls on (--mnk_mode) some keys are also pad buttons (L is X, Backspace is
+  // B, Return is Start): shortly after typing, the pad's A, B and X are ignored so a key only types.
+  static double last_typing = -1.0;
+  const bool typing = !io.InputQueueCharacters.empty() || ImGui::IsKeyPressed(ImGuiKey_Backspace) ||
+                      ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
+                      ImGui::IsKeyPressed(ImGuiKey_Escape);
+  if (typing) last_typing = now;
+  if (now - last_typing < 0.35) pressed &= uint16_t(~(kPadA | kPadB | kPadX));
+  const int n = int(std::strlen(kNameChars));
+  auto direction = [&](uint16_t button) {
+    const int size = int(name_edit_.size());
+    switch (button) {
+      case kPadUp:
+      case kPadDown: {
+        if (size == 0) {
+          name_edit_ = "A";
+          name_pos_ = 0;
+          break;
+        }
+        char& c = name_edit_[size_t(name_pos_)];
+        const char* at = std::strchr(kNameChars, c);
+        const int index = at ? int(at - kNameChars) : 0;
+        c = kNameChars[(index + (button == kPadUp ? 1 : n - 1)) % n];
+        break;
+      }
+      case kPadLeft: name_pos_ = std::max(0, name_pos_ - 1); break;
+      case kPadRight:
+        if (name_pos_ < size - 1) {
+          ++name_pos_;
+        } else if (size > 0 && size < kNameMax) {
+          name_edit_ += 'A';
+          name_pos_ = size;
+        }
+        break;
+      default: break;
+    }
+  };
+  for (uint16_t button : {kPadUp, kPadDown, kPadLeft, kPadRight}) {
+    if (pressed & button) {
+      direction(button);
+      held_direction_ = button;
+      next_repeat_ = now + 0.45;
+    }
+  }
+  if (held_direction_ && !(held & held_direction_)) held_direction_ = 0;
+  if (held_direction_ && now >= next_repeat_) {
+    direction(uint16_t(held_direction_));
+    next_repeat_ = now + 0.13;
+  }
+  auto erase = [&] {
+    if (name_edit_.empty()) return;
+    name_edit_.erase(size_t(name_pos_), 1);
+    name_pos_ = std::clamp(name_pos_ - (name_pos_ >= int(name_edit_.size()) ? 1 : 0), 0,
+                           std::max(0, int(name_edit_.size()) - 1));
+  };
+  // Keyboard: typed letters go after the cursor; Backspace deletes the letter under it.
+  for (ImWchar c : io.InputQueueCharacters) {
+    if (!IsNameChar(c) || int(name_edit_.size()) >= kNameMax) continue;
+    const size_t at = name_edit_.empty() ? 0 : size_t(name_pos_) + 1;
+    name_edit_.insert(at, 1, char(c));
+    name_pos_ = int(at);
+  }
+  io.InputQueueCharacters.resize(0);
+  if (ImGui::IsKeyPressed(ImGuiKey_Backspace)) erase();
+  if (pressed & kPadX) erase();
+  if ((pressed & kPadA) || ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
+    SaveName();
+    naming_ = false;
+  } else if ((pressed & kPadB) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    naming_ = false;
+  }
+  if (!naming_) {
+    held_direction_ = 0;
+    if (window_) window_->SetTextInputActive(false);
+  }
+}
+
+void SettingsPage::SaveName() {
+  if (name_edit_ == g_player_name) return;
+  g_player_name = name_edit_;
+  REXLOG_INFO("Tabletennis: player name set to '{}' (used from the next start)",
+              g_player_name.empty() ? "automatic" : g_player_name);
+  notice_ = g_player_name == g_player_name_running ? "NAME UNCHANGED" : "NAME SAVED - USED AFTER RESTART";
+  notice_until_ = ImGui::GetTime() + 3.0;
+  Save();
+}
+
+// The name editor box over the page, in the same style as the update confirmation.
+void SettingsPage::DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, float in) {
+  const float t = std::clamp(float(ImGui::GetTime() - naming_at_) / 0.15f, 0.0f, 1.0f) * in;
+  const float w = 560.0f * s, body_h = 190.0f * s, head_h = 54.0f * s, foot_h = 40.0f * s;
+  const float x0 = cx - w * 0.5f, x1 = cx + w * 0.5f;
+  const float y0 = cy - (head_h + body_h + foot_h) * 0.5f;
+  const float head_y1 = y0 + head_h, body_y1 = head_y1 + body_h, foot_y1 = body_y1 + foot_h;
+  dl->AddRectFilled(ImVec2(x0 - 200.0f * s, y0 - 400.0f * s), ImVec2(x1 + 200.0f * s, foot_y1 + 400.0f * s),
+                    Col(0, 0, 0, 0.55f * t));
+  dl->AddRectFilled(ImVec2(x0 + 14.0f * s, head_y1 - 6.0f * s), ImVec2(x1, body_y1), Col(6, 8, 12, t));
+  dl->AddRectFilled(ImVec2(x0 + 14.0f * s, body_y1), ImVec2(x1, foot_y1), Col(212, 215, 220, t), 6.0f * s,
+                    ImDrawFlags_RoundCornersBottom);
+  const float r = head_h * 0.5f;
+  dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, head_y1), Col(150, 166, 186, t), r);
+  dl->AddRectFilled(ImVec2(x0 + 4.0f * s, y0 + 4.0f * s), ImVec2(x1 - 4.0f * s, head_y1 - 4.0f * s),
+                    Col(12, 28, 52, t), r - 4.0f * s);
+  const float title_px = 36.0f * s;
+  AddOutlinedText(dl, achievement_ui::HeadlineFont(title_px), title_px,
+                  ImVec2(x0 + 28.0f * s, CapsTop((y0 + head_y1) * 0.5f, title_px)), Col(255, 204, 0, t),
+                  Col(16, 18, 28, t), 2.2f * s, "PLAYER NAME", kCondensed);
+  ImFont* body = achievement_ui::BodyFont();
+  const float text_px = 18.0f * s;
+  AddText(dl, body, text_px, ImVec2(x0 + 40.0f * s, head_y1 + 16.0f * s), Col(176, 182, 192, t),
+          "Up/down: letter, left/right: position, X: delete. A keyboard works too.", 1.0f, w - 70.0f * s);
+  // One cell per letter, plus a faint empty cell where the next letter would go.
+  const float cell = 31.0f * s;
+  const int cells = std::min(kNameMax, int(name_edit_.size()) + 1);
+  float x = cx + 7.0f * s - cell * float(cells) * 0.5f;
+  const float row_cy = head_y1 + 92.0f * s;
+  const float px = 30.0f * s;
+  ImFont* font = achievement_ui::HeadlineFont(px);
+  for (int k = 0; k < cells; ++k) {
+    const bool letter = k < int(name_edit_.size());
+    const bool hot = letter && k == name_pos_;
+    dl->AddRectFilled(ImVec2(x + 2.0f * s, row_cy - 22.0f * s), ImVec2(x + cell - 2.0f * s, row_cy + 22.0f * s),
+                      hot      ? Col(255, 204, 0, 0.28f * t)
+                      : letter ? Col(255, 255, 255, 0.09f * t)
+                               : Col(255, 255, 255, 0.04f * t),
+                      4.0f * s);
+    if (letter) {
+      const char ch[2] = {name_edit_[size_t(k)], 0};
+      const float cw = TextWidth(font, px, ch);
+      AddOutlinedText(dl, font, px, ImVec2(x + (cell - cw) * 0.5f, CapsTop(row_cy, px)),
+                      hot ? Col(255, 204, 0, t) : Col(235, 237, 240, t), Col(16, 18, 28, t), 1.6f * s, ch);
+    }
+    if (hot) Arrow(dl, ImVec2(x + cell * 0.5f, row_cy - 32.0f * s), 9.0f * s, true, Col(150, 156, 166, t));
+    x += cell;
+  }
+  const std::string note = name_edit_.empty()
+                               ? "Empty: the automatic name (this computer's name)."
+                               : std::to_string(name_edit_.size()) + " of " + std::to_string(kNameMax) +
+                                     " letters. Used from the next start.";
+  AddText(dl, body, text_px, ImVec2(x0 + 40.0f * s, body_y1 - 40.0f * s), Col(176, 182, 192, t), note.c_str(),
+          1.0f, w - 70.0f * s);
+  // Footer: (A) SAVE, (B) CANCEL.
+  const float fy = (body_y1 + foot_y1) * 0.5f;
+  const float fpx = 20.0f * s;
+  ImFont* ffont = achievement_ui::HeadlineFont(fpx);
+  const ImU32 text = Col(28, 30, 36, t);
+  const float br = 11.0f * s;
+  float fx = x1 - 22.0f * s - br;
+  FaceButton(dl, ImVec2(fx, fy), br, Col(210, 44, 44, t), "B", t);
+  fx -= br + 8.0f * s;
+  AddText(dl, ffont, fpx, ImVec2(fx - TextWidth(ffont, fpx, "CANCEL", kCondensed), CapsTop(fy, fpx)), text,
+          "CANCEL", kCondensed);
+  fx -= TextWidth(ffont, fpx, "CANCEL", kCondensed) + 26.0f * s + br;
+  FaceButton(dl, ImVec2(fx, fy), br, Col(90, 186, 40, t), "A", t);
+  fx -= br + 8.0f * s;
+  AddText(dl, ffont, fpx, ImVec2(fx - TextWidth(ffont, fpx, "SAVE", kCondensed), CapsTop(fy, fpx)), text, "SAVE",
+          kCondensed);
 }
 
 // "Update now?" box over the page, in the game's message style.
@@ -1620,9 +2002,9 @@ void OnlinePrompt::Draw(ImGuiIO& io, float in) {
   const char* a_label = "SELECT";
   switch (step_) {
     case Step::kUnavailable:
-      text_block("Online play is not available yet.", Col(235, 237, 240, in));
-      text_block("No online server is set up. SYSTEM LINK in the main menu plays against other "
-                 "machines on your local network.", Col(176, 182, 192, in));
+      text_block("Online play is not available.", Col(235, 237, 240, in));
+      text_block("No online server is set (server= in tt-recomp.ini). SYSTEM LINK in the main menu "
+                 "plays against other machines on your local network.", Col(176, 182, 192, in));
       a_label = "BACK";
       break;
     case Step::kChoose:
