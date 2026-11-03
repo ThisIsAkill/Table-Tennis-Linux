@@ -59,6 +59,12 @@ HELLO_RATE_PER_IP = 5
 
 ERR_VERSION, ERR_FULL, ERR_ROOM, ERR_LIMIT, ERR_UNKNOWN = 1, 2, 3, 4, 5
 
+# Online protocol versions this server accepts (the version byte in HELLO). The version covers
+# everything players exchange, with the server and with each other, on every platform: bump it
+# in the client whenever either changes. Each version gets rooms of its own, so players on
+# different versions never meet, and an older version keeps working until it is dropped here.
+SUPPORTED_VERSIONS = {1}
+
 # Nearby matchmaking (public room only). A player's search radius, as an estimated round trip
 # in milliseconds, grows with the age of its current search streak: a streak starts with a
 # broadcast after SEARCH_QUIET seconds without one. Two players see each other's broadcasts when
@@ -92,7 +98,7 @@ class Bucket:
 class Client:
     __slots__ = ("id", "token", "nonce", "addr", "name", "room", "vip", "local_ip", "local_port",
                  "last_seen", "packets", "bytes", "broadcasts", "relayed_bytes", "joined", "rtt",
-                 "utc_offset", "streak_start", "last_broadcast", "_reach")
+                 "utc_offset", "streak_start", "last_broadcast", "_reach", "key")
 
     def __init__(self, cid, token, nonce, addr, name, room, vip, local_ip, local_port):
         self.id = cid
@@ -115,6 +121,12 @@ class Client:
         self.streak_start = 0.0  # current search streak (see SEARCH_RADIUS)
         self.last_broadcast = 0.0
         self._reach = None        # last logged search reach
+        self.key = room           # key in Server.rooms (see room_key)
+
+
+def room_key(version, room):
+    """Rooms of different protocol versions are kept apart; version 1 uses the plain code."""
+    return room if version == 1 else "v%d/%s" % (version, room)
 
 
 def estimate_rtt(a, b):
@@ -238,7 +250,7 @@ class Server(asyncio.DatagramProtocol):
         local_ip, local_port = struct.unpack_from(">IH", body, pos)
         pos += 6
         utc_offset = struct.unpack_from(">h", body, pos)[0] if len(body) >= pos + 2 else None
-        if version != 1:
+        if version not in SUPPORTED_VERSIONS:
             self.error(addr, ERR_VERSION, "this server speaks a different version; update the game")
             return
         name = "".join(c for c in name if c.isprintable())[:15] or "Player"
@@ -258,7 +270,8 @@ class Server(asyncio.DatagramProtocol):
         if sum(1 for c in self.clients.values() if c.addr[0] == addr[0]) >= MAX_PER_IP:
             self.error(addr, ERR_LIMIT, "too many players from this address")
             return
-        members = self.rooms.setdefault(room, {})
+        key = room_key(version, room)
+        members = self.rooms.setdefault(key, {})
         limit = MAX_PUBLIC_ROOM if room == PUBLIC_ROOM else MAX_PRIVATE_ROOM
         if len(members) >= limit:
             self.error(addr, ERR_FULL, "room is full")
@@ -269,6 +282,7 @@ class Server(asyncio.DatagramProtocol):
         while cid in self.clients:
             cid = random.getrandbits(32) or 1
         client = Client(cid, random.getrandbits(64), nonce, addr, name, room, vip, local_ip, local_port)
+        client.key = key
         if utc_offset is not None and -14 * 60 <= utc_offset <= 14 * 60:
             client.utc_offset = utc_offset
         self.clients[cid] = client
@@ -278,7 +292,7 @@ class Server(asyncio.DatagramProtocol):
                      "the public room" if room == PUBLIC_ROOM else "a private room",
                      ipaddress.IPv4Address(vip), len(members), len(self.clients))
         self.welcome(client)
-        self.send_members(room)
+        self.send_members(key)
 
     def welcome(self, client):
         room = client.room.encode()
@@ -309,7 +323,7 @@ class Server(asyncio.DatagramProtocol):
                     size += len(entry)
 
     def on_keepalive(self, client):
-        members = self.rooms.get(client.room, {})
+        members = self.rooms.get(client.key, {})
         nearby = 0
         if client.room == PUBLIC_ROOM:
             nearby = sum(1 for m in members.values()
@@ -322,7 +336,7 @@ class Server(asyncio.DatagramProtocol):
         payload = body[8:]
         if len(payload) > MAX_PAYLOAD:
             return
-        members = self.rooms.get(client.room, {})
+        members = self.rooms.get(client.key, {})
         message = MAGIC + bytes([RELAYED]) + struct.pack(">IHH", client.vip, src_port, dst_port) + payload
         if dst_vip == BROADCAST:
             if not client.broadcasts.take():
@@ -352,13 +366,13 @@ class Server(asyncio.DatagramProtocol):
         self.clients.pop(client.id, None)
         if self.by_addr.get(client.addr) is client:
             del self.by_addr[client.addr]
-        members = self.rooms.get(client.room)
+        members = self.rooms.get(client.key)
         if members is not None:
             members.pop(client.vip, None)
             if not members:
-                del self.rooms[client.room]
+                del self.rooms[client.key]
             else:
-                self.send_members(client.room)
+                self.send_members(client.key)
         logging.info("%s %s (%d online)", client.name, why, len(self.clients))
 
     # --- housekeeping ------------------------------------------------------------------------
@@ -376,9 +390,14 @@ class Server(asyncio.DatagramProtocol):
                 for room in list(self.rooms):
                     self.send_members(room)
 
+    def public_players(self):
+        for key, members in self.rooms.items():
+            if key.rpartition("/")[2] == PUBLIC_ROOM:
+                yield from members.values()
+
     def by_offset(self):
         counts = {}
-        for m in self.rooms.get(PUBLIC_ROOM, {}).values():
+        for m in self.public_players():
             key = "unknown" if m.utc_offset is None else "%+g" % (m.utc_offset / 60.0)
             entry = counts.setdefault(key, {"players": 0, "rtt_ms": []})
             entry["players"] += 1
@@ -387,8 +406,8 @@ class Server(asyncio.DatagramProtocol):
         return counts
 
     def status(self):
-        public = len(self.rooms.get(PUBLIC_ROOM, {}))
-        private_rooms = [m for code, m in self.rooms.items() if code != PUBLIC_ROOM]
+        public = sum(1 for _ in self.public_players())
+        private_rooms = [m for key, m in self.rooms.items() if key.rpartition("/")[2] != PUBLIC_ROOM]
         return {
             "players_online": len(self.clients),
             "public_room_players": public,

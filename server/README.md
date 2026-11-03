@@ -103,9 +103,13 @@ UDP messages start with `TTV1` and a type byte; fields are big-endian.
 | 8 BYE | client to server | leaving |
 | 9 PUNCH / 10 PUNCH_ACK | between players | opens the direct path; carries the sender's id and token |
 | 11 DIRECT | between players | datagram sent straight to the other player |
+| 12 ERROR | server to client | version mismatch, room full, invalid code, limit reached |
 
 Datagrams to port 0 (in DATA/RELAYED or DIRECT) are the clients' connection-quality pings: kind (1 ping, 2 pong), sequence number, timestamp. They run once a second over the path the match uses, so the round trip and loss the game shows are the ones the match gets.
-| 12 ERROR | server to client | version mismatch, room full, invalid code, limit reached |
+
+### Versions and cross-play
+
+The version byte in HELLO covers everything players exchange, with the server and with each other. Every port of the game (Linux, Steam Deck, and later macOS or Windows) runs the same game code and speaks the same protocol, so they all meet in the same rooms. Whenever the client changes anything it sends to the server or to other players, it must send a new version number. The server accepts the versions in `SUPPORTED_VERSIONS` and gives each version rooms of its own, so players on different versions never meet in a match that would break, and players who have not updated yet keep playing among themselves until their version is dropped. A version the server does not accept gets an error asking to update the game.
 
 The game side is in the SDK patches `project/sdk-patches/0010-online-play.patch` and `0012-online-quality.patch` (`OnlineClient` in `src/system/xsocket.cpp`).
 
