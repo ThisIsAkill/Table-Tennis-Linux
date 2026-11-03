@@ -49,7 +49,9 @@ To run it by hand, for a test: `python3 ttlink_server.py --port 27360`.
 
 ## Point the game at it
 
-Add the server to `tt-recomp.ini` next to the game (later releases can have it built in):
+The game connects to the project's server by itself, by its name `rockstartt.duckdns.org` (a free DuckDNS name; if it does not resolve when the game starts, the launcher uses the server's address 2.31.190.147). To move that server, point the name at the new machine on duckdns.org, or with `https://www.duckdns.org/update?domains=rockstartt&token=TOKEN&ip=NEW_ADDRESS`; players need no update. Change the fallback address in `project/launcher/tt-recomp.sh` with the next release.
+
+To use your own server instead, add it to `tt-recomp.ini` next to the game:
 
 ```ini
 server=tt.example.org

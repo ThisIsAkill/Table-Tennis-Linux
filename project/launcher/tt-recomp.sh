@@ -239,9 +239,25 @@ if [[ "$keyboard" == on ]]; then
     "--keybind_rstick_up=Numpad8" "--keybind_rstick_down=Numpad2"
     "--keybind_rstick_left=Numpad4" "--keybind_rstick_right=Numpad6" "--keybind_rstick_press=")
 fi
-# The project's online matchmaking server, used when the ini sets no server= of its own. Update
-# this one line (and ship it as an update) if the server ever moves.
-[[ -z "$server" ]] && server="2.31.190.147:27360"
+# The project's online matchmaking server, used when the ini sets no server= of its own. It is a
+# name (DuckDNS) so the server can move without an update; if the name does not resolve at start
+# (DNS or DuckDNS down), the server's current address is used instead.
+default_server_name="rockstartt.duckdns.org" default_server_address="2.31.190.147" default_server_port=27360
+resolves() {
+  if command -v getent >/dev/null 2>&1; then
+    timeout 3 getent hosts "$1" >/dev/null 2>&1
+  else  # macOS
+    dscacheutil -q host -a name "$1" 2>/dev/null | grep -q "address"
+  fi
+}
+if [[ -z "$server" ]]; then
+  if resolves "$default_server_name"; then
+    server="$default_server_name:$default_server_port"
+  else
+    server="$default_server_address:$default_server_port"
+    echo "tt-recomp: $default_server_name does not resolve; using $server" >&2
+  fi
+fi
 [[ -n "$server" ]] && args+=("--online_server=$server")
 case "$online_redundancy" in
   auto|on|off) args+=("--online_redundancy=$online_redundancy") ;;
