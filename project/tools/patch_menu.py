@@ -11,7 +11,9 @@ OFFLINE_MOVIE = '220d6f63f77b57f90b474d2f8fe33e2b077347e087160b49a98a2afd8214f13
 PC_SETTINGS_MOVIE = 'ebab047a621e51954a1bfc7c81aa36e3e6c996066453c04c256874d32e237513'
 # With SYSTEM LINK in the main menu (release 1.1.0); ONLINE is added on top of it.
 SYSTEM_LINK_MOVIE = '2d41824ecc440ebb9f235b426045cb9f38e2838bd4cc2700e572b55b6026d546'
-PATCHED_MOVIE = 'eaab6d629629044903a565b63156823948b8d8f3f7bb9d3409b70fd62c8bbe02'
+# With ONLINE above SYSTEM LINK (release 1.2.0); QUIT GAME is added on top of it.
+ONLINE_MOVIE = 'eaab6d629629044903a565b63156823948b8d8f3f7bb9d3409b70fd62c8bbe02'
+PATCHED_MOVIE = '3ea158ad418717bcd2e7eaf13529a937b14821720618b0998cc54dcd54b83fd0'
 # Earlier patch with PC SETTINGS as the last OPTIONS item; its regions are rewritten in full.
 PC_SETTINGS_LAST_MOVIE = 'cb3f3eaf65f096ce66e783b364aebd9ca317d7a46a250cf841cda3efa6cde301'
 # In-match pause menu (pongpause_001.xeck): PC SETTINGS below AUDIO OPTIONS in its OPTIONS list.
@@ -56,8 +58,12 @@ JUMP, IF = 0x99, 0x9D
 
 
 def _fit(code, size):
-    """Pad a rewritten region to its original size with a Jump over zeros."""
+    """Pad a rewritten region to its original size with a Jump over zeros. A gap too small for
+    the Jump (2 or 4 bytes) is filled with PushDuplicate + Pop pairs, which leave the stack as
+    it was."""
     gap = size - len(code)
+    if gap in (2, 4):
+        return code + b'\x4c\x17' * (gap // 2)
     if gap < 0 or 0 < gap < 5:
         raise ValueError('PC settings patch does not fit')
     return code + (_branch(JUMP, gap - 5) + bytes(gap - 5) if gap else b'')
@@ -160,6 +166,61 @@ def _main_list_item(state, label):
             _push(_int(3), _pool(162)) + NEW_OBJECT)
 
 
+MAIN_LIST_START, MAIN_LIST_END = 0x17EBB, 0x17FEC
+
+
+def _main_list_literal(text):
+    """[text, FE_WAIT_FOR_ONLINE (91), -1]: the rows the executable tells apart by row number."""
+    return _push(_int(-1), _int(91), _str(text), _int(3), _pool(162)) + NEW_OBJECT
+
+
+def _main_list_head():
+    """The 1.2.0 list's items pushed before EXHIBITION (the list is pushed last item first):
+    EXTRAS (sharing its Push with the list's name), OPTIONS, SYSTEM LINK, ONLINE, TRAINING MODE."""
+    return (_push(_pool(210), _int(-1), _int(85), _pool(1)) + GET_VARIABLE + _push(_pool(211)) +
+            GET_MEMBER + _push(_int(3), _pool(162)) + NEW_OBJECT + _main_list_item(18, 212) +
+            _main_list_literal('SYSTEM LINK') + _main_list_literal('ONLINE') + _main_list_item(83, 214))
+
+
+def _compact_main_list(exhibition):
+    """The 8-row LIST_MAIN with QUIT GAME, written compactly to fit the original space. The
+    menu's label script (the region _add_online edits) sets the text of rows 0-3, 5 and 6 from
+    the localisation strings after the list is built, so those items carry an empty text here;
+    SYSTEM LINK (4) and QUIT GAME (7) keep theirs. The game's Flash player only builds arrays
+    with new Array(...) (InitArray left the menu empty). Items are [text, target state, -1],
+    pushed last element first; EXHIBITION is the original item."""
+
+    def item(state, text=''):
+        return _push(_int(-1), _int(state), _str(text), _int(3), _pool(162)) + NEW_OBJECT
+
+    # The list's name shares the first Push with the QUIT GAME item (FE_WAIT_FOR_ONLINE, 91).
+    quit_item = _push(_pool(210), _int(-1), _int(91), _str('QUIT GAME'), _int(3), _pool(162)) + NEW_OBJECT
+    return (quit_item + item(85) + item(18) + item(91, 'SYSTEM LINK') + item(91) + item(83) +
+            exhibition + item(5) + _push(_int(8), _pool(162)) + NEW_OBJECT)
+
+
+def _main_list(exhibition, quit):
+    """LIST_MAIN: TOURNAMENT, EXHIBITION, TRAINING MODE, ONLINE (row 3), SYSTEM LINK (row 4),
+    OPTIONS, EXTRAS and, with quit, QUIT GAME (row 7). Frame states are inlined
+    (FE_TOURNAMENT 5, FE_TRAINING 83, FE_OPTIONS 18, FE_EXTRAS 85); EXHIBITION is the original item."""
+    if quit:
+        return _compact_main_list(exhibition)
+    return (_main_list_head() + exhibition + _main_list_item(5, 220) +
+            _push(_int(7), _pool(162)) + NEW_OBJECT)
+
+
+def _add_quit(movie):
+    """Main menu: QUIT GAME as the last row (7), after an idea from davidptrssvea's
+    Table-Tennis-Rockstar-PC v1.1.0. It opens nothing itself: like ONLINE and SYSTEM LINK it has
+    FE_WAIT_FOR_ONLINE as its target, so the accept handler leaves row 7 in iCurrChooseModeSel,
+    and the executable closes the game when it reads that row (system_link.cpp)."""
+    offset = MAIN_LIST_START + len(_main_list_head())
+    exhibition = bytes(movie[offset:offset + 0x17FB9 - 0x17F5D])
+    if exhibition[-1:] != NEW_OBJECT or bytes(movie[MAIN_LIST_START:offset]) != _main_list_head():
+        raise ValueError('Unexpected main menu list code')
+    movie[MAIN_LIST_START:MAIN_LIST_END] = _fit(_main_list(exhibition, quit=True), MAIN_LIST_END - MAIN_LIST_START)
+
+
 def _add_online(movie):
     """Main menu: ONLINE in the original Xbox LIVE row (3) and SYSTEM LINK below it (row 4).
 
@@ -169,19 +230,10 @@ def _add_online(movie):
     LIST_MAIN is rebuilt with the frame states inlined (FE_TOURNAMENT 5, FE_TRAINING 83,
     FE_OPTIONS 18, FE_EXTRAS 85) to make room; the EXHIBITION item is kept as it is.
     """
-    start, end = 0x17EBB, 0x17FEC
     exhibition = bytes(movie[0x17F5D:0x17FB9])
     if movie[0x17F0D:0x17F12] != b'\x96\x1e\x00\x07\xff' or exhibition[-1:] != NEW_OBJECT:
         raise ValueError('Unexpected main menu list code')
-    literal = lambda text: _push(_int(-1), _int(91), _str(text), _int(3), _pool(162)) + NEW_OBJECT
-    # Array pops its arguments: the last item is pushed first.
-    # The list's name shares the first Push with the EXTRAS item.
-    extras = (_push(_pool(210), _int(-1), _int(85), _pool(1)) + GET_VARIABLE + _push(_pool(211)) + GET_MEMBER +
-              _push(_int(3), _pool(162)) + NEW_OBJECT)
-    code = (extras + _main_list_item(18, 212) + literal('SYSTEM LINK') +
-            literal('ONLINE') + _main_list_item(83, 214) + exhibition + _main_list_item(5, 220) +
-            _push(_int(7), _pool(162)) + NEW_OBJECT)
-    movie[start:end] = _fit(code, end - start)
+    movie[MAIN_LIST_START:MAIN_LIST_END] = _fit(_main_list(exhibition, quit=False), MAIN_LIST_END - MAIN_LIST_START)
     # The localisation script's row 3 label becomes ONLINE; OPTIONS and EXTRAS move down a row.
     label = (_push(_pool(0)) + GET_VARIABLE + _push(_pool(2)) + GET_MEMBER + _push(_int(3)) + GET_MEMBER +
              _push(_int(0), _str('ONLINE')) + SET_MEMBER)
@@ -331,15 +383,19 @@ def patch(path):
         elif original_archive and current == ORIGINAL_MOVIE:
             _patch_offline(movie)
             _add_pc_settings(movie)
-        elif current not in (PC_SETTINGS_MOVIE, SYSTEM_LINK_MOVIE):
+        elif current not in (PC_SETTINGS_MOVIE, SYSTEM_LINK_MOVIE, ONLINE_MOVIE):
             raise ValueError('Unsupported menu archive; no changes made')
-        if current != SYSTEM_LINK_MOVIE:
+        if current not in (SYSTEM_LINK_MOVIE, ONLINE_MOVIE):
             if hashlib.sha256(movie).hexdigest() != PC_SETTINGS_MOVIE:
                 raise ValueError('Patched frontend verification failed')
             _add_system_link(movie)
-        if hashlib.sha256(movie).hexdigest() != SYSTEM_LINK_MOVIE:
+        if current != ONLINE_MOVIE:
+            if hashlib.sha256(movie).hexdigest() != SYSTEM_LINK_MOVIE:
+                raise ValueError('Patched frontend verification failed')
+            _add_online(movie)
+        if hashlib.sha256(movie).hexdigest() != ONLINE_MOVIE:
             raise ValueError('Patched frontend verification failed')
-        _add_online(movie)
+        _add_quit(movie)
         if hashlib.sha256(movie).hexdigest() != PATCHED_MOVIE:
             raise ValueError('Patched frontend verification failed')
         _store(archive, entries, entry, offset, movie)
@@ -362,7 +418,7 @@ def patch(path):
     temp = path.with_suffix('.tmp')
     temp.write_bytes(archive)
     temp.replace(path)
-    print('Created and verified offline menu, intro timing, PC settings, system link and online patches locally.', flush=True)
+    print('Created and verified offline menu, intro timing, PC settings, system link, online and quit patches locally.', flush=True)
 
 
 def _patch_offline(movie):

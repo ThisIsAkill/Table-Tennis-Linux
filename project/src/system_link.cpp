@@ -2,6 +2,7 @@
 #include "system_link.h"
 #include "pc_settings.h"
 
+#include <SDL3/SDL.h>
 #include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
@@ -253,7 +254,7 @@ extern "C" void sub_8240E6D0(PPCContext& ctx, uint8_t* base) {
 }
 
 namespace {
-// The menu patch leaves the chosen main menu row (3 ONLINE, 4 SYSTEM LINK) in
+// The menu patch leaves the chosen main menu row (3 ONLINE, 4 SYSTEM LINK, 7 QUIT GAME) in
 // iCurrChooseModeSel, which the PLAYER MATCH screen otherwise only sets to 0-2; the front end
 // resets it when the online menu opens, so it is read every frame and kept here.
 std::atomic<int> g_main_menu_choice{-1};
@@ -279,7 +280,7 @@ int TakeMainMenuRow(PPCContext& ctx, uint8_t* base, uint32_t movie) {
   call.r3.u64 = slot;
   sub_823FA5C8(call, base);
   const int value = call.r3.s32;
-  if (value != 3 && value != 4) return -1;
+  if (value != 3 && value != 4 && value != 7) return -1;
   call = ctx;
   call.r3.u64 = movie;
   call.r4.u64 = name;
@@ -295,9 +296,19 @@ int TakeMainMenuRow(PPCContext& ctx, uint8_t* base, uint32_t movie) {
 void RefreshPeerDescriptor(PPCContext& ctx, uint8_t* base);
 
 void tabletennis::lan::PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t movie) {
-  if (!movie || !Enabled()) return;
-  RefreshPeerDescriptor(ctx, base);
+  if (!movie) return;
   const int row = TakeMainMenuRow(ctx, base, movie);
+  // QUIT GAME (main menu row 7): close the window the normal way, as if it were closed. SDL
+  // takes the event from any thread; the game shuts down cleanly from there.
+  if (row == 7) {
+    REXLOG_INFO("Tabletennis: QUIT GAME chosen in the main menu");
+    SDL_Event quit{};
+    quit.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&quit);
+    return;
+  }
+  if (!Enabled()) return;
+  RefreshPeerDescriptor(ctx, base);
   if (row >= 0) g_main_menu_choice.store(row);
 }
 

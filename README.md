@@ -99,6 +99,7 @@ All 29 achievements (1000 gamerscore) come from your copy of the game and unlock
 
 Two players can play a match against each other, on the same network or over the internet. The main menu has two entries that both open the game's own online menus (PLAYER MATCH, QUICK MATCH, CREATE MATCH, lobby):
 
+- **QUIT GAME**, the last main menu item, closes the game (an idea from davidptrssvea's Windows version).
 - **ONLINE** plays over the internet through an online server. It first asks how: **PLAY ANYONE** joins the public room, **PLAY WITH A FRIEND** either shows a six-character code to give your friend (**SHOW MY CODE**) or lets you type theirs with the D-pad (**ENTER CODE**). Only players in the same room see each other's matches. No ports or IP addresses to set up: the game connects to the server, and the match itself runs directly between the two machines when the networks allow it, or through the server when they do not.
 - **SYSTEM LINK** plays on the local network, for example a Steam Deck and a PC on the same Wi-Fi.
 
