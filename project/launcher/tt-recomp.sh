@@ -28,7 +28,8 @@
 # keyboard=on plays with the keyboard too (off by default; meant for testing without a
 # controller), as player 1 next to the first controller: W A S D or the arrow keys move, I J K L
 # are the four spins in the controller's diamond (backspin, leftspin, rightspin, topspin), Q soft
-# shot, E focus shot, F full focus, C camera; Space or Enter accepts, Backspace goes back, P or
+# shot, E focus shot, F full focus, C camera, 1 / 3 the shoulder buttons (PC SETTINGS tabs);
+# Space or Enter accepts, Backspace goes back, P or
 # Enter pauses, Tab is Back/View. Any keybind_* engine flag overrides a key.
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
@@ -226,7 +227,7 @@ if [[ "$keyboard" == on ]]; then
   args+=(--mnk_mode=true
     "--keybind_a=Space,K" "--keybind_b=Backspace,L" "--keybind_x=J" "--keybind_y=I"
     "--keybind_left_trigger=Q" "--keybind_right_trigger=E"
-    "--keybind_left_shoulder=F" "--keybind_right_shoulder=F"
+    "--keybind_left_shoulder=1" "--keybind_right_shoulder=3,F"
     "--keybind_back=Tab,C" "--keybind_start=Return,P"
     "--keybind_lstick_up=W,Up" "--keybind_lstick_down=S,Down"
     "--keybind_lstick_left=A,Left" "--keybind_lstick_right=D,Right" "--keybind_lstick_press="

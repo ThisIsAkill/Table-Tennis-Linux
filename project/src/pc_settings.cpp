@@ -85,6 +85,21 @@ enum RowId {
   kCheckUpdates, kAutoUpdate, kCheckNow, kVersion,
 };
 
+// Tabs (LB / RB), each with its own rows in this order.
+enum Tab { kTabDisplay, kTabGame, kTabOnline, kTabUpdates, kTabCount };
+constexpr const char* kTabNames[kTabCount] = {"DISPLAY", "GAME", "ONLINE", "UPDATES"};
+
+const std::vector<int>& TabRows(int tab) {
+  static const std::vector<int> rows[kTabCount] = {
+      {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kAntiAliasing, kSharpening, kShowFps},
+      {kHaptics, kAchievementSound},
+      {kPlayerName, kOnlineServer, kOnlineStatus},
+      {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
+  return rows[tab];
+}
+
+int g_tab = kTabDisplay;  // UI thread; the page reopens on the last tab used
+
 std::vector<Row> MakeRows() {
   return {
       {"resolution", "RESOLUTION", "Window size. 1440P and 4K also render the game at a higher "
@@ -527,6 +542,8 @@ enum : uint16_t {
   kPadA = 0x1000,
   kPadB = 0x2000,
   kPadX = 0x4000,
+  kPadLB = 0x0100,
+  kPadRB = 0x0200,
 };
 constexpr int16_t kStickThreshold = 18000;
 
@@ -802,7 +819,7 @@ void SettingsPage::Open() {
   g_rows[kAchievementSound].current = REXCVAR_GET(achievement_sound) ? 1 : 0;
   g_rows[kHaptics].current = REXCVAR_GET(haptics) ? 1 : 0;
   if (window_) g_rows[kFullscreen].current = window_->IsFullscreen() ? 1 : 0;
-  selected_ = 0;
+  selected_ = TabRows(g_tab).front();
   held_direction_ = 0;
   save_error_.clear();
   notice_.clear();
@@ -1014,11 +1031,14 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
     shown_ = false;
     return;
   }
-  const int rows = int(g_rows.size());
+  // Up/down move within the tab; LB/RB switch tabs.
+  const std::vector<int>& tab_rows = TabRows(g_tab);
+  const int count = int(tab_rows.size());
+  const int position = int(std::find(tab_rows.begin(), tab_rows.end(), selected_) - tab_rows.begin());
   auto step = [&](uint16_t button) {
     switch (button) {
-      case kPadUp: selected_ = (selected_ + rows - 1) % rows; break;
-      case kPadDown: selected_ = (selected_ + 1) % rows; break;
+      case kPadUp: selected_ = tab_rows[(position + count - 1) % count]; break;
+      case kPadDown: selected_ = tab_rows[(position + 1) % count]; break;
       case kPadLeft: Change(selected_, -1); break;
       case kPadRight: Change(selected_, 1); break;
       default: break;
@@ -1047,6 +1067,11 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
     }
   }
   if (pressed & kPadX) RestoreDefaults();
+  if ((pressed & (kPadLB | kPadRB)) && (pressed & (kPadLB | kPadRB)) != (kPadLB | kPadRB)) {
+    g_tab = (g_tab + (pressed & kPadRB ? 1 : kTabCount - 1)) % kTabCount;
+    selected_ = TabRows(g_tab).front();
+    held_direction_ = 0;
+  }
   // Held directions repeat, like the game's lists.
   if (held_direction_ && !(held & held_direction_)) held_direction_ = 0;
   if (held_direction_ && now >= next_repeat_) {
@@ -1116,25 +1141,40 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const float big_px = 27.0f * s;
   ImFont* label_font = achievement_ui::HeadlineFont(label_px);
   ImFont* big_font = achievement_ui::HeadlineFont(big_px);
-  const float row_h = 25.0f * s;
-  const float section_h = 22.0f * s;
-  const float rows_y0 = body_y0 + 16.0f * s;
+  const float row_h = 32.0f * s;
   const float label_x = bx0 + 30.0f * s;
   const float value_right = x1 - 34.0f * s;
-  auto row_center = [&](int i) {
-    return rows_y0 + row_h * (float(i) + 0.5f) + (i >= kPlayerName ? section_h : 0.0f) +
-           (i >= kCheckUpdates ? section_h : 0.0f);
-  };
-  // Section headings.
-  for (const auto& [first, title] : {std::pair<int, const char*>{kPlayerName, "ONLINE"},
-                                     std::pair<int, const char*>{kCheckUpdates, "UPDATES"}}) {
-    const float cy = row_center(first) - row_h * 0.5f - section_h * 0.45f;
-    const float px = 17.0f * s;
-    AddText(dl, label_font, px, ImVec2(label_x, CapsTop(cy, px)), Col(128, 194, 238, in), title, kCondensed);
-    const float w = TextWidth(label_font, px, title, kCondensed);
-    dl->AddLine(ImVec2(label_x + w + 10.0f * s, cy), ImVec2(value_right, cy), Col(128, 194, 238, 0.35f * in),
-                1.5f * s);
+
+  // Tab bar: LB  DISPLAY  GAME  ONLINE  UPDATES  RB, the current tab yellow and underlined.
+  const float tabs_cy = body_y0 + 30.0f * s;
+  {
+    const float px = 21.0f * s;
+    ImFont* font = achievement_ui::HeadlineFont(px);
+    const float gap = 26.0f * s;
+    float total = 0.0f;
+    for (int t = 0; t < kTabCount; ++t) total += TextWidth(font, px, kTabNames[t], kCondensed) + (t ? gap : 0.0f);
+    float x = (label_x + value_right) * 0.5f - total * 0.5f;
+    for (int t = 0; t < kTabCount; ++t) {
+      const float w = TextWidth(font, px, kTabNames[t], kCondensed);
+      const bool current = t == g_tab;
+      AddText(dl, font, px, ImVec2(x, CapsTop(tabs_cy, px)), current ? Col(255, 204, 0, in) : Col(150, 156, 166, in),
+              kTabNames[t], kCondensed);
+      if (current) {
+        dl->AddRectFilled(ImVec2(x, tabs_cy + 13.0f * s), ImVec2(x + w, tabs_cy + 16.0f * s), Col(255, 204, 0, in));
+      }
+      x += w + gap;
+    }
+    const float hint_px = 17.0f * s;
+    AddText(dl, font, hint_px, ImVec2(label_x, CapsTop(tabs_cy, hint_px)), Col(128, 194, 238, in), "LB", kCondensed);
+    AddText(dl, font, hint_px,
+            ImVec2(value_right - TextWidth(font, hint_px, "RB", kCondensed), CapsTop(tabs_cy, hint_px)),
+            Col(128, 194, 238, in), "RB", kCondensed);
+    dl->AddLine(ImVec2(bx0 + 24.0f * s, tabs_cy + 24.0f * s), ImVec2(x1 - 24.0f * s, tabs_cy + 24.0f * s),
+                Col(255, 255, 255, 0.12f * in), 1.5f * s);
   }
+  const float rows_y0 = tabs_cy + 34.0f * s;
+  const std::vector<int>& tab_rows = TabRows(g_tab);
+  auto row_center = [&](int position) { return rows_y0 + row_h * (float(position) + 0.5f); };
   std::string status_help;
   const std::string status_value = OnlineStatusText(&status_help);
   std::string server_value = rex::cvar::GetFlagByName("online_server");
@@ -1156,10 +1196,11 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
                                   : g_check == Check::kFound && g_update ? "FOUND " + g_update->version
                                   : g_check == Check::kFailed   ? "FAILED"
                                                                 : "CHECK";
-  for (int i = 0; i < int(g_rows.size()); ++i) {
+  for (int position = 0; position < int(tab_rows.size()); ++position) {
+    const int i = tab_rows[position];
     const Row& row = g_rows[i];
     const bool selected = i == selected_;
-    const float cy = row_center(i);
+    const float cy = row_center(position);
     if (selected) {
       dl->AddRectFilledMultiColor(ImVec2(bx0 + 10.0f * s, cy - row_h * 0.5f), ImVec2(x1 - 10.0f * s, cy + row_h * 0.5f),
                                   Col(255, 255, 255, 0.10f * in), Col(255, 255, 255, 0.02f * in),
@@ -1228,7 +1269,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   // Description of the chosen row, and whether its change waits for a restart.
   {
     const Row& row = g_rows[selected_];
-    const float help_y = row_center(int(g_rows.size()) - 1) + row_h * 0.5f + 18.0f * s;
+    const float help_y = row_center(int(tab_rows.size()) - 1) + row_h * 0.5f + 18.0f * s;
     dl->AddLine(ImVec2(bx0 + 24.0f * s, help_y - 8.0f * s), ImVec2(x1 - 24.0f * s, help_y - 8.0f * s),
                 Col(255, 255, 255, 0.18f * in), 1.5f * s);
     const float help_px = 19.0f * s;
