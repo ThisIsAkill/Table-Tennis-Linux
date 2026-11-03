@@ -76,7 +76,7 @@ struct Row {
 };
 
 enum RowId {
-  kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kShowFps, kHaptics,
+  kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kShowFps, kHaptics,
   kAchievementSound,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus,
@@ -103,6 +103,10 @@ std::vector<Row> MakeRows() {
       {"post", "SHARPENING", "CAS sharpens the picture (best on the Steam Deck); FSR upscales "
        "it to large screens and sharpens it.", Apply::kRestart,
        {{"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
+       0},
+      {"vsync", "VSYNC", "Waits for the display before showing each frame, so the picture does not "
+       "tear. AUTO is on for macOS and off elsewhere (lowest latency).", Apply::kRestart,
+       {{"auto", "AUTO"}, {"on", "ON"}, {"off", "OFF"}},
        0},
       {"show_fps", "SHOW FPS", "Frame rate counter in the top left corner (F10).", Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
@@ -1368,14 +1372,18 @@ void SettingsPage::EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double
   // SDL only delivers typed characters while text input is on; the engine turns it on for its
   // own text fields only, so the editor does it while it is open.
   if (window_ && !window_->IsTextInputActive()) window_->SetTextInputActive(true);
-  // With keyboard controls on (--mnk_mode) some keys are also pad buttons (L is X, Backspace is
-  // B, Return is Start): shortly after typing, the pad's A, B and X are ignored so a key only types.
+  // With keyboard controls on (--mnk_mode) letters are also pad inputs (W A S D the stick, J K L I
+  // the face buttons, Backspace B): shortly after typing, the pad is ignored so a key only types.
   static double last_typing = -1.0;
   const bool typing = !io.InputQueueCharacters.empty() || ImGui::IsKeyPressed(ImGuiKey_Backspace) ||
                       ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
                       ImGui::IsKeyPressed(ImGuiKey_Escape);
   if (typing) last_typing = now;
-  if (now - last_typing < 0.35) pressed &= uint16_t(~(kPadA | kPadB | kPadX));
+  if (now - last_typing < 0.35) {
+    pressed = 0;
+    held = 0;
+    held_direction_ = 0;
+  }
   const int n = int(std::strlen(kNameChars));
   auto direction = [&](uint16_t button) {
     const int size = int(name_edit_.size());

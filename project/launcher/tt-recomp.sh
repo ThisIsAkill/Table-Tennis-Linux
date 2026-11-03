@@ -13,7 +13,9 @@
 #                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
 #                  [--auto_update=true|false] [--system_link=true|false]
 #                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
-#                  [--online_redundancy=auto|on|off] [--save] [-- extra engine flags...]
+#                  [--online_redundancy=auto|on|off] [--keyboard=on|off]
+#                  [--vsync=auto|on|off] [--save]
+#                  [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
 # network: player_name is the name the others see (default: this computer's host name, which
@@ -22,6 +24,12 @@
 # menu plays the same menus over the internet through the online server in server=.
 # online_redundancy sends every online match datagram twice to cover lost packets: auto (only
 # while the connection loses packets), on, or off.
+#
+# keyboard=on plays with the keyboard too (off by default; meant for testing without a
+# controller), as player 1 next to the first controller: W A S D or the arrow keys move, I J K L
+# are the four spins in the controller's diamond (backspin, leftspin, rightspin, topspin), Q soft
+# shot, E focus shot, F full focus, C camera; Space or Enter accepts, Backspace goes back, P or
+# Enter pauses, Tab is Back/View. Any keybind_* engine flag overrides a key.
 #
 # --save writes the resulting settings back to tt-recomp.ini. An engine_flags= line in the
 # ini passes further engine options. The in-game OPTIONS > PC SETTINGS page edits the same file.
@@ -60,6 +68,8 @@ player_name=""
 lan_peers=""
 server=""
 online_redundancy="auto"
+keyboard="off"
+vsync="auto"
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -89,6 +99,8 @@ set_option() {
     lan_peers) lan_peers="$value" ;;
     server) server="$value" ;;
     online_redundancy) online_redundancy="$value" ;;
+    keyboard) keyboard="$value" ;;
+    vsync) vsync="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -143,6 +155,8 @@ case "$gamemode" in auto|off) ;; *) die "gamemode must be auto or off" ;; esac
 case "$check_updates" in true|false) ;; *) die "check_updates must be true or false" ;; esac
 case "$auto_update" in true|false) ;; *) die "auto_update must be true or false" ;; esac
 case "$system_link" in true|false) ;; *) die "system_link must be true or false" ;; esac
+case "$keyboard" in on|off) ;; *) die "keyboard must be on or off" ;; esac
+case "$vsync" in auto|on|off) ;; *) die "vsync must be auto, on or off" ;; esac
 [[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
 [[ "$server" =~ ^[A-Za-z0-9.:_-]*$ ]] || die "server must be a host name or address, optionally with :port"
 [[ "$lan_peers" =~ ^[0-9.,\ ]*$ ]] || die "lan_peers must be IPv4 addresses separated by commas"
@@ -172,6 +186,8 @@ player_name=$player_name
 lan_peers=$lan_peers
 server=$server
 online_redundancy=$online_redundancy
+keyboard=$keyboard
+vsync=$vsync
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -188,6 +204,30 @@ args=(
   --present_safe_area_x=100 --present_safe_area_y=100
   "--system_link=$system_link"
 )
+# vsync=on presents in step with the display (no tearing; mailbox or FIFO), off presents at once
+# (lowest latency). auto is on for macOS, where MoltenVK's immediate mode tears visibly, and off
+# elsewhere; the game paces itself to the framerate setting either way.
+if [[ "$vsync" == auto ]]; then
+  [[ "$(uname -s)" == Darwin ]] && vsync_on=1 || vsync_on=0
+else
+  [[ "$vsync" == on ]] && vsync_on=1 || vsync_on=0
+fi
+((vsync_on)) && args+=(--vulkan_allow_present_mode_immediate=false)
+# Keyboard play: the engine's keyboard device joins player 1 (it never takes a controller's slot).
+# The keys follow the controller layout of OPTIONS > CONTROLS; the right stick (the same four
+# spins as the face buttons) is on the number pad. The automated tests rely on Space, Backspace,
+# Return and Shift+arrows, which keep their meaning.
+if [[ "$keyboard" == on ]]; then
+  args+=(--mnk_mode=true
+    "--keybind_a=Space,K" "--keybind_b=Backspace,L" "--keybind_x=J" "--keybind_y=I"
+    "--keybind_left_trigger=Q" "--keybind_right_trigger=E"
+    "--keybind_left_shoulder=F" "--keybind_right_shoulder=F"
+    "--keybind_back=Tab,C" "--keybind_start=Return,P"
+    "--keybind_lstick_up=W,Up" "--keybind_lstick_down=S,Down"
+    "--keybind_lstick_left=A,Left" "--keybind_lstick_right=D,Right" "--keybind_lstick_press="
+    "--keybind_rstick_up=Numpad8" "--keybind_rstick_down=Numpad2"
+    "--keybind_rstick_left=Numpad4" "--keybind_rstick_right=Numpad6" "--keybind_rstick_press=")
+fi
 # The project's online matchmaking server, used when the ini sets no server= of its own. Update
 # this one line (and ship it as an update) if the server ever moves.
 [[ -z "$server" ]] && server="2.31.190.147:27360"
