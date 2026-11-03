@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Linux launcher for the Table Tennis recompilation.
+# Linux and macOS launcher for the Table Tennis recompilation.
 #
 # Reads tt-recomp.ini next to this script (same keys as the Windows
 # settings.ini), lets command-line flags override it, and starts the game with
@@ -34,6 +34,8 @@
 # (install-table-tennis --update) when a display is available, tools/tt-update.sh otherwise,
 # then starts the game again. TT_RELEASE_URL overrides where releases are looked up.
 set -euo pipefail
+# Arrays that may be empty are expanded as ${a[@]+"${a[@]}"}: the bash 3.2 that macOS ships
+# treats a plain "${a[@]}" of an empty array as unset under set -u.
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 config="$here/tt-recomp.ini"
@@ -197,8 +199,11 @@ esac
 # Players are told apart by name, and machines of the same kind share a host name (every Steam
 # Deck is "steamdeck"), so the default adds three characters of this machine's ID.
 if [[ -z "$player_name" ]]; then
-  host="$(cat /proc/sys/kernel/hostname 2>/dev/null || echo player)"
+  host="$(cat /proc/sys/kernel/hostname 2>/dev/null || hostname -s 2>/dev/null || echo player)"
   id="$(head -c 3 /etc/machine-id 2>/dev/null || true)"
+  if [[ -z "$id" ]] && command -v ioreg >/dev/null 2>&1; then  # macOS: the hardware UUID
+    id="$(ioreg -rd1 -c IOPlatformExpertDevice | awk -F'"' '/IOPlatformUUID/ { print tolower(substr($4, 1, 3)) }')"
+  fi
   player_name="$(printf '%s' "$host" | tr -cd 'A-Za-z0-9_-' | cut -c1-11)${id:+-$id}"
 fi
 [[ -n "$player_name" ]] && args+=("--user_name=$player_name")
@@ -215,10 +220,10 @@ fi
 # flags after -- on the command line still come last and win.
 if [[ -n "$engine_flags" ]]; then
   read -r -a ini_flags <<< "$engine_flags"
-  extra=("${ini_flags[@]}" "${extra[@]}")
+  extra=(${ini_flags[@]+"${ini_flags[@]}"} ${extra[@]+"${extra[@]}"})
 fi
 # The engine rejects a flag given twice, so an extra flag replaces ours.
-for flag in "${extra[@]}"; do
+for flag in ${extra[@]+"${extra[@]}"}; do
   [[ "$flag" == --*=* ]] || continue
   name="${flag%%=*}"
   for i in "${!args[@]}"; do
@@ -261,7 +266,7 @@ known_update() {  # version from .tt-update.json, if newer than the installed on
   [[ -n "$v" && "$v" != "$installed_version" && "$(printf '%s\n%s\n' "$v" "$installed_version" | sort -V | tail -1)" == "$v" ]] \
     && echo "$v"
 }
-restart_updated() { exec env TT_UPDATE_DONE=1 "$here/tt-recomp.sh" "${orig_args[@]}"; }
+restart_updated() { exec env TT_UPDATE_DONE=1 "$here/tt-recomp.sh" ${orig_args[@]+"${orig_args[@]}"}; }
 if [[ -n "$installed_version" && -x "$updater" && -z "${TT_UPDATE_DONE:-}" ]]; then
   if [[ "$auto_update" == true && -n "$(known_update)" ]]; then
     run_update && restart_updated
@@ -272,7 +277,8 @@ if [[ -n "$installed_version" && -x "$updater" && -z "${TT_UPDATE_DONE:-}" ]]; t
     if [[ -z "$(find "$stamp" -mmin -360 2>/dev/null)" ]]; then
       touch "$stamp"; mkdir -p "$here/logs"
       # In the background with its own 5 s network timeouts; never delays the game.
-      ( timeout 60 "$updater" "$here" --check-only > "$here/logs/update-check.log" 2>&1 & ) 2>/dev/null
+      limit=(); command -v timeout >/dev/null 2>&1 && limit=(timeout 60)  # macOS has no timeout
+      ( ${limit[@]+"${limit[@]}"} "$updater" "$here" --check-only > "$here/logs/update-check.log" 2>&1 & ) 2>/dev/null
     fi
   fi
 fi
@@ -292,7 +298,7 @@ if [[ "$gamemode" == auto ]] && command -v gamemoderun >/dev/null 2>&1; then
   launch=(gamemoderun "$here/tabletennis")
 fi
 # The game runs as a child (not exec) so an update the player asked for can run after it exits.
-"${launch[@]}" "${args[@]}" "${extra[@]}" &
+"${launch[@]}" ${args[@]+"${args[@]}"} ${extra[@]+"${extra[@]}"} &
 game=$!
 trap 'kill -TERM "$game" 2>/dev/null' TERM INT HUP
 while true; do
