@@ -95,6 +95,10 @@ bool FilterInput(uint32_t user, PadSample& pad);
 // synthesizing the F7 toggle, so keyboard and controller share one state.
 void ProcessControllerRequests(rex::ui::Window* window);
 
+// Opens the achievements list if it is not already open. Used by the game's EXTRAS > ACHIEVEMENTS
+// menu entry. Safe to call from a guest thread; it is applied on the UI thread.
+void OpenList();
+
 bool IsPanelOpen();
 
 // ---------------------------------------------------------------------------------------------

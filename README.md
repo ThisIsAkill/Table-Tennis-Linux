@@ -84,7 +84,7 @@ The original game only rumbles on some shots. This port adds a firm pulse on eve
 All 29 achievements (1000 gamerscore) come from your copy of the game and unlock as you play; the online-only ones can no longer be earned.
 
 - **Unlock popup:** slides into the bottom right corner of the picture with the achievement's icon, name and gamerscore, and a short ping-pong sound: a whoosh, two ball bounces and a marimba roll, made by the game build itself.
-- **Achievements list:** hold the **View/Back** button for a moment on a controller, or press F7. Scroll with the D-pad or stick and close with B. A short Back press still reaches the game.
+- **Achievements list:** open it from **EXTRAS > ACHIEVEMENTS** in the game's menu, by holding the **View/Back** button for a moment on a controller, or with F7. Scroll with the D-pad or stick and close with B. A short Back press still reaches the game.
 - **Style:** both are drawn in the game's own menu style with the Noto Sans font (SIL Open Font License, see `licenses/NotoSans/`).
 
 <p align="center">

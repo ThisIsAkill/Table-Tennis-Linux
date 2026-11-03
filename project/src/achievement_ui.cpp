@@ -1,5 +1,6 @@
 // achievement_ui.cpp - see achievement_ui.h.
 
+#include "generated/default/tabletennis_init.h"
 #include "achievement_ui.h"
 #include "intro_skip.h"
 
@@ -567,6 +568,11 @@ bool FilterInput(uint32_t user, PadSample& pad) {
   return false;
 }
 
+void OpenList() {
+  // Request a toggle only when the list is closed, so opening it from the menu never closes it.
+  if (!g_panel_open.load(std::memory_order_relaxed)) g_toggle_requests.fetch_add(1);
+}
+
 void ProcessControllerRequests(rex::ui::Window* window) {
   const int requests = g_toggle_requests.exchange(0);
   if ((requests & 1) == 0) return;
@@ -1118,3 +1124,14 @@ void AchievementsPanel::OnDraw(ImGuiIO& io) {
 }
 
 }  // namespace tabletennis::achievement_ui
+
+// The game's EXTRAS > ACHIEVEMENTS entry raises GLOBAL_SHOW_ACHIEVEMENTS; sub_8230DB30 clears it
+// and calls sub_8230F770 to open the retail Xbox LIVE achievements screen (empty offline). That is
+// its only caller and the last thing the dispatcher does, so we replace it with our own list. F7
+// and the View-button hold still work through their own path.
+extern "C" void sub_8230F770(PPCContext& ctx, uint8_t* base) {
+  (void)base;
+  REXLOG_INFO("Tabletennis: ACHIEVEMENTS chosen in the menu");
+  tabletennis::achievement_ui::OpenList();
+  ctx.r3.u64 = 0;
+}
