@@ -123,7 +123,7 @@ All 29 achievements (1000 gamerscore) come from your copy of the game and unlock
 
 - **Unlock popup:** slides into the bottom right corner with the achievement's icon, name and gamerscore, and a short ping-pong sound made by the game build itself.
 - **Achievements list:** open it from **EXTRAS > ACHIEVEMENTS**, by holding **View/Back** on a controller for a moment, or with F7. Scroll with the D-pad or stick and close with B.
-- Three achievements need online matches (The Noob, The Victor, The Spectator). Whether matches through this port award them has not been confirmed yet.
+- The three online achievements unlock through ONLINE and SYSTEM LINK matches: The Noob for finishing a match, The Victor for winning one, The Spectator for watching one through TABLE TENNIS NETWORK.
 
 <p align="center">
   <img src="docs/images/linux-achievement-popup.jpg" width="60%" alt="Achievement unlocked popup"><br>

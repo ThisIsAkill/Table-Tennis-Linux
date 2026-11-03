@@ -7,6 +7,7 @@
 # SCENARIO is a file in scripts/scenarios/ (or a path). Lines:
 #   menu <seconds> <key>   press <key> this long after the main menu is reached
 #   every <period> <key>   press <key> every <period> seconds after the main menu
+#   hold <seconds> <key>   press <key> this long after the main menu and keep it down to the end
 #   stop <seconds>         end the run this long after the main menu is reached
 #   timeout <seconds>      hard limit for the whole run (default 300)
 # Until the main menu appears, Return is pressed every 4 s to skip the intro.
@@ -40,11 +41,12 @@ fi
 mkdir -p "$out"
 [[ -z "${TT_PARALLEL:-}" ]] && pgrep -x tabletennis >/dev/null && { echo "tabletennis already running"; exit 1; }
 
-hard=300; stop=""; events=(); repeats=()
+hard=300; stop=""; events=(); repeats=(); holds=(); held=()
 while read -r kind a b; do
   case "$kind" in
     menu) events+=("$a $b") ;;
     every) repeats+=("$a $b") ;;
+    hold) holds+=("$a $b") ;;
     stop) stop="$a" ;;
     timeout) hard="$a" ;;
   esac
@@ -116,6 +118,12 @@ while kill -0 $gpid 2>/dev/null; do
       (( pressed )) && sleep 0.7
       press "${events[ei]#* }"; ei=$((ei + 1)); pressed=1
     done
+    for hi in "${!holds[@]}"; do
+      (( menu + ${holds[hi]%% *} <= now )) || continue
+      key="${holds[hi]#* }"; unset 'holds[hi]'
+      xdotool keydown --delay 0 "$key"; held+=("$key")
+      echo "[$now s] hold $key" >> "$out/inputs.log"
+    done
     for ri in "${!repeats[@]}"; do
       period="${repeats[ri]%% *}"
       (( (now - menu) / period > ${rnext[ri]:-0} )) || continue
@@ -132,6 +140,7 @@ while kill -0 $gpid 2>/dev/null; do
   if [[ "$h" == "$last" ]]; then rm -f "$f"; else last="$h"; kept=$((kept + 1)); fi
   sleep 2
 done
+for key in "${held[@]}"; do xdotool keyup "$key" 2>/dev/null; done
 wait $gpid 2>/dev/null; code=$?
 if [[ -n "$pad_fifo" ]]; then echo QUIT >&7; exec 7>&-; wait "$padpid" 2>/dev/null; rm -f "$pad_fifo"; fi
 sleep 1

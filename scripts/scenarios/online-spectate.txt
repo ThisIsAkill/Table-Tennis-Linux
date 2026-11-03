@@ -1,0 +1,16 @@
+# ONLINE (PLAY ANYONE) > TABLE TENNIS NETWORK > EXHIBITION, wait for the search, A on the player, A to spectate
+menu 3 shift+Down
+menu 4 shift+Down
+menu 5 shift+Down
+menu 8 space
+menu 12 space
+menu 22 shift+Down
+menu 24 shift+Down
+menu 26 space
+menu 36 space
+menu 56 space
+menu 68 space
+menu 82 space
+menu 96 space
+stop 820
+timeout 1150

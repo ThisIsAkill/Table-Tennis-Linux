@@ -1,0 +1,24 @@
+# ONLINE (PLAY ANYONE) > PLAYER MATCH > CREATE MATCH, accept the settings, wait, start when the guest is in
+menu 3 shift+Down
+menu 4 shift+Down
+menu 5 shift+Down
+menu 8 space
+menu 12 space
+menu 22 space
+menu 30 shift+Down
+menu 32 shift+Down
+menu 34 space
+# CREATE MATCH: GAMES PER MATCH 1 OF 1, POINTS PER GAME 7
+menu 38 shift+Down
+menu 39 shift+Left
+menu 40 shift+Down
+menu 41 shift+Left
+menu 43 space
+menu 50 space
+menu 96 Return
+menu 102 space
+menu 108 space
+menu 116 space
+menu 124 space
+stop 900
+timeout 1200

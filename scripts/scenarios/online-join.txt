@@ -1,0 +1,16 @@
+# ONLINE (PLAY ANYONE) > PLAYER MATCH > QUICK MATCH, then accept whatever comes
+menu 3 shift+Down
+menu 4 shift+Down
+menu 5 shift+Down
+menu 8 space
+menu 12 space
+menu 22 space
+menu 30 space
+menu 76 space
+menu 86 space
+menu 96 space
+menu 106 space
+# the guest aims wide (left stick left) for the whole match, to lose
+hold 150 a
+stop 880
+timeout 1180
