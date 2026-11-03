@@ -1,4 +1,6 @@
 #include "generated/default/tabletennis_init.h"
+#include "time_now.h"
+using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 #include "haptics.h"
 #include "intro_skip.h"
 
@@ -39,10 +41,6 @@ Clock::time_point g_pulse_until{};
 uint16_t g_game_low = 0, g_game_high = 0;  // the game's latest vibration request
 std::atomic<int64_t> g_last_hud_ns{0};      // last update of the in-match HUD
 
-int64_t NowNs() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch())
-      .count();
-}
 
 bool InMatch() {
   return NowNs() - g_last_hud_ns.load(std::memory_order_relaxed) < 500'000'000;

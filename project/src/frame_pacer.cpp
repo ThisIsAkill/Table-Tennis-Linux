@@ -1,6 +1,8 @@
 // frame_pacer.cpp - see frame_pacer.h.
 
 #include "frame_pacer.h"
+#include "time_now.h"
+using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
@@ -27,9 +29,6 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-int64_t NowNs() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
-}
 
 // Absolute deadlines (upstream's frame_schedule.h).
 class Schedule {

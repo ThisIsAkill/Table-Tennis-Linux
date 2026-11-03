@@ -1,6 +1,8 @@
 // pc_settings.cpp - see pc_settings.h.
 
 #include "pc_settings.h"
+#include "time_now.h"
+using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 #include "menu_style.h"
 #include "button_prompts.h"
 
@@ -455,11 +457,6 @@ std::filesystem::path UpdateCheckLog() { return InstallDir() / "logs" / "update-
 // half second, the pause menu's not within two seconds, and no rally is in play.
 std::atomic<int64_t> g_frontend_tick_ns{0};
 std::atomic<int64_t> g_pause_tick_ns{0};
-int64_t NowNs() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
 bool InFrontEnd() {
   const int64_t now = NowNs();
   return intro::MainMenuReached() && now - g_frontend_tick_ns.load() < 500'000'000 &&
