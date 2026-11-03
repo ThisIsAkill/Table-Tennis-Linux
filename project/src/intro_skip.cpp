@@ -33,13 +33,17 @@ void CloseStartupGamepads() {
 void Request() {
   auto expected = Phase::Watching;
   if (phase.compare_exchange_strong(expected, Phase::Skipping)) {
-    REXLOG_INFO("Tabletennis: Intro skip requested by gamepad; continuing to main menu");
+    REXLOG_INFO("Tabletennis: Intro skip requested; continuing to main menu");
   }
 }
 
-bool SDLCALL WatchGamepad(void*, SDL_Event* event) {
+// Any button, key, or click during the startup intro skips to the main menu. Keyboard and mouse
+// events matter where there is no controller (for example a Mac being played with the keyboard).
+bool SDLCALL WatchInput(void*, SDL_Event* event) {
   if (event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ||
       event->type == SDL_EVENT_JOYSTICK_BUTTON_DOWN ||
+      event->type == SDL_EVENT_KEY_DOWN ||
+      event->type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
       (event->type == SDL_EVENT_GAMEPAD_AXIS_MOTION &&
        (event->gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
         event->gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) &&
@@ -58,14 +62,14 @@ void Install() {
     REXLOG_ERROR("Tabletennis: Early gamepad initialization failed: {}", SDL_GetError());
     return;
   }
-  SDL_AddEventWatch(WatchGamepad, nullptr);
+  SDL_AddEventWatch(WatchInput, nullptr);
   installed = true;
   PollGamepads();
 }
 
 void Uninstall() {
   installed = false;
-  SDL_RemoveEventWatch(WatchGamepad, nullptr);
+  SDL_RemoveEventWatch(WatchInput, nullptr);
   CloseStartupGamepads();
   if (gamepad_subsystem) SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
   gamepad_subsystem = false;
