@@ -45,6 +45,9 @@ struct FPSCRPlatform {
 
   static inline void setcsr(u32 csr) noexcept { simde_mm_setcsr(csr | ExceptionMask); }
 
+  // csr with every FP exception disabled: on x86 a set MXCSR bit masks the exception.
+  static constexpr u32 TrapsOff(u32 csr) noexcept { return csr | ExceptionMask; }
+
   static inline void InitHostExceptions(u32& csr) noexcept {
     csr |= ExceptionMask;  // Set mask bits to disable exceptions
   }
@@ -75,7 +78,15 @@ struct FPSCRPlatform {
     return csr;
   }
 
-  static inline void setcsr(u32 csr) noexcept { __asm__ __volatile__("msr fpcr, %0" : : "r"(csr)); }
+  // csr with every FP exception disabled: on ARM a set FPCR bit ENABLES the trap (the opposite
+  // of x86), and Apple silicon honours them, so OR-ing ExceptionMask in would make every inexact
+  // result a SIGILL. The trap bits are also cleared on every write, whatever the caller passes.
+  static constexpr u32 TrapsOff(u32 csr) noexcept { return csr & ~ExceptionMask; }
+
+  static inline void setcsr(u32 csr) noexcept {
+    const u64 value = TrapsOff(csr);
+    __asm__ __volatile__("msr fpcr, %0" : : "r"(value));
+  }
 
   static inline void InitHostExceptions(u32& csr) noexcept {
     csr &= ~ExceptionMask;  // Clear enable bits to disable exceptions

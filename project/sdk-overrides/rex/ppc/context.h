@@ -146,7 +146,7 @@ constexpr uint32_t kRoundMask = 0x03;
 
 struct FPSCRRegister {
   using Platform = platform::FPSCRPlatform;
-  uint32_t csr = Platform::ExceptionMask;
+  uint32_t csr = Platform::TrapsOff(0);
 
   static constexpr size_t HostToGuest[] = {kRoundNearest, kRoundDown, kRoundUp, kRoundTowardZero};
 
@@ -159,53 +159,54 @@ struct FPSCRRegister {
 
   inline uint32_t getcsr() noexcept { return Platform::getcsr(); }
   inline void setcsr(uint32_t val) noexcept {
-    csr = val | Platform::ExceptionMask;
+    csr = Platform::TrapsOff(val);
     Platform::setcsr(csr);
   }
 
-  // Restoring the whole word would unmask every FP exception when csr is 0.
+  // Restoring the whole word would unmask every FP exception when csr is 0. TrapsOff keeps every
+  // exception disabled on each platform (x86 sets mask bits, ARM clears trap-enable bits).
   inline void restoreGuestBits(uint32_t saved) noexcept {
-    csr = ((getcsr() & ~GuestMask) | (saved & GuestMask)) | Platform::ExceptionMask;
+    csr = Platform::TrapsOff((getcsr() & ~GuestMask) | (saved & GuestMask));
     setcsr(csr);
   }
 
   inline uint32_t loadFromHost() noexcept {
-    csr = getcsr() | Platform::ExceptionMask;
+    csr = Platform::TrapsOff(getcsr());
     return HostToGuest[(csr & RoundMaskVal) >> RoundShift];
   }
 
   inline void storeFromGuest(uint32_t value) noexcept {
     csr &= ~RoundMaskVal;
-    csr |= Platform::GuestToHost[value & kRoundMask] | Platform::ExceptionMask;
+    csr = Platform::TrapsOff(csr | Platform::GuestToHost[value & kRoundMask]);
     setcsr(csr);
   }
 
   inline void enableFlushModeUnconditional() noexcept {
-    csr |= FlushMask | Platform::ExceptionMask;
+    csr = Platform::TrapsOff(csr | FlushMask);
     setcsr(csr);
   }
 
   inline void disableFlushModeUnconditional() noexcept {
-    csr = (csr & ~FlushMask) | Platform::ExceptionMask;
+    csr = Platform::TrapsOff(csr & ~FlushMask);
     setcsr(csr);
   }
 
   inline void enableFlushMode() noexcept {
     if ((csr & FlushMask) != FlushMask) [[unlikely]] {
-      csr |= FlushMask | Platform::ExceptionMask;
+      csr = Platform::TrapsOff(csr | FlushMask);
       setcsr(csr);
     }
   }
 
   inline void disableFlushMode() noexcept {
     if ((csr & FlushMask) != 0) [[unlikely]] {
-      csr = (csr & ~FlushMask) | Platform::ExceptionMask;
+      csr = Platform::TrapsOff(csr & ~FlushMask);
       setcsr(csr);
     }
   }
 
   inline void InitHost() noexcept {
-    csr = getcsr() | Platform::ExceptionMask;
+    csr = Platform::TrapsOff(getcsr());
     Platform::InitHostExceptions(csr);
     setcsr(csr);
   }
