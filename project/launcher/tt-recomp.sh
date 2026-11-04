@@ -146,12 +146,13 @@ case "$resolution" in
   720p) width=1280; height=720; scale=1 ;;
   800p) width=1280; height=800; scale=1 ;;
   1080p) width=1920; height=1080; scale=1 ;;
-  1440p) width=2560; height=1440; scale=2 ;;
-  4k|2160p) width=3840; height=2160; scale=3 ;;
+  1440p) width=2560; height=1440; scale=1 ;;
+  4k|2160p) width=3840; height=2160; scale=1 ;;
   *) die "unknown resolution '$resolution' (720p, 800p, 1080p, 1440p, 4k)" ;;
 esac
-# The 3D view renders at the game's 1280x720 times this factor; auto follows the resolution.
-# A higher factor than the screen needs supersamples (sharper, more GPU work).
+# The 3D view renders at the game's 1280x720 times this factor. auto is 1 at every resolution
+# (FSR or CAS can upscale): 2 and 3 cost about 3x and 14x the GPU time of 1, far more than their
+# pixel count suggests, so they are only used when chosen.
 case "$render_scale" in
   auto) ;;
   1|2|3) scale="$render_scale" ;;

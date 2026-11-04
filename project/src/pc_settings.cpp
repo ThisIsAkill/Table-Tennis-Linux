@@ -111,8 +111,9 @@ int g_tab = kTabDisplay;  // UI thread; the page reopens on the last tab used
 
 std::vector<Row> MakeRows() {
   return {
-      {"resolution", "RESOLUTION", "Window size. 1440P and 4K also render the game at a higher "
-       "internal resolution, which applies after a restart.", Apply::kLive,
+      {"resolution", "RESOLUTION", "Window size. The game renders at 720p and is scaled to the "
+       "window; for a sharper picture on large screens use SHARPENING (FSR) or, on a fast "
+       "graphics card, GRAPHICS > RENDER SCALE.", Apply::kLive,
        {{"720p", "1280 X 720"}, {"800p", "1280 X 800"}, {"1080p", "1920 X 1080"},
         {"1440p", "2560 X 1440"}, {"4k", "3840 X 2160"}},
        2},
@@ -158,8 +159,8 @@ std::vector<Row> MakeRows() {
        0},
       {"render_scale", "RENDER SCALE", "Draws the game at a multiple of its 720p resolution and "
        "scales the picture to the window: smoother edges and sharper detail (supersampling). AUTO "
-       "follows RESOLUTION (2X at 1440P, 3X at 4K). 2X and 3X need a fast graphics card; keep "
-       "AUTO on the Steam Deck.", Apply::kRestart,
+       "is 1X. 2X costs about 3 times the GPU work and 3X about 14 times (the Xbox 360's "
+       "rendering is emulated at that size too), so use them only on a fast graphics card.", Apply::kRestart,
        {{"auto", "AUTO"}, {"1", "1X"}, {"2", "2X"}, {"3", "3X"}},
        0},
       {"texture_filtering", "TEXTURE FILTERING", "Anisotropic filtering keeps the floor, the "
@@ -553,10 +554,6 @@ std::map<std::string, std::string> ReadIni() {
 }
 
 // The game's internal render scale for a resolution choice, as the launcher sets it.
-int RenderScale(const std::string& resolution) {
-  return resolution == "4k" ? 3 : resolution == "1440p" ? 2 : 1;
-}
-
 bool WindowSize(const std::string& resolution, int& width, int& height) {
   static const std::map<std::string, std::pair<int, int>> sizes = {
       {"720p", {1280, 720}}, {"800p", {1280, 800}}, {"1080p", {1920, 1080}},
@@ -589,9 +586,6 @@ int FindChoice(const Row& row, const std::string& value) {
 bool RestartPending(int i) {
   const Row& row = g_rows[i];
   if (i == kPlayerName) return g_player_name != g_player_name_running;
-  if (i == kResolution) {
-    return RenderScale(row.choices[row.current].value) != RenderScale(row.choices[row.running].value);
-  }
   return row.apply == Apply::kRestart && row.current != row.running;
 }
 

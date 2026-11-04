@@ -94,7 +94,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 | Setting | Values |
 |---|---|
-| Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160. 1440p and 4K also raise the internal 3D resolution and apply after a restart |
+| Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160 (window size; the game renders at 720p and is scaled up; use Sharpening (FSR) or Render scale for more detail) |
 | Fullscreen | on / off |
 | Picture | for screens that are not 16:9 (see below): auto / letterbox / fill screen |
 | VSync | auto (on for macOS, off elsewhere) / on / off: waits for the display, so the picture does not tear |
@@ -105,7 +105,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 | Setting | Values |
 |---|---|
-| Render scale | auto / 1x / 2x / 3x: draws the game at a multiple of its 720p resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). Auto follows the resolution (2x at 1440p, 3x at 4K). Applies after a restart; keep auto on the Steam Deck |
+| Render scale | auto (1x) / 1x / 2x / 3x: draws the game at a multiple of its 720p resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). 2x costs about 3 times the GPU work of 1x and 3x about 14 times, because the Xbox 360's way of rendering is emulated at that size too: use them only on a fast graphics card. Applies after a restart |
 | Texture filtering | off / 2x / 4x / 8x / 16x anisotropic filtering (default 16x): the floor, table and walls stay sharp at shallow angles |
 | Anti-aliasing | off / FXAA / FXAA extreme |
 | Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) |
@@ -187,7 +187,7 @@ The game can show replacement textures, for example higher-resolution versions m
 ### Tips
 
 - Keep the frame rate at 60. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation slows gameplay down.
-- On a PC with a strong GPU, `render_scale=2` (or `3`) in `tt-recomp.ini` renders the 3D view above the screen's resolution and scales it down for a sharper picture. The Steam Deck cannot hold 60 FPS with it.
+- On a PC with a fast GPU, RENDER SCALE 2X (`render_scale=2` in `tt-recomp.ini`) renders the game at 2560x1440 for a sharper picture; 3X (4K) needs a very fast one. Neither holds 60 FPS on the Steam Deck. If the game cannot keep 60 FPS, go back to 1X and use FSR for large screens.
 
 ### Reporting problems
 

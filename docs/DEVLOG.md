@@ -223,3 +223,11 @@ The colour options are the game's own. Table Tennis has a full post-processing p
 Zoom took the most trying. The camera data holds a field-of-view value next to the matrix, but the game builds its projection inside the camera update, so changing it afterwards does nothing. Pictures taken before and after a change in the same frozen moment showed that clearly. What does work is scaling the camera's right and up axes: the renderer turns the camera into a view by transposing it, so this scales the picture around its centre and leaves depth alone. Zooming out is limited to 0.7x because the game culls objects against its own view. Tilt rolls those two axes around the view direction.
 
 Vignette, frames and borders are drawn by the overlay as a live preview and applied to the picture as it is saved: cropped to the frame (a square shot of a 1280x720 frame is 720x720), darkened with the same vignette curve, then bordered. The test hook got a second set of options, so two pictures of one frozen moment can be compared.
+
+## 2026-11-04 — Render scale no longer rises with the resolution
+
+A Steam Machine owner (Zen 4, RX 7600M-class GPU) reported the game being GPU-bound: steady at 1080p, but dropping to 30-40 FPS at 1440p. Until now the 1440p and 4K settings silently raised the render scale to 2x and 3x, so "1440p" meant four times the game's pixel work and "4K" nine times.
+
+That costs far more than the pixel count suggests. The Xbox 360 drew this game in three tiles with 2x MSAA and copies render targets into textures many times per frame (shadows, light masks, bloom), and the emulated GPU repeats all of that at the higher size. Measured on a Steam Deck at the main menu, render scale 1x takes about 6 ms of GPU time per frame, 2x about 19 ms (45 FPS) and 3x about 87 ms (11 FPS). The Deck's log also rules out the slow fallback render path on AMD's driver, which was the first suspect.
+
+So AUTO is now 1x at every resolution: the window can be 1440p or 4K while the game renders at 720p, and FSR or CAS upscales it. Changing the resolution therefore no longer needs a restart. 2x and 3x stay in GRAPHICS > RENDER SCALE for fast graphics cards, and the help says what they cost. The reporter has been asked for a log to confirm their case.
