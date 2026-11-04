@@ -1,0 +1,211 @@
+diff --git a/include/rex/graphics/util/draw.h b/include/rex/graphics/util/draw.h
+index 3da182d..e8f846f 100644
+--- a/include/rex/graphics/util/draw.h
++++ b/include/rex/graphics/util/draw.h
+@@ -353,8 +353,17 @@ union ResolveEdramInfo {
+     // of the resolve region with the contents of the first surely covered
+     // column / row with resolution scaling.
+     uint32_t fill_half_pixel_offset : 1;
++    // Bit 11 of the base for an EDRAM larger than the Xenos' 2048 tiles (bit 30, so the fields
++    // above keep the positions the resolve shaders read them from).
++    uint32_t base_tiles_bit_11 : 1;
+   };
+   ResolveEdramInfo() : packed(0) { static_assert_size(*this, sizeof(packed)); }
++  uint32_t GetBaseTiles() const { return base_tiles | (uint32_t(base_tiles_bit_11) << 11); }
++  void SetBaseTiles(uint32_t tiles) {
++    tiles &= xenos::kEdramTileCount - 1;
++    base_tiles = tiles & ((uint32_t(1) << xenos::kEdramBaseTilesBits) - 1);
++    base_tiles_bit_11 = (tiles >> 11) & 1;
++  }
+ };
+ 
+ union ResolveCoordinateInfo {
+diff --git a/include/rex/graphics/xenos.h b/include/rex/graphics/xenos.h
+index f7fd14e..b46a31a 100644
+--- a/include/rex/graphics/xenos.h
++++ b/include/rex/graphics/xenos.h
+@@ -410,7 +410,10 @@ constexpr uint32_t kRenderTargetFormatBits =
+ 
+ constexpr uint32_t kEdramTileWidthSamples = 80;
+ constexpr uint32_t kEdramTileHeightSamples = 16;
+-constexpr uint32_t kEdramTileCount = 2048;
++// The Xenos has 2048 tiles (10 MiB). Doubled so that titles rendering above their original
++// resolution (Table Tennis at native 1080p) can keep a frame-sized colour and depth buffer in
++// EDRAM together; titles that stay within 10 MiB address the same tiles as before.
++constexpr uint32_t kEdramTileCount = 4096;
+ constexpr uint32_t kEdramSizeBytes =
+     kEdramTileCount * kEdramTileHeightSamples * kEdramTileWidthSamples * sizeof(uint32_t);
+ 
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index 953c5fd..fe63201 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -946,12 +946,12 @@ bool RenderTargetCache::PrepareHostRenderTargetsResolveClear(
+   if (resolve_info.IsClearingDepth()) {
+     pitch_tiles_at_32bpp = resolve_info.depth_edram_info.pitch_tiles;
+     base_offset_tiles_at_32bpp =
+-        resolve_info.depth_edram_info.base_tiles - resolve_info.depth_original_base;
++        resolve_info.depth_edram_info.GetBaseTiles() - resolve_info.depth_original_base;
+     msaa_samples = resolve_info.depth_edram_info.msaa_samples;
+   } else if (resolve_info.IsClearingColor()) {
+     pitch_tiles_at_32bpp = resolve_info.color_edram_info.pitch_tiles;
+     base_offset_tiles_at_32bpp =
+-        resolve_info.color_edram_info.base_tiles - resolve_info.color_original_base;
++        resolve_info.color_edram_info.GetBaseTiles() - resolve_info.color_original_base;
+     if (resolve_info.color_edram_info.format_is_64bpp) {
+       assert_zero(pitch_tiles_at_32bpp & 1);
+       pitch_tiles_at_32bpp >>= 1;
+diff --git a/src/graphics/util/draw.cpp b/src/graphics/util/draw.cpp
+index 305380e..9e96082 100644
+--- a/src/graphics/util/draw.cpp
++++ b/src/graphics/util/draw.cpp
+@@ -745,7 +745,7 @@ void GetResolveEdramTileSpan(ResolveEdramInfo edram_info, ResolveCoordinateInfo
+   uint32_t y1 = (((coordinate_info.edram_offset_y_div_8 + height_div_8) << y_scale_log2) +
+                  (xenos::kEdramTileHeightSamples - 1)) /
+                 xenos::kEdramTileHeightSamples;
+-  base_out = edram_info.base_tiles + y0 * edram_info.pitch_tiles + x0;
++  base_out = edram_info.GetBaseTiles() + y0 * edram_info.pitch_tiles + x0;
+   row_length_used_out = x1 - x0;
+   rows_out = y1 - y0;
+ }
+@@ -1040,7 +1040,7 @@ bool GetResolveInfo(const RegisterFile& regs, const memory::Memory& memory,
+     depth_edram_info.is_depth = 1;
+     // If wrapping happens, it's fine, it doesn't matter how many times and
+     // where modulo xenos::kEdramTileCount is applied in this context.
+-    depth_edram_info.base_tiles = rb_depth_info.depth_base + edram_base_offset_tiles;
++    depth_edram_info.SetBaseTiles(rb_depth_info.depth_base + edram_base_offset_tiles);
+     depth_edram_info.format = uint32_t(rb_depth_info.depth_format);
+     depth_edram_info.format_is_64bpp = 0;
+     depth_edram_info.fill_half_pixel_offset = uint32_t(fill_half_pixel_offset);
+@@ -1061,7 +1061,7 @@ bool GetResolveInfo(const RegisterFile& regs, const memory::Memory& memory,
+     color_edram_info.is_depth = 0;
+     // If wrapping happens, it's fine, it doesn't matter how many times and
+     // where modulo xenos::kEdramTileCount is applied in this context.
+-    color_edram_info.base_tiles = color_info.color_base + (edram_base_offset_tiles << is_64bpp);
++    color_edram_info.SetBaseTiles(color_info.color_base + (edram_base_offset_tiles << is_64bpp));
+     color_edram_info.format = uint32_t(color_info.color_format);
+     color_edram_info.format_is_64bpp = is_64bpp;
+     color_edram_info.fill_half_pixel_offset = uint32_t(fill_half_pixel_offset);
+diff --git a/src/graphics/vulkan/render_target_cache.cpp b/src/graphics/vulkan/render_target_cache.cpp
+index cca31df..cac73d3 100644
+--- a/src/graphics/vulkan/render_target_cache.cpp
++++ b/src/graphics/vulkan/render_target_cache.cpp
+@@ -95,6 +95,91 @@ namespace shaders {
+ #include "../shaders/vulkan_spirv/resolve_full_8bpp_scaled_cs.h"
+ }  // namespace shaders
+ 
++namespace {
++
++// The resolve and EDRAM clear shaders are prebuilt for the Xenos' 2048-tile EDRAM: they read the
++// base tile from ResolveEdramInfo bits 13-23 and wrap EDRAM addresses at 2048 tiles. With a larger
++// emulated EDRAM (xenos::kEdramTileCount), ResolveEdramInfo carries bit 11 of the base in bit 30,
++// and this rewrites a shader to read the 12-bit base and wrap at kEdramTileCount tiles:
++//   base = (info >> 13) & 2047            ->  base | ((info >> 13) >> 6) & 2048
++//   offset % (2048 * 1280)                ->  offset % (kEdramTileCount * 1280)
++//   offset % (scale * 2048)  [scaled]     ->  offset % (scale * kEdramTileCount)
++std::vector<uint32_t> AdaptEdramShader(const uint32_t* code, size_t size_bytes) {
++  std::vector<uint32_t> in(code, code + size_bytes / sizeof(uint32_t));
++  if (xenos::kEdramTileCount == 2048 || in.size() < 5) return in;
++  constexpr uint32_t kOpTypeInt = 21, kOpConstant = 43, kOpIMul = 132, kOpUMod = 137,
++                     kOpShiftRightLogical = 194, kOpBitwiseOr = 197, kOpBitwiseAnd = 199;
++  uint32_t uint_type = 0, const_13 = 0, const_2047 = 0, const_2048 = 0, const_edram = 0;
++  std::vector<uint32_t> shifted_by_13, edram_size_products;
++  for (size_t i = 5; i < in.size();) {
++    const uint32_t count = in[i] >> 16, op = in[i] & 0xFFFF;
++    if (!count || i + count > in.size()) return in;
++    if (op == kOpTypeInt && count == 4 && in[i + 2] == 32 && in[i + 3] == 0) uint_type = in[i + 1];
++    if (op == kOpConstant && count == 4 && uint_type && in[i + 1] == uint_type) {
++      const uint32_t id = in[i + 2], value = in[i + 3];
++      if (value == 13) const_13 = id;
++      if (value == 2047) const_2047 = id;
++      if (value == 2048) const_2048 = id;
++      if (value == 2048 * 1280) const_edram = id;
++    }
++    if (op == kOpShiftRightLogical && count == 5 && const_13 && in[i + 4] == const_13) {
++      shifted_by_13.push_back(in[i + 2]);
++    }
++    if (op == kOpIMul && count == 5 && const_2048 && (in[i + 3] == const_2048 || in[i + 4] == const_2048)) {
++      edram_size_products.push_back(in[i + 2]);
++    }
++    i += count;
++  }
++  if (!uint_type || !const_2047) return in;
++  uint32_t bound = in[3];
++  const uint32_t c6 = bound++, c2048 = bound++, c_tiles = bound++, c_edram = bound++;
++  std::vector<uint32_t> out(in.begin(), in.begin() + 5);
++  for (size_t i = 5; i < in.size();) {
++    const uint32_t count = in[i] >> 16, op = in[i] & 0xFFFF;
++    std::vector<uint32_t> inst(in.begin() + i, in.begin() + i + count);
++    i += count;
++    if (op == kOpBitwiseAnd && count == 5 && inst[4] == const_2047 &&
++        std::find(shifted_by_13.begin(), shifted_by_13.end(), inst[3]) != shifted_by_13.end()) {
++      const uint32_t result = inst[2], shifted = inst[3];
++      const uint32_t low = bound++, high_shifted = bound++, high = bound++;
++      inst[2] = low;
++      out.insert(out.end(), inst.begin(), inst.end());
++      out.insert(out.end(), {(5u << 16) | kOpShiftRightLogical, uint_type, high_shifted, shifted, c6});
++      out.insert(out.end(), {(5u << 16) | kOpBitwiseAnd, uint_type, high, high_shifted, c2048});
++      out.insert(out.end(), {(5u << 16) | kOpBitwiseOr, uint_type, result, low, high});
++      continue;
++    }
++    if (op == kOpUMod && count == 5 && const_edram && inst[4] == const_edram) inst[4] = c_edram;
++    if (op == kOpIMul && count == 5 &&
++        std::find(edram_size_products.begin(), edram_size_products.end(), inst[2]) !=
++            edram_size_products.end()) {
++      for (size_t j = 3; j < 5; ++j) {
++        if (inst[j] == const_2048) inst[j] = c_tiles;
++      }
++    }
++    out.insert(out.end(), inst.begin(), inst.end());
++    if (op == kOpConstant && count == 4 && inst[2] == const_2047) {
++      out.insert(out.end(), {(4u << 16) | kOpConstant, uint_type, c6, 6});
++      out.insert(out.end(), {(4u << 16) | kOpConstant, uint_type, c2048, 2048});
++      out.insert(out.end(), {(4u << 16) | kOpConstant, uint_type, c_tiles, xenos::kEdramTileCount});
++      out.insert(out.end(),
++                 {(4u << 16) | kOpConstant, uint_type, c_edram, xenos::kEdramTileCount * 1280});
++    }
++  }
++  out[3] = bound;
++  return out;
++}
++
++VkPipeline CreateEdramComputePipeline(const ui::vulkan::VulkanDevice* vulkan_device,
++                                      VkPipelineLayout layout, const uint32_t* code,
++                                      size_t size_bytes) {
++  const std::vector<uint32_t> adapted = AdaptEdramShader(code, size_bytes);
++  return ui::vulkan::util::CreateComputePipeline(vulkan_device, layout, adapted.data(),
++                                                 adapted.size() * sizeof(uint32_t));
++}
++
++}  // namespace
++
+ const VulkanRenderTargetCache::ResolveCopyShaderCode
+     VulkanRenderTargetCache::kResolveCopyShaders[size_t(
+         draw_util::ResolveCopyShaderIndex::kCount)] = {
+@@ -622,7 +707,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
+     // Somewhat verification whether resolve_copy_shaders_ is up to date.
+     assert_true(resolve_copy_shader_code.unscaled && resolve_copy_shader_code.unscaled_size_bytes &&
+                 resolve_copy_shader_code.scaled && resolve_copy_shader_code.scaled_size_bytes);
+-    VkPipeline resolve_copy_pipeline = ui::vulkan::util::CreateComputePipeline(
++    VkPipeline resolve_copy_pipeline = CreateEdramComputePipeline(
+         vulkan_device, resolve_copy_pipeline_layout_,
+         draw_resolution_scaled ? resolve_copy_shader_code.scaled
+                                : resolve_copy_shader_code.unscaled,
+@@ -860,7 +945,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
+       Shutdown();
+       return false;
+     }
+-    resolve_fsi_clear_32bpp_pipeline_ = ui::vulkan::util::CreateComputePipeline(
++    resolve_fsi_clear_32bpp_pipeline_ = CreateEdramComputePipeline(
+         vulkan_device, resolve_fsi_clear_pipeline_layout_,
+         draw_resolution_scaled ? shaders::resolve_clear_32bpp_scaled_cs
+                                : shaders::resolve_clear_32bpp_cs,
+@@ -873,7 +958,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
+       Shutdown();
+       return false;
+     }
+-    resolve_fsi_clear_64bpp_pipeline_ = ui::vulkan::util::CreateComputePipeline(
++    resolve_fsi_clear_64bpp_pipeline_ = CreateEdramComputePipeline(
+         vulkan_device, resolve_fsi_clear_pipeline_layout_,
+         draw_resolution_scaled ? shaders::resolve_clear_64bpp_scaled_cs
+                                : shaders::resolve_clear_64bpp_cs,

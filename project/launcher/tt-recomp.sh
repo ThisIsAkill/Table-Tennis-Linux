@@ -11,7 +11,8 @@
 #                  [--post=auto|fsr|cas|bilinear] [--aspect=auto|letterbox|fill]
 #                  [--achievement_sound=true|false] [--haptics=true|false]
 #                  [--button_prompts=auto|xbox|playstation] [--voice_chat=true|false]
-#                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
+#                  [--native_res=auto|720p|900p|1080p] [--render_scale=auto|1|2|3]
+#                  [--check_updates=true|false]
 #                  [--auto_update=true|false] [--system_link=true|false]
 #                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
 #                  [--online_redundancy=auto|on|off] [--keyboard=on|off]
@@ -63,6 +64,7 @@ aspect="auto"
 achievement_sound="true"
 haptics="true"
 button_prompts="auto"
+native_res="auto"
 render_scale="auto"
 render_scale_auto="1"
 render_scale_auto_failed="0"
@@ -102,6 +104,7 @@ set_option() {
     haptics) haptics="$value" ;;
     voice_chat) voice_chat="$value" ;;
     button_prompts) button_prompts="$value" ;;
+    native_res) native_res="$value" ;;
     render_scale) render_scale="$value" ;;
     render_scale_auto) render_scale_auto="$value" ;;
     render_scale_auto_failed) render_scale_auto_failed="$value" ;;
@@ -136,7 +139,7 @@ fi
 while (($#)); do
   case "$1" in
     --save) save=1 ;;
-    --help|-h) sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) awk 'NR > 1 { if (!/^#/) exit; print }' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; extra+=("$@"); break ;;
     --*=*)
       key="${1%%=*}"; key="${key#--}"
@@ -154,15 +157,30 @@ case "$resolution" in
   4k|2160p) width=3840; height=2160; scale=1 ;;
   *) die "unknown resolution '$resolution' (720p, 800p, 1080p, 1440p, 4k)" ;;
 esac
-# The 3D view renders at the game's 1280x720 times this factor. auto is 1 at every resolution
+# The size the game itself renders at, menus and HUD included (the Xbox 360 original: 720p).
+# auto is 1080p for 1080p and larger windows and 720p for smaller ones (the Steam Deck).
+case "$native_res" in
+  auto) if (( height >= 1080 )); then native_res_used=1080p; else native_res_used=720p; fi ;;
+  720p|900p|1080p) native_res_used="$native_res" ;;
+  *) die "native_res must be auto, 720p, 900p or 1080p" ;;
+esac
+case "$native_res_used" in
+  720p) native_width=1280; native_height=720 ;;
+  900p) native_width=1600; native_height=900 ;;
+  1080p) native_width=1920; native_height=1080 ;;
+esac
+# The 3D view renders at the native resolution times this factor. auto is 1 at every resolution
 # (FSR or CAS can upscale): 2 and 3 cost about 3x and 14x the GPU time of 1, far more than their
 # pixel count suggests, so they are only used when chosen.
 case "$render_scale" in
   auto)
     # The game measures its GPU time in matches and remembers the level this PC can afford
-    # (render_scale_auto=); it never goes above what the window can show.
+    # (render_scale_auto=); it never goes above what the window can show (about the window
+    # height over the native height: 1 for 720p on 800p and for 1080p on 1440p).
     case "$render_scale_auto" in 1|2|3) scale="$render_scale_auto" ;; *) scale=1 ;; esac
-    if (( height <= 800 )); then scale=1; elif (( height <= 1440 && scale > 2 )); then scale=2; fi
+    scale_cap=$(( (height * 2 + native_height) / (native_height * 2) ))
+    (( scale_cap < 1 )) && scale_cap=1
+    (( scale > scale_cap )) && scale=$scale_cap
     ;;
   1|2|3) scale="$render_scale" ;;
   *) die "render_scale must be auto, 1, 2 or 3" ;;
@@ -172,11 +190,11 @@ case "$fullscreen" in true|false) ;; *) die "fullscreen must be true or false" ;
 case "$show_fps" in true|false) ;; *) die "show_fps must be true or false" ;; esac
 case "$aa" in none|fxaa|fxaa_extreme) ;; *) die "unknown aa '$aa' (none, fxaa, fxaa_extreme)" ;; esac
 case "$post" in auto|fsr|cas|bilinear) ;; *) die "unknown post '$post' (auto, fsr, cas, bilinear)" ;; esac
-# auto: the game renders at 720p (times the render scale); FSR upscales it to 1080p and larger
-# windows, smaller ones are close enough to native for plain scaling.
+# auto: FSR upscales the game's picture (native resolution times the render scale) to windows
+# at least 1.4 times as tall; smaller steps are close enough for plain scaling.
 present_effect="$post"
 if [[ "$post" == auto ]]; then
-  if (( height * 10 >= 720 * ${scale:-1} * 14 )); then present_effect=fsr; else present_effect=bilinear; fi
+  if (( height * 10 >= native_height * ${scale:-1} * 14 )); then present_effect=fsr; else present_effect=bilinear; fi
 fi
 case "$aspect" in auto|letterbox|fill) ;; *) die "unknown aspect '$aspect' (auto, letterbox, fill)" ;; esac
 case "$achievement_sound" in true|false) ;; *) die "achievement_sound must be true or false" ;; esac
@@ -223,6 +241,7 @@ aspect=$aspect
 achievement_sound=$achievement_sound
 haptics=$haptics
 button_prompts=$button_prompts
+native_res=$native_res
 render_scale=$render_scale
 render_scale_auto=$render_scale_auto
 render_scale_auto_failed=$render_scale_auto_failed
@@ -247,6 +266,7 @@ fi
 args=(
   "--game_data_root=$iso_path"
   "--resolution_scale=$scale" "--draw_resolution_scale_x=$scale" "--draw_resolution_scale_y=$scale"
+  "--native_resolution=${native_width}x${native_height}"
   "--window_width=$width" "--window_height=$height" "--fullscreen=$fullscreen"
   "--swap_post_effect=$aa" "--present_effect=$present_effect"
   "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound" "--haptics=$haptics" "--button_prompts=$button_prompts"

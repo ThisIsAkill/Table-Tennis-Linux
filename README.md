@@ -68,7 +68,7 @@ Any controller SDL supports works, including the Steam Deck's own controls. The 
   - **Zoom** (0.7x to 5x) and **Tilt** (roll the picture up to 45 degrees).
   - **Filter**: black & white, sepia, noir, warm, cool, vivid, faded, match night; plus **Exposure**, **Contrast**, **Saturation**, **Temperature** and **Bloom**. These drive the game's own post-processing, so the screen shows exactly what is saved.
   - **Vignette**, **Frame** (original, 2.39:1 cinema, 1.85:1, 16:9, 4:3, square, 4:5 portrait, 9:16 vertical) and **Border** (white, black, thin white).
-  - **X saves the picture** to a `photos` folder in the game's folder, as a PNG at the render resolution and cropped to the frame (RENDER SCALE 2X or 3X gives 1440p or 4K shots). Y resets the camera, Back resets the options, A hides the panel and help for a clean view, B or both sticks again goes back to the match with everything restored. Not available in ONLINE or SYSTEM LINK matches, where the other player's game cannot pause.
+  - **X saves the picture** to a `photos` folder in the game's folder, as a PNG at the render resolution and cropped to the frame (1920x1080 at GAME RESOLUTION 1080P; RENDER SCALE 2X on top gives 4K shots). Y resets the camera, Back resets the options, A hides the panel and help for a clean view, B or both sticks again goes back to the match with everything restored. Not available in ONLINE or SYSTEM LINK matches, where the other player's game cannot pause.
 - **QUIT GAME**, the last item in the main menu, closes the game. With a keyboard, Escape pressed twice within two seconds does the same.
 - **F7** opens the achievements list, **F9** photo mode, **F10** toggles the FPS counter.
 - **Keyboard controls** for playing without a controller are off by default; set `keyboard=on` in `tt-recomp.ini`:
@@ -94,7 +94,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 | Setting | Values |
 |---|---|
-| Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160 (window size; the game renders at 720p and is scaled up; use Sharpening (FSR) or Render scale for more detail) |
+| Resolution | 1280x720, 1280x800 (Steam Deck), 1920x1080, 2560x1440, 3840x2160 (window size; the game renders at its Game resolution and is scaled to the window; use Sharpening (FSR) or Render scale for more detail on larger screens) |
 | Fullscreen | on / off |
 | Picture | for screens that are not 16:9 (see below): auto / letterbox / fill screen |
 | VSync | auto (on for macOS, off elsewhere) / on / off: waits for the display, so the picture does not tear |
@@ -105,10 +105,11 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 | Setting | Values |
 |---|---|
-| Render scale | auto / 1x / 2x / 3x: draws the game at a multiple of its 720p resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). 2x costs about 3 times the GPU work of 1x and 3x about 14 times, because the Xbox 360's way of rendering is emulated at that size too. **Auto** starts at 1x; when matches hold 60 FPS it tries the next level at the next start (never above what the window shows) and goes back down if that level drops frames. Applies after a restart |
+| Game resolution | auto / 720p / 900p / 1080p: the size the game itself renders at, menus, text and HUD included. The Xbox 360 game rendered at 720p; at 1080p it is sharp on 1080p screens, for about twice the GPU work. **Auto** is 1080p for 1080p and larger windows and 720p for smaller ones (the Steam Deck). Applies after a restart |
+| Render scale | auto / 1x / 2x / 3x: draws the game at a multiple of its game resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). 2x costs about 3 times the GPU work of 1x and 3x about 14 times, because the Xbox 360's way of rendering is emulated at that size too. **Auto** starts at 1x; when matches hold 60 FPS it tries the next level at the next start (never above what the window shows) and goes back down if that level drops frames. Applies after a restart |
 | Texture filtering | off / 2x / 4x / 8x / 16x anisotropic filtering (default 16x): the floor, table and walls stay sharp at shallow angles |
 | Anti-aliasing | off / FXAA / FXAA extreme |
-| Sharpening | auto (FSR on 1080p and larger windows, plain scaling below) / off / CAS (sharpens; good on the Steam Deck) / FSR (upscales and sharpens) |
+| Sharpening | auto (FSR when the window is at least 1.4 times as tall as the rendered picture, e.g. 1080p on a 4K screen; plain scaling otherwise) / off / CAS (sharpens; good on the Steam Deck) / FSR (upscales and sharpens) |
 
 **GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a light tick in menus), **motion swing** (see Controls) and the achievement unlock sound.
 
@@ -187,7 +188,7 @@ The game can show replacement textures, for example higher-resolution versions m
 ### Tips
 
 - Keep the frame rate at 60. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation slows gameplay down.
-- On a PC with a fast GPU, RENDER SCALE 2X (`render_scale=2` in `tt-recomp.ini`) renders the game at 2560x1440 for a sharper picture; 3X (4K) needs a very fast one. Neither holds 60 FPS on the Steam Deck. If the game cannot keep 60 FPS, go back to 1X and use FSR for large screens.
+- With a 1080p or larger window the game renders at native 1080p (GAME RESOLUTION AUTO). If a slower GPU drops frames there, set GAME RESOLUTION to 720P (`native_res=720p` in `tt-recomp.ini`) and use FSR. On a 4K screen with a fast GPU, RENDER SCALE 2X on top of 1080p renders the 3D view at 3840x2160. Render scale does not hold 60 FPS on the Steam Deck.
 
 ### Reporting problems
 
@@ -237,7 +238,7 @@ Building from a checkout needs `python3`, `git`, `cmake`, `ninja` and `clang` 19
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
 
-`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `voice_chat`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `voice_chat`, `native_res`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
 
 | Path | What it is |
 |---|---|

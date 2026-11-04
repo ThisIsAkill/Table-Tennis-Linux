@@ -89,7 +89,7 @@ struct Row {
 
 enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
-  kAchievementSound, kButtonPrompts, kRenderScale, kTextureFiltering, kMotionSwing,
+  kAchievementSound, kButtonPrompts, kNativeRes, kRenderScale, kTextureFiltering, kMotionSwing,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat, kAccount, kShowLinkCode, kEnterLinkCode,
   // UPDATES section
@@ -103,7 +103,7 @@ constexpr const char* kTabNames[kTabCount] = {"DISPLAY", "GRAPHICS", "GAME", "ON
 const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
       {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kShowFps},
-      {kRenderScale, kTextureFiltering, kAntiAliasing, kSharpening},
+      {kNativeRes, kRenderScale, kTextureFiltering, kAntiAliasing, kSharpening},
       {kButtonPrompts, kHaptics, kMotionSwing, kAchievementSound},
       {kPlayerName, kAccount, kShowLinkCode, kEnterLinkCode, kOnlineServer, kOnlineStatus, kVoiceChat},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
@@ -114,9 +114,9 @@ int g_tab = kTabDisplay;  // UI thread; the page reopens on the last tab used
 
 std::vector<Row> MakeRows() {
   return {
-      {"resolution", "RESOLUTION", "Window size. The game renders at 720p and is scaled to the "
-       "window; for a sharper picture on large screens use SHARPENING (FSR) or, on a fast "
-       "graphics card, GRAPHICS > RENDER SCALE.", Apply::kLive,
+      {"resolution", "RESOLUTION", "Window size. The game renders at GRAPHICS > GAME RESOLUTION "
+       "and is scaled to the window; for a sharper picture on large screens use SHARPENING (FSR) "
+       "or, on a fast graphics card, GRAPHICS > RENDER SCALE.", Apply::kLive,
        {{"720p", "1280 X 720"}, {"800p", "1280 X 800"}, {"1080p", "1920 X 1080"},
         {"1440p", "2560 X 1440"}, {"4k", "3840 X 2160"}},
        2},
@@ -132,9 +132,9 @@ std::vector<Row> MakeRows() {
       {"aa", "ANTI-ALIASING", "Smooths jagged edges with FXAA after each frame.", Apply::kLive,
        {{"none", "OFF"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
        0},
-      {"post", "SHARPENING", "The game renders at 720p (times RENDER SCALE). AUTO upscales it "
-       "with FSR to 1080p and larger windows and leaves smaller ones as they are. CAS sharpens "
-       "(good on the Steam Deck); FSR upscales and sharpens.", Apply::kLive,
+      {"post", "SHARPENING", "The game renders at GAME RESOLUTION (times RENDER SCALE). AUTO "
+       "upscales it with FSR to windows at least 1.4 times as tall and leaves smaller steps as they "
+       "are. CAS sharpens (good on the Steam Deck); FSR upscales and sharpens.", Apply::kLive,
        {{"auto", "AUTO"}, {"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
        0},
       {"vsync", "VSYNC", "Waits for the display before showing each frame, so the picture does not "
@@ -161,7 +161,13 @@ std::vector<Row> MakeRows() {
        "while a PlayStation controller is in use and Xbox icons otherwise.", Apply::kLive,
        {{"auto", "AUTO"}, {"xbox", "XBOX"}, {"playstation", "PLAYSTATION"}},
        0},
-      {"render_scale", "RENDER SCALE", "Draws the game at a multiple of its 720p resolution and "
+      {"native_res", "GAME RESOLUTION", "The size the game itself renders at, menus and HUD "
+       "included; the Xbox 360 rendered at 720p. 1080P is sharp on 1080p screens and costs about "
+       "twice the GPU work of 720P. AUTO is 1080P for 1080p and larger windows and 720P for "
+       "smaller ones such as the Steam Deck. Applies at the next start.", Apply::kRestart,
+       {{"auto", "AUTO"}, {"720p", "720P"}, {"900p", "900P"}, {"1080p", "1080P"}},
+       0},
+      {"render_scale", "RENDER SCALE", "Draws the game at a multiple of GAME RESOLUTION and "
        "scales the picture to the window: smoother edges and sharper detail (supersampling). 2X "
        "costs about 3 times the GPU work of 1X and 3X about 14 times (the Xbox 360's rendering is "
        "emulated at that size too). AUTO starts at 1X and, while matches hold 60 FPS, tries the "
@@ -571,8 +577,16 @@ bool WindowSize(const std::string& resolution, int& width, int& height) {
   return true;
 }
 
+// Height the game renders at this session (GAME RESOLUTION; the launcher passes it).
+int NativeHeight() {
+  const std::string text = rex::cvar::GetFlagByName("native_resolution");
+  const size_t x = text.find('x');
+  const int height = x == std::string::npos ? 0 : std::atoi(text.c_str() + x + 1);
+  return height >= 360 ? height : 720;
+}
+
 // The output effect SHARPENING stands for. AUTO, like the launcher: FSR when the window is at
-// least 1.4 times taller than the rendered picture (720p times the running render scale).
+// least 1.4 times taller than the rendered picture (native height times the running render scale).
 std::string SharpeningEffect() {
   const Row& row = g_rows[kSharpening];
   const std::string value = row.choices[row.current].value;
@@ -583,7 +597,7 @@ std::string SharpeningEffect() {
   }
   // The scale this session runs with (AUTO may be above 1X).
   const int scale = std::max(1, std::atoi(rex::cvar::GetFlagByName("draw_resolution_scale_x").c_str()));
-  return height * 10 >= 720 * scale * 14 ? "fsr" : "bilinear";
+  return height * 10 >= NativeHeight() * scale * 14 ? "fsr" : "bilinear";
 }
 
 // --- RENDER SCALE AUTO --------------------------------------------------------------------------
@@ -651,7 +665,9 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
     int width = 1280, height = 720;
     const auto res_it = ini.find("resolution");
     WindowSize(res_it == ini.end() ? "1080p" : res_it->second, width, height);
-    a.cap = height <= 800 ? 1 : height <= 1440 ? 2 : 3;
+    // About the window height over the rendered height, like the launcher.
+    const int native_height = NativeHeight();
+    a.cap = std::clamp((height * 2 + native_height) / (native_height * 2), 1, 3);
   }
   if (!a.active || a.decided) return;
   const double now = ImGui::GetTime();

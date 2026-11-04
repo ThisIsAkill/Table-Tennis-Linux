@@ -19,6 +19,7 @@ set(TABLETENNIS_SOURCES
     src/haptics.cpp
     src/motion.cpp
     src/photo_mode.cpp
+    src/native_res.cpp
     src/system_link.cpp
     src/pc_features.cpp
     src/frame_pacer.cpp
