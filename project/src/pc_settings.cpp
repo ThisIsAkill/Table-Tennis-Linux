@@ -588,14 +588,17 @@ std::string SharpeningEffect() {
 
 // --- RENDER SCALE AUTO --------------------------------------------------------------------------
 // With RENDER SCALE on AUTO the game finds the highest level this PC holds at 60 FPS by trying it:
-// after 30 seconds of matches at a level that keeps 60 FPS, the next start tries one level up
+// once a match has started, the frame rate on screen is sampled for a minute (rallies, walk-ups
+// and camera cuts alike: the cut scenes' depth of field and bloom are the heaviest frames). If it
+// holds 60 FPS, the next start tries one level up
 // (never above what the window shows); a level that drops frames goes back down and is not tried
 // again. The ini remembers render_scale_auto= (the level the launcher uses) and
 // render_scale_auto_failed= (the lowest level that could not hold 60 FPS). GPU time per frame is
 // logged alongside, but it does not decide: GPUs lower their clocks under light load, so the
-// time at one level does not predict the next.
+// time at one level does not predict the next. The frame rate is the presented one: the game's
+// own frame rate stays at 60 when the GPU falls behind and the presenter shows every other frame.
 struct AutoScale {
-  bool initialised = false, active = false, decided = false;
+  bool initialised = false, active = false, decided = false, match_seen = false;
   int level = 1, cap = 1, failed = 0;
   std::vector<float> fps;
   std::vector<double> gpu_ms;
@@ -635,7 +638,7 @@ void WriteIniValue(const std::string& key, const std::string& value) {
   std::filesystem::rename(temp, path, ec);
 }
 
-void UpdateAutoRenderScale() {
+void UpdateAutoRenderScale(float presented_fps, bool page_open) {
   AutoScale& a = g_auto_scale;
   if (!a.initialised) {
     a.initialised = true;
@@ -654,19 +657,23 @@ void UpdateAutoRenderScale() {
   const double now = ImGui::GetTime();
   if (now < a.next_sample) return;
   a.next_sample = now + 1.0;
-  if (!haptics::MatchInPlay() || tabletennis::photo::Active()) return;
-  const float fps = tabletennis::pacing::GetStats().fps;
+  if (haptics::MatchInPlay()) a.match_seen = true;
+  if (!a.match_seen || page_open || tabletennis::photo::Active()) return;
+  const float fps = presented_fps;
   if (fps <= 0.0f) return;
+  // Only GPU limits count: when loading or the CPU stalls, the game's own frame rate drops too,
+  // while a GPU that falls behind leaves the game at 60 and drops presented frames.
+  if (tabletennis::pacing::GetStats().fps < 55.0f) return;
   a.fps.push_back(fps);
   a.gpu_ms.push_back(rex::system::gpu_frame_time::LastMs());
-  // A level that clearly fails is given up after 10 seconds instead of 30.
+  // A level that clearly fails is given up after 15 seconds instead of a minute.
   bool clearly_failing = false;
-  if (a.level > 1 && a.fps.size() >= 10) {
+  if (a.level > 1 && a.fps.size() >= 15) {
     std::vector<float> so_far = a.fps;
     std::sort(so_far.begin(), so_far.end());
     clearly_failing = so_far[so_far.size() / 2] < 50.0f;
   }
-  if (a.fps.size() < 30 && !clearly_failing) return;
+  if (a.fps.size() < 60 && !clearly_failing) return;
   a.decided = true;
   std::vector<float> sorted = a.fps;
   std::sort(sorted.begin(), sorted.end());
@@ -674,9 +681,10 @@ void UpdateAutoRenderScale() {
   std::vector<double> gpu = a.gpu_ms;
   std::sort(gpu.begin(), gpu.end());
   const double gpu_median = gpu[gpu.size() / 2];
-  const bool holds = median >= 58.5f && low >= 55.0f;
+  const bool holds = median >= 58.0f && low >= 50.0f;
   char measured[96];
-  std::snprintf(measured, sizeof(measured), "%.0f FPS, GPU %.1f ms per frame", median, gpu_median);
+  std::snprintf(measured, sizeof(measured), "%.0f FPS, slowest tenth %.0f, GPU %.1f ms per frame",
+                median, low, gpu_median);
   const std::string here = std::to_string(a.level) + "X";
   if (holds && a.level < a.cap && (a.failed == 0 || a.level + 1 < a.failed)) {
     WriteIniValue("render_scale_auto", std::to_string(a.level + 1));
@@ -1179,7 +1187,7 @@ void SettingsPage::Save() {
 }
 
 void SettingsPage::OnDraw(ImGuiIO& io) {
-  UpdateAutoRenderScale();
+  UpdateAutoRenderScale(io.Framerate, g_open.load());
   PollUpdate();
   PollUpdateCheck();  // also while the page is closed, so a started check always finishes
   if (!g_open.load()) {
