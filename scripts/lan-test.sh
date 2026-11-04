@@ -49,6 +49,8 @@ stage() {
   # Saves and shader cache of the normal test build (see tabletennis_app.h), so both skip the
   # first-run save prompt and start with compiled shaders.
   [[ -d "$root/user_data" ]] && command cp -r "$root/user_data/." "$out/user-$role/"
+  # Each instance is its own device for the ranked account (online_account.txt is per device).
+  command rm -f "$out/user-$role/online_account.txt"
   [[ -d "$root/cache" ]] && command cp -r "$root/cache" "$out/user-$role/"
 }
 stage host

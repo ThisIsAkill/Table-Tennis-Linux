@@ -99,7 +99,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 **GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a light tick in menus) and the achievement unlock sound, on or off.
 
-**ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), **voice chat** on or off (see below), and the online server and connection status.
+**ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), your **ranked account** with **show link code** and **enter link code** (see Ranked matches below), **voice chat** on or off (see below), and the online server and connection status.
 
 **UPDATES**: check now, check at start, automatic updates, and the installed version.
 
@@ -149,7 +149,12 @@ Then one player chooses **PLAYER MATCH > CREATE MATCH**, sets up the match and w
 - Every player is named after their computer with a short code (for example `steamdeck-4f2`) until they choose a name. The game tells players apart by name, so the server does not let two players with the same name into one room.
 - System Link uses UDP ports 11000, 11001 and 13075 on the local network. A PC firewall must allow them, for example `sudo ufw allow 11000:11001/udp` and `sudo ufw allow 13075/udp`; SteamOS has no firewall by default. Online play needs no open ports.
 - If machines on the same network do not find each other (some access points and VPNs drop broadcasts), add `lan_peers=` with the other machine's IP address to `tt-recomp.ini` on both.
-- To use another server (for example your own, see [server/README.md](server/README.md)), set `server=` in `tt-recomp.ini`. RANKED MATCH, TABLE TENNIS NETWORK and LEADERBOARDS were Xbox LIVE services and are not available. `system_link=false` turns both entries off.
+- To use another server (for example your own, see [server/README.md](server/README.md)), set `server=` in `tt-recomp.ini`. `system_link=false` turns both entries off.
+
+**Ranked matches and leaderboards:** RANKED MATCH and LEADERBOARDS work again over ONLINE, with the online server standing in for Xbox LIVE. After a ranked match both players' results go to the server; the TrueSkill rating moves only when both machines report the same winner. The leaderboards show wins, losses, win percentage and TrueSkill, weekly and for the year, as the game always did.
+
+- Your ranked account is your player name. It is created the first time you go ONLINE and kept in `online_account.txt` in the save folder (keep that file private; it proves the account is yours). If another player already has the name, PC SETTINGS > ONLINE > RANKED ACCOUNT says **NAME TAKEN**: choose another player name.
+- **Same account on another device** (a PC and a Steam Deck, say): on the device that has the account, choose **SHOW LINK CODE**; on the other, choose **ENTER LINK CODE** and type the six characters within five minutes. Both devices then share the rating and the leaderboard place, and the second device takes the account's player name after a restart.
 
 ### Steam Deck
 

@@ -5,7 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 -I /opt/ttlink/ttlink_server.py --port 27360
+ExecStart=/usr/bin/python3 -I /opt/ttlink/ttlink_server.py --port 27360 --stats-db /var/lib/ttlink/ttlink_stats.db
+# Accounts, ranked results and leaderboards (SQLite); kept across restarts and upgrades.
+StateDirectory=ttlink
 Restart=always
 RestartSec=2
 DynamicUser=yes

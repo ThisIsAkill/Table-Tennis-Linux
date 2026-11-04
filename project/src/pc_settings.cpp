@@ -19,6 +19,7 @@ using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system/ranked.h>
 #include <rex/system/xsocket.h>
 #include <rex/ui/window.h>
 
@@ -86,7 +87,7 @@ enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
   kAchievementSound, kButtonPrompts,
   // ONLINE section
-  kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat,
+  kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat, kAccount, kShowLinkCode, kEnterLinkCode,
   // UPDATES section
   kCheckUpdates, kAutoUpdate, kCheckNow, kVersion,
 };
@@ -99,7 +100,7 @@ const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
       {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kAntiAliasing, kSharpening, kShowFps},
       {kButtonPrompts, kHaptics, kAchievementSound},
-      {kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat},
+      {kPlayerName, kAccount, kShowLinkCode, kEnterLinkCode, kOnlineServer, kOnlineStatus, kVoiceChat},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
   return rows[tab];
 }
@@ -162,6 +163,13 @@ std::vector<Row> MakeRows() {
        "Needs a microphone; others hear you while you talk.", Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        1},
+      {"", "RANKED ACCOUNT", "", Apply::kInfo, {}, 0},
+      {"", "SHOW LINK CODE", "Shows a one-time code (valid 5 minutes) that adds another PC or "
+       "Steam Deck to this account, so ranked results and leaderboards stay together. Press A.",
+       Apply::kInfo, {}, 0},
+      {"", "ENTER LINK CODE", "Joins this device to the account that showed the code. Its ranked "
+       "results and leaderboard place are then shared with that device. Press A.",
+       Apply::kInfo, {}, 0},
       {"check_updates", "CHECK AT START", "Look for a new version each time the game starts.",
        Apply::kSaved,
        {{"false", "OFF"}, {"true", "ON"}},
@@ -244,6 +252,32 @@ std::string OnlineStatusText(std::string* help) {
   }
   return where + ": " + std::to_string(status.room_players) +
          (status.room_players == 1 ? " PLAYER" : " PLAYERS");
+}
+
+// Value and description of the RANKED ACCOUNT row.
+std::string AccountText(std::string* help) {
+  using rex::system::ranked::AccountStatus;
+  switch (rex::system::ranked::GetAccountStatus()) {
+    case AccountStatus::kOffline:
+      *help = "Ranked matches and leaderboards use an account named after the player name. It is "
+              "created when you go ONLINE.";
+      return "NOT ONLINE";
+    case AccountStatus::kPending:
+      *help = "Talking to the online server...";
+      return "CONNECTING...";
+    case AccountStatus::kReady:
+      *help = "Ranked results and leaderboard places are saved to this account. Use SHOW LINK "
+              "CODE to play with it on another device.";
+      return rex::system::ranked::AccountName();
+    case AccountStatus::kNameTaken:
+      *help = "Another account already uses this player name. If it is yours, use ENTER LINK "
+              "CODE with a code from your other device; otherwise pick another PLAYER NAME.";
+      return "NAME TAKEN";
+    case AccountStatus::kError:
+    default:
+      *help = "The online server could not be reached. Press A to try again.";
+      return "NOT REACHABLE";
+  }
 }
 
 // The launcher's settings file: tt-recomp.ini for tt-recomp.sh, settings.ini for the Windows
@@ -1045,6 +1079,12 @@ void SettingsPage::OnDraw(ImGuiIO& io) {
     if (selected_ == kOnlineServer || selected_ == kOnlineStatus) {
     } else if (selected_ == kPlayerName) {
       OpenNameEditor();
+    } else if (selected_ == kAccount) {
+      rex::system::ranked::EnsureAccount();
+    } else if (selected_ == kShowLinkCode) {
+      rex::system::ranked::RequestLinkCode();
+    } else if (selected_ == kEnterLinkCode) {
+      OpenLinkCodeEditor();
     } else if (selected_ == kCheckNow) {
       StartUpdateCheck();
     } else if (selected_ == kVersion) {
@@ -1179,6 +1219,23 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const std::string name_value = !g_player_name.empty() ? g_player_name
                                  : g_player_name_running.empty() && !auto_name.empty() ? auto_name
                                                                                        : "AUTOMATIC";
+  rex::system::ranked::EnsureAccount();
+  std::string account_help;
+  const std::string account_value = AccountText(&account_help);
+  const std::string link_code = rex::system::ranked::LinkCode();
+  const std::string link_message = rex::system::ranked::LinkMessage();
+  const std::string show_code_value = !link_code.empty() ? link_code : "SHOW";
+  const std::string enter_code_value = "ENTER";
+  // A redeemed code renames this device's player to the account's name (from the next start).
+  const std::string linked_name = rex::system::ranked::AccountName();
+  if (rex::system::ranked::GetAccountStatus() == rex::system::ranked::AccountStatus::kReady &&
+      link_message.rfind("LINKED TO ", 0) == 0 && !linked_name.empty() &&
+      g_player_name != linked_name) {
+    g_player_name = linked_name;
+    notice_ = "LINKED - PLAYER NAME IS NOW " + linked_name + " (AFTER RESTART)";
+    notice_until_ = ImGui::GetTime() + 4.0;
+    Save();
+  }
   const bool can_check = CanCheckForUpdates();
   const std::string check_value = !can_check                   ? "NOT AVAILABLE"
                                   : g_check == Check::kRunning  ? "CHECKING..."
@@ -1207,6 +1264,9 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
                         : i == kOnlineServer ? server_value.c_str()
                         : i == kOnlineStatus ? status_value.c_str()
                         : i == kCheckNow     ? check_value.c_str()
+                        : i == kAccount      ? account_value.c_str()
+                        : i == kShowLinkCode ? show_code_value.c_str()
+                        : i == kEnterLinkCode ? enter_code_value.c_str()
                                              : version_value.c_str();
     const bool pending = RestartPending(i);
     float value_left = 0.0f;
@@ -1214,7 +1274,10 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       // No arrows: these are not choices. Rows that A acts on (an available update, the name,
       // CHECK NOW) show the A button when chosen; an available update is yellow.
       const bool update = i == kVersion && bool(g_update);
-      const bool action = update || i == kPlayerName ||
+      const bool action = update || i == kPlayerName || i == kShowLinkCode ||
+                          i == kEnterLinkCode ||
+                          (i == kAccount && rex::system::ranked::GetAccountStatus() ==
+                                                rex::system::ranked::AccountStatus::kError) ||
                           (i == kCheckNow && can_check && g_check != Check::kRunning);
       ImFont* font = selected ? big_font : label_font;
       const float px = selected ? big_px : value_px;
@@ -1303,6 +1366,17 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
                                                              " is available: see VERSION below, or press A on it."
                 : g_check == Check::kFailed   ? g_check_error
                                               : "Look for a new version now.";
+      }
+      if (selected_ == kShowLinkCode) {
+        extra = !link_code.empty()
+                    ? "Enter " + link_code + " under ENTER LINK CODE on the other device within 5 "
+                      "minutes. The code works once."
+                    : !link_message.empty() ? link_message
+                                            : std::string(row.help);
+      } else if (selected_ == kEnterLinkCode && !link_message.empty()) {
+        extra = link_message;
+      } else if (selected_ == kAccount) {
+        extra = account_help;
       }
       const char* help = selected_ == kOnlineStatus ? status_help.c_str()
                          : !extra.empty()           ? extra.c_str()
@@ -1459,7 +1533,22 @@ void SettingsPage::PollUpdateCheck() {
 // D-pad: up/down change the letter under the cursor, left/right move (right past the end adds
 // a letter), X deletes. A keyboard types and deletes (Backspace) directly. A saves, B cancels.
 // Empty means the launcher's automatic name.
+// The link code alphabet (no 0/O, 1/I/L), as the server makes them.
+constexpr const char* kLinkChars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+constexpr int kLinkMax = 6;
+
+void SettingsPage::OpenLinkCodeEditor() {
+  name_edit_.clear();
+  name_pos_ = 0;
+  editing_link_ = true;
+  naming_ = true;
+  naming_at_ = ImGui::GetTime();
+  held_direction_ = 0;
+  ImGui::GetIO().InputQueueCharacters.resize(0);
+}
+
 void SettingsPage::OpenNameEditor() {
+  editing_link_ = false;
   std::string start = g_player_name;
   if (start.empty() && g_player_name_running.empty()) start = rex::cvar::GetFlagByName("user_name");
   name_edit_.clear();
@@ -1489,7 +1578,9 @@ void SettingsPage::EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double
     held = 0;
     held_direction_ = 0;
   }
-  const int n = int(std::strlen(kNameChars));
+  const char* chars = editing_link_ ? kLinkChars : kNameChars;
+  const int max_len = editing_link_ ? kLinkMax : kNameMax;
+  const int n = int(std::strlen(chars));
   auto direction = [&](uint16_t button) {
     const int size = int(name_edit_.size());
     switch (button) {
@@ -1501,16 +1592,16 @@ void SettingsPage::EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double
           break;
         }
         char& c = name_edit_[size_t(name_pos_)];
-        const char* at = std::strchr(kNameChars, c);
-        const int index = at ? int(at - kNameChars) : 0;
-        c = kNameChars[(index + (button == kPadUp ? 1 : n - 1)) % n];
+        const char* at = std::strchr(chars, c);
+        const int index = at ? int(at - chars) : 0;
+        c = chars[(index + (button == kPadUp ? 1 : n - 1)) % n];
         break;
       }
       case kPadLeft: name_pos_ = std::max(0, name_pos_ - 1); break;
       case kPadRight:
         if (name_pos_ < size - 1) {
           ++name_pos_;
-        } else if (size > 0 && size < kNameMax) {
+        } else if (size > 0 && size < max_len) {
           name_edit_ += 'A';
           name_pos_ = size;
         }
@@ -1537,8 +1628,11 @@ void SettingsPage::EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double
                            std::max(0, int(name_edit_.size()) - 1));
   };
   // Keyboard: typed letters go after the cursor; Backspace deletes the letter under it.
-  for (ImWchar c : io.InputQueueCharacters) {
-    if (!IsNameChar(c) || int(name_edit_.size()) >= kNameMax) continue;
+  for (ImWchar typed : io.InputQueueCharacters) {
+    ImWchar c = typed;
+    if (editing_link_ && c < 128) c = ImWchar(std::toupper(int(c)));
+    const bool allowed = c && c < 128 && std::strchr(chars, int(c));
+    if (!allowed || int(name_edit_.size()) >= max_len) continue;
     const size_t at = name_edit_.empty() ? 0 : size_t(name_pos_) + 1;
     name_edit_.insert(at, 1, char(c));
     name_pos_ = int(at);
@@ -1547,7 +1641,11 @@ void SettingsPage::EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double
   if (ImGui::IsKeyPressed(ImGuiKey_Backspace)) erase();
   if (pressed & kPadX) erase();
   if ((pressed & kPadA) || ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
-    SaveName();
+    if (editing_link_) {
+      if (int(name_edit_.size()) == kLinkMax) rex::system::ranked::RedeemLinkCode(name_edit_);
+    } else {
+      SaveName();
+    }
     naming_ = false;
   } else if ((pressed & kPadB) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
     naming_ = false;
@@ -1587,14 +1685,15 @@ void SettingsPage::DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, f
   const float title_px = 36.0f * s;
   AddOutlinedText(dl, achievement_ui::HeadlineFont(title_px), title_px,
                   ImVec2(x0 + 28.0f * s, CapsTop((y0 + head_y1) * 0.5f, title_px)), Col(255, 204, 0, t),
-                  Col(16, 18, 28, t), 2.2f * s, "PLAYER NAME", kCondensed);
+                  Col(16, 18, 28, t), 2.2f * s, editing_link_ ? "LINK CODE" : "PLAYER NAME",
+                  kCondensed);
   ImFont* body = achievement_ui::BodyFont();
   const float text_px = 18.0f * s;
   AddText(dl, body, text_px, ImVec2(x0 + 40.0f * s, head_y1 + 16.0f * s), Col(176, 182, 192, t),
           "Up/down: letter, left/right: position, X: delete. A keyboard works too.", 1.0f, w - 70.0f * s);
   // One cell per letter, plus a faint empty cell where the next letter would go.
   const float cell = 31.0f * s;
-  const int cells = std::min(kNameMax, int(name_edit_.size()) + 1);
+  const int cells = std::min(editing_link_ ? kLinkMax : kNameMax, int(name_edit_.size()) + 1);
   float x = cx + 7.0f * s - cell * float(cells) * 0.5f;
   const float row_cy = head_y1 + 92.0f * s;
   const float px = 30.0f * s;
@@ -1616,7 +1715,9 @@ void SettingsPage::DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, f
     if (hot) Arrow(dl, ImVec2(x + cell * 0.5f, row_cy - 32.0f * s), 9.0f * s, true, Col(150, 156, 166, t));
     x += cell;
   }
-  const std::string note = name_edit_.empty()
+  const std::string note = editing_link_
+                               ? "The 6-letter code from SHOW LINK CODE on your other device."
+                           : name_edit_.empty()
                                ? "Empty: the automatic name (this computer's name)."
                                : std::to_string(name_edit_.size()) + " of " + std::to_string(kNameMax) +
                                      " letters. Used from the next start.";
@@ -1636,8 +1737,9 @@ void SettingsPage::DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, f
   fx -= TextWidth(ffont, fpx, "CANCEL", kCondensed) + 26.0f * s + br;
   FaceButton(dl, ImVec2(fx, fy), br, Col(90, 186, 40, t), "A", t);
   fx -= br + 8.0f * s;
-  AddText(dl, ffont, fpx, ImVec2(fx - TextWidth(ffont, fpx, "SAVE", kCondensed), CapsTop(fy, fpx)), text, "SAVE",
-          kCondensed);
+  const char* confirm = editing_link_ ? "LINK" : "SAVE";
+  AddText(dl, ffont, fpx, ImVec2(fx - TextWidth(ffont, fpx, confirm, kCondensed), CapsTop(fy, fpx)), text,
+          confirm, kCondensed);
 }
 
 // "Update now?" box over the page, in the game's message style.

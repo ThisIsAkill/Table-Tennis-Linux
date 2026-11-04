@@ -6,6 +6,7 @@
 #include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system/ranked.h>
 #include <rex/system/xsocket.h>
 
 #include <atomic>
@@ -36,6 +37,8 @@ extern "C" void __imp__sub_822FD580(PPCContext& ctx, uint8_t* base);
 extern "C" void __imp__sub_823697F8(PPCContext& ctx, uint8_t* base);
 // pongLiveManager's session notification handler (this, session, code, data).
 extern "C" void __imp__sub_823AE760(PPCContext& ctx, uint8_t* base);
+// Session start: checks the session state, then calls XSessionStart.
+extern "C" void __imp__sub_8236E6C0(PPCContext& ctx, uint8_t* base);
 // The singles network game's message handler; RemoteServeReady sets the serve unlock time
 // there from the network tuning's serveTimeDelay.
 extern "C" void __imp__sub_82394268(PPCContext& ctx, uint8_t* base);
@@ -119,6 +122,26 @@ extern "C" void sub_823AE760(PPCContext& ctx, uint8_t* base) {
   }
 }
 
+// Session start (rage session object in r3). A ranked session (flags byte +3512, bit 0x20) may
+// only start once it is registered for arbitration (bit 0x04), but the lobby skips registration
+// for system link sessions ("Attempt to start a ranked session before registering for
+// arbitration", then "an error occurred which prevented this match from starting"). Arbitration
+// is an Xbox LIVE service with nothing to do over system link, so a ranked system link session
+// counts as registered; results are then reported to the online server instead.
+extern "C" void sub_8236E6C0(PPCContext& ctx, uint8_t* base) {
+  constexpr uint32_t kSessionFlags = 3512;
+  constexpr uint8_t kRanked = 0x20, kArbitrationRegistered = 0x04;
+  if (tabletennis::lan::Enabled()) {
+    const uint32_t flags_address = ctx.r3.u32 + kSessionFlags;
+    const uint8_t flags = REX_LOAD_U8(flags_address);
+    if ((flags & kRanked) && !(flags & kArbitrationRegistered)) {
+      REX_STORE_U8(flags_address, flags | kArbitrationRegistered);
+      REXLOG_INFO("Tabletennis: ranked system link session counts as registered for arbitration");
+    }
+  }
+  __imp__sub_8236E6C0(ctx, base);
+}
+
 // Network matches unlock the serve serveTimeDelay seconds after both players are ready
 // (tune/net/PongNet.NetTuningData in assets.rpf: 1.0). Half a second still covers a 400 ms
 // round trip with margin and takes 0.5 s off every point. The tuning lives at
@@ -198,7 +221,12 @@ extern "C" void Tabletennis_XamUserGetXUID_Hook(PPCContext& ctx, uint8_t* base) 
   __imp__XamUserGetXUID(ctx, base);
   if (tabletennis::lan::Enabled() && user == 0 && ctx.r3.u32 == 0 && xuid_ptr) {
     const uint64_t xuid = REX_LOAD_U64(xuid_ptr);
-    if (xuid) REX_STORE_U64(xuid_ptr, tabletennis::lan::MachineXuid(xuid));
+    if (xuid) {
+      const uint64_t machine_xuid = tabletennis::lan::MachineXuid(xuid);
+      REX_STORE_U64(xuid_ptr, machine_xuid);
+      // Stats the game writes for this XUID are this player's; leaderboard rows use it too.
+      rex::system::ranked::SetLocalXuid(machine_xuid);
+    }
   }
 }
 
@@ -350,6 +378,10 @@ void tabletennis::lan::PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t mov
   if (!Enabled()) return;
   RefreshPeerDescriptor(ctx, base);
   if (row >= 0) g_main_menu_choice.store(row);
+  // While online, make sure the ranked account exists (claims the player name the first time),
+  // so a name that belongs to someone else shows in PC SETTINGS before a ranked match.
+  static int frames = 0;
+  if (++frames % 600 == 0) rex::system::ranked::EnsureAccount();
 }
 
 // The main menu has ONLINE (row 3) and SYSTEM LINK (row 4); both open the game's online menu.

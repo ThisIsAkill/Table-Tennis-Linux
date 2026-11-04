@@ -1,0 +1,1255 @@
+diff --git a/include/rex/system/ranked.h b/include/rex/system/ranked.h
+new file mode 100644
+index 0000000..6b4e0e6
+--- /dev/null
++++ b/include/rex/system/ranked.h
+@@ -0,0 +1,108 @@
++/**
++ * @file        rex/system/ranked.h
++ * @brief       Ranked matches and leaderboards on the online server (Xbox LIVE stats stand-in)
++ *
++ * Every copy of a title has the same profile XUID, so players are told apart by an online
++ * account instead: a player name claimed on the server plus a random secret per device, kept in
++ * the user data folder (online_account.txt). A device can join an existing account with a
++ * one-time link code shown on a device that already has it. Stat writes are signed with the
++ * device secret (HMAC-SHA256), so the secret itself is only sent once, when it is registered.
++ *
++ * The game's XSessionWriteStats calls for the local player are collected per session and sent
++ * when the session's stats are flushed or it ends; XUserReadStats and stats enumerators read the
++ * server's leaderboards.
++ */
++#pragma once
++
++#include <cstdint>
++#include <string>
++#include <utility>
++#include <vector>
++
++namespace rex::system::ranked {
++
++// Account state, for the settings screen.
++enum class AccountStatus {
++  kOffline,    // online play off or no server set
++  kPending,    // a request to the server is in progress
++  kReady,      // account known: AccountName() is the name on the leaderboards
++  kNameTaken,  // the player name belongs to another account: link this device or rename
++  kError,      // the server could not be reached or refused the request
++};
++
++AccountStatus GetAccountStatus();
++std::string AccountName();
++// Claims the player name for this device in the background when there is no account yet (or the
++// name changed). Safe to call often.
++void EnsureAccount();
++
++// Link codes. RequestLinkCode asks the server for a code for this device's account; LinkCode()
++// returns it once it arrives ("" while pending). RedeemLinkCode joins this device to the account
++// that showed the code; LinkMessage() describes the result.
++void RequestLinkCode();
++std::string LinkCode();
++void RedeemLinkCode(const std::string& code);
++std::string LinkMessage();
++
++// The XUID the title uses for the local player in network sessions; stats written for any other
++// XUID belong to other players and are not sent.
++void SetLocalXuid(uint64_t xuid);
++// That XUID, or the profile's while the title has not set one.
++uint64_t LocalXuid();
++
++struct StatValue {
++  uint32_t property_id;
++  double value;
++};
++
++// XSessionWriteStats for one player and one view.
++void WriteStats(uint64_t session_id, uint64_t xuid, uint32_t view_id,
++                const std::vector<StatValue>& values);
++// XSessionFlushStats / XSessionEnd: sends the session's collected stats.
++void FlushStats(uint64_t session_id);
++
++// One leaderboard row as the server returns it.
++struct Row {
++  uint32_t rank = 0;
++  std::string online_id;
++  std::string gamertag;
++  double rating = 0;
++  std::vector<std::pair<uint16_t, double>> columns;  // column id -> value
++  uint32_t skill = 0;
++  bool is_local = false;
++};
++
++// Reads one page of a leaderboard view. start is a 1-based rank; around_local centres the page on
++// this account. Blocks for up to a few seconds; false when the server cannot be reached.
++bool ReadLeaderboard(uint32_t view_id, uint32_t start, uint32_t count, bool around_local,
++                     uint32_t* total, std::vector<Row>* rows);
++
++// Leaderboard results in the title's XUSER_STATS_READ_RESULTS layout (big-endian, with guest
++// pointers into the same buffer). One entry per XUSER_STATS_SPEC the title asked for.
++struct ViewRequest {
++  uint32_t view_id = 0;
++  std::vector<uint16_t> column_ids;
++};
++struct ViewResult {
++  uint32_t total_rows = 0;
++  std::vector<Row> rows;
++};
++// Parses count XUSER_STATS_SPEC entries (136 bytes each) at specs.
++std::vector<ViewRequest> ParseStatsSpecs(const uint8_t* specs, uint32_t count);
++// Bytes needed for results with up to max_rows rows per view.
++uint32_t StatsResultsSize(const std::vector<ViewRequest>& requests, uint32_t max_rows);
++// Fetches every requested view: a page from start (or around this account), or, with
++// local_only, just this account's row.
++std::vector<ViewResult> FetchViews(const std::vector<ViewRequest>& requests, uint32_t start,
++                                   uint32_t count, bool around_local, bool local_only);
++// The rows of the given players (by the XUIDs this client handed out in earlier leaderboard
++// reads, or the local player's) in every requested view, in the order of xuids.
++std::vector<ViewResult> FetchPlayers(const std::vector<ViewRequest>& requests,
++                                     const std::vector<uint64_t>& xuids);
++// Writes the results at out, which the title sees at guest_address. local_xuid is used for this
++// account's rows; other players get a stable made-up XUID.
++void WriteStatsResults(uint8_t* out, uint32_t guest_address,
++                       const std::vector<ViewRequest>& requests,
++                       const std::vector<ViewResult>& results, uint64_t local_xuid);
++
++}  // namespace rex::system::ranked
+diff --git a/src/kernel/xam/apps/xgi_app.cpp b/src/kernel/xam/apps/xgi_app.cpp
+index c23f7d3..1a4c447 100644
+--- a/src/kernel/xam/apps/xgi_app.cpp
++++ b/src/kernel/xam/apps/xgi_app.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <rex/kernel/xam/apps/xgi_app.h>
++#include <rex/system/ranked.h>
+ #include <rex/system/xsocket.h>
+ 
+ #include <random>
+@@ -20,6 +21,64 @@ namespace rex {
+ namespace kernel {
+ namespace xam {
+ using namespace rex::system;
++
++// Logs every view/property a ranked match reports (XSESSION_VIEW_PROPERTIES -> XUSER_PROPERTY),
++// raw, so the leaderboard writer can be matched against the title's XVC2 schema.
++template <typename Mem>
++static void LogStatsViews(Mem* memory, const char* what, uint64_t xuid, uint32_t num_views,
++                          uint32_t views_ptr) {
++  for (uint32_t v = 0; v < num_views && v < 64 && views_ptr; ++v) {
++    const uint8_t* view = memory->template TranslateVirtual<const uint8_t*>(views_ptr + v * 12);
++    uint32_t view_id = memory::load_and_swap<uint32_t>(view + 0);
++    uint32_t num_props = memory::load_and_swap<uint32_t>(view + 4);
++    uint32_t props_ptr = memory::load_and_swap<uint32_t>(view + 8);
++    for (uint32_t p = 0; p < num_props && p < 64 && props_ptr; ++p) {
++      const uint8_t* prop = memory->template TranslateVirtual<const uint8_t*>(props_ptr + p * 24);
++      std::string hex;
++      for (int i = 0; i < 24; ++i) hex += fmt::format("{:02X}", prop[i]);
++      REXKRNL_DEBUG("{} xuid={:016X} view={:08X} prop[{}] id={:08X} raw={}", what, xuid, view_id, p,
++                   memory::load_and_swap<uint32_t>(prop), hex);
++    }
++    if (!num_props) REXKRNL_DEBUG("{} xuid={:016X} view={:08X} (no properties)", what, xuid, view_id);
++  }
++}
++// Forwards one XSessionWriteStats call (XUSER_STATS_VIEW entries of 12 bytes, XUSER_PROPERTY
++// entries of 24: id, pad, XUSER_DATA {type, pad, value}) to the online leaderboards.
++template <typename Mem>
++static void ForwardStatsViews(Mem* memory, uint32_t session, uint64_t xuid, uint32_t num_views,
++                              uint32_t views_ptr) {
++  for (uint32_t v = 0; v < num_views && v < 64 && views_ptr; ++v) {
++    const uint8_t* view = memory->template TranslateVirtual<const uint8_t*>(views_ptr + v * 12);
++    const uint32_t view_id = memory::load_and_swap<uint32_t>(view + 0);
++    const uint32_t num_props = memory::load_and_swap<uint32_t>(view + 4);
++    const uint32_t props_ptr = memory::load_and_swap<uint32_t>(view + 8);
++    std::vector<rex::system::ranked::StatValue> values;
++    for (uint32_t p = 0; p < num_props && p < 64 && props_ptr; ++p) {
++      const uint8_t* prop = memory->template TranslateVirtual<const uint8_t*>(props_ptr + p * 24);
++      const uint32_t id = memory::load_and_swap<uint32_t>(prop);
++      const uint8_t type = prop[8];
++      double value;
++      switch (type) {
++        case 1:  // int32
++          value = int32_t(memory::load_and_swap<uint32_t>(prop + 16));
++          break;
++        case 2:  // int64
++          value = double(int64_t(memory::load_and_swap<uint64_t>(prop + 16)));
++          break;
++        case 3:  // double
++          value = memory::load_and_swap<double>(prop + 16);
++          break;
++        case 5:  // float
++          value = memory::load_and_swap<float>(prop + 16);
++          break;
++        default:
++          continue;
++      }
++      values.push_back({id, value});
++    }
++    rex::system::ranked::WriteStats(session, xuid, view_id, values);
++  }
++}
+ using namespace rex::system::xam;
+ namespace apps {
+ using namespace rex::system;
+@@ -175,6 +234,21 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+                     user_count, xuid_array_ptr, user_index_array, private_slots_array);
+       return X_E_SUCCESS;
+     }
++    case 0x000B0013: {
++      // XSessionLeave(Local|Remote): same layout as join. Ranked matches leave and rejoin players
++      // as the match starts; failing here made the game abort with "an error occurred which
++      // prevented this match from starting".
++      assert_true(!buffer_length || buffer_length == 20);
++      uint32_t session_ptr = memory::load_and_swap<uint32_t>(buffer + 0);
++      uint32_t user_count = memory::load_and_swap<uint32_t>(buffer + 4);
++      uint32_t xuid_array_ptr = memory::load_and_swap<uint32_t>(buffer + 8);
++      uint32_t user_index_array = memory::load_and_swap<uint32_t>(buffer + 12);
++      bool is_local = xuid_array_ptr == 0;
++      REXKRNL_INFO("{}({:08X}, {}, {:08X}, {:08X})",
++                   is_local ? "XGISessionLeaveLocal" : "XGISessionLeaveRemote", session_ptr,
++                   user_count, xuid_array_ptr, user_index_array);
++      return X_E_SUCCESS;
++    }
+     case 0x000B0014: {
+       assert_true(!buffer_length || buffer_length == 16);
+ 
+@@ -182,7 +256,7 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       uint32_t flags = memory::load_and_swap<uint32_t>(buffer + 4);
+       uint64_t session_nonce = memory::load_and_swap<uint64_t>(buffer + 8);
+ 
+-      REXKRNL_DEBUG("XSessionStart({:08X}, {:08X}, {:016X})", obj_ptr, flags, session_nonce);
++      REXKRNL_INFO("XSessionStart({:08X}, {:08X}, {:016X})", obj_ptr, flags, session_nonce);
+ 
+       return X_STATUS_SUCCESS;
+     }
+@@ -194,7 +268,8 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       uint32_t flags = memory::load_and_swap<uint32_t>(buffer + 4);
+       uint64_t session_nonce = memory::load_and_swap<uint64_t>(buffer + 8);
+ 
+-      REXKRNL_DEBUG("XSessionEnd({:08X}, {:08X}, {:016X})", obj_ptr, flags, session_nonce);
++      REXKRNL_INFO("XSessionEnd({:08X}, {:08X}, {:016X})", obj_ptr, flags, session_nonce);
++      rex::system::ranked::FlushStats(obj_ptr);
+ 
+       return X_E_SUCCESS;
+     }
+@@ -303,7 +378,7 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       uint32_t results_buffer_size = memory::load_and_swap<uint32_t>(buffer + 20);
+       uint32_t results_ptr = memory::load_and_swap<uint32_t>(buffer + 24);
+ 
+-      REXKRNL_DEBUG("XSessionArbitrationRegister({:08X}, {:08X}, {:016X}, {:08X}, {:08X}, {:08X})",
++      REXKRNL_INFO("XSessionArbitrationRegister({:08X}, {:08X}, {:016X}, {:08X}, {:08X}, {:08X})",
+                     obj_ptr, flags, session_nonce, session_duration_sec, results_buffer_size,
+                     results_ptr);
+ 
+@@ -337,7 +412,7 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       uint32_t reserved2 = memory::load_and_swap<uint32_t>(buffer + 16);
+       uint32_t reserved3 = memory::load_and_swap<uint32_t>(buffer + 20);
+ 
+-      REXKRNL_DEBUG("XSessionModifySkill({:08X}, {}, {:08X}, {}, {}, {})", obj_ptr, array_count,
++      REXKRNL_INFO("XSessionModifySkill({:08X}, {}, {:08X}, {}, {}, {})", obj_ptr, array_count,
+                     xuid_array_ptr, reserved1, reserved2, reserved3);
+ 
+       return X_E_SUCCESS;
+@@ -365,32 +440,57 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+ 
+       REXKRNL_DEBUG("XUserReadStats({}, {}, {:08X}, {}, {:08X}, {}, {:08X})", title_id, xuids_count,
+                     xuids_ptr, specs_count, specs_ptr, results_size, results_ptr);
+-
++      // The players' rows from the online leaderboards: this player, and players the title saw
++      // in an earlier leaderboard read (it lists a page by rank, then reads their other stats).
++      if (!results_ptr || !specs_ptr || !specs_count || specs_count > 64 || xuids_count > 100) {
++        return X_E_SUCCESS;
++      }
++      auto requests = rex::system::ranked::ParseStatsSpecs(
++          memory_->TranslateVirtual<const uint8_t*>(specs_ptr), specs_count);
++      const uint64_t local_xuid = rex::system::ranked::LocalXuid();
++      std::vector<uint64_t> xuids;
++      for (uint32_t i = 0; i < xuids_count && xuids_ptr; ++i) {
++        xuids.push_back(
++            memory::load_and_swap<uint64_t>(memory_->TranslateVirtual(xuids_ptr + i * 8)));
++      }
++      auto results = rex::system::ranked::FetchPlayers(requests, xuids);
++      if (rex::system::ranked::StatsResultsSize(requests, uint32_t(xuids.size())) > results_size) {
++        return X_E_SUCCESS;  // the title sized the buffer itself; never larger than that
++      }
++      rex::system::ranked::WriteStatsResults(memory_->TranslateVirtual(results_ptr), results_ptr,
++                                             requests, results, local_xuid);
+       return X_E_SUCCESS;
+     }
+     case 0x000B0025: {
+-      assert_true(!buffer_length || buffer_length == 20);
++      // XSESSION_WRITE_STATS: session, pad, xuid (8-byte aligned), view count, views.
++      assert_true(!buffer_length || buffer_length == 24);
+ 
+       uint32_t obj_ptr = memory::load_and_swap<uint32_t>(buffer + 0);
+-      uint64_t xuid = memory::load_and_swap<uint64_t>(buffer + 4);
+-      uint32_t num_views = memory::load_and_swap<uint32_t>(buffer + 12);
+-      uint32_t views_ptr = memory::load_and_swap<uint32_t>(buffer + 16);
++      uint64_t xuid = memory::load_and_swap<uint64_t>(buffer + 8);
++      uint32_t num_views = memory::load_and_swap<uint32_t>(buffer + 16);
++      uint32_t views_ptr = memory::load_and_swap<uint32_t>(buffer + 20);
+ 
+-      REXKRNL_DEBUG("XSessionWriteStats({:08X}, {:016X}, {:08X}, {:08X})", obj_ptr, xuid, num_views,
+-                    views_ptr);
++      REXKRNL_INFO("XSessionWriteStats({:08X}, {:016X}, {}, {:08X})", obj_ptr, xuid, num_views,
++                   views_ptr);
++      LogStatsViews(memory_, "  WriteStats", xuid, num_views, views_ptr);
++      ForwardStatsViews(memory_, obj_ptr, xuid, num_views, views_ptr);
+ 
+       return X_E_SUCCESS;
+     }
+     case 0x000B0026: {
+-      assert_true(!buffer_length || buffer_length == 20);
++      // XSESSION_WRITE_STATS: session, pad, xuid (8-byte aligned), view count, views.
++      assert_true(!buffer_length || buffer_length == 24);
+ 
+       uint32_t obj_ptr = memory::load_and_swap<uint32_t>(buffer + 0);
+-      uint64_t xuid = memory::load_and_swap<uint64_t>(buffer + 4);
+-      uint32_t num_views = memory::load_and_swap<uint32_t>(buffer + 12);
+-      uint32_t views_ptr = memory::load_and_swap<uint32_t>(buffer + 16);
+-
+-      REXKRNL_DEBUG("XSessionFlushStats({:08X}, {:016X}, {:08X}, {:08X})", obj_ptr, xuid, num_views,
+-                    views_ptr);
++      uint64_t xuid = memory::load_and_swap<uint64_t>(buffer + 8);
++      uint32_t num_views = memory::load_and_swap<uint32_t>(buffer + 16);
++      uint32_t views_ptr = memory::load_and_swap<uint32_t>(buffer + 20);
++
++      REXKRNL_INFO("XSessionFlushStats({:08X}, {:016X}, {}, {:08X})", obj_ptr, xuid, num_views,
++                   views_ptr);
++      LogStatsViews(memory_, "  FlushStats", xuid, num_views, views_ptr);
++      ForwardStatsViews(memory_, obj_ptr, xuid, num_views, views_ptr);
++      rex::system::ranked::FlushStats(obj_ptr);
+ 
+       return X_E_SUCCESS;
+     }
+diff --git a/src/kernel/xam/xam_user.cpp b/src/kernel/xam/xam_user.cpp
+index 8778066..0e2ed08 100644
+--- a/src/kernel/xam/xam_user.cpp
++++ b/src/kernel/xam/xam_user.cpp
+@@ -23,12 +23,17 @@
+ #include <rex/string.h>
+ #include <rex/system/kernel_state.h>
+ #include <rex/system/xam/user_profile.h>
++#include <rex/system/xsocket.h>
++#include <rex/system/ranked.h>
+ #include <rex/system/xenumerator.h>
+ #include <rex/system/xio.h>
+ #include <rex/system/xthread.h>
+ #include <rex/system/xtypes.h>
+ 
+ REXCVAR_DEFINE_UINT32(user_language, 1, "Kernel", "User's language ID");
++REXCVAR_DEFINE_BOOL(live_signin, true, "Kernel",
++                    "While ONLINE is active, report the profile as signed in to Xbox LIVE and grant "
++                    "its privileges, so the game's LIVE-only modes (ranked, leaderboards) open");
+ 
+ namespace rex {
+ namespace kernel {
+@@ -65,12 +70,20 @@ i32 XamUserGetXUID_entry(u32 user_index, u32 type_mask, mapped_u64 xuid_ptr) {
+   return result;
+ }
+ 
++// 2 = signed in to Xbox LIVE, 1 = local profile only.
++static bool LiveSignedIn() {
++  return REXCVAR_GET(live_signin) && rex::system::net::OnlineEnabled();
++}
++static uint32_t EffectiveSigninState(uint32_t profile_state) {
++  return profile_state && LiveSignedIn() ? 2u : profile_state;
++}
++
+ u32 XamUserGetSigninState_entry(u32 user_index) {
+   uint32_t signin_state = 0;
+   if (user_index < 4) {
+     if (user_index == 0) {
+       const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+-      signin_state = user_profile->signin_state();
++      signin_state = EffectiveSigninState(user_profile->signin_state());
+     }
+   }
+   return signin_state;
+@@ -98,7 +111,7 @@ i32 XamUserGetSigninInfo_entry(u32 user_index, u32 flags, ppc_ptr_t<X_USER_SIGNI
+ 
+   const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+   info->xuid = user_profile->xuid();
+-  info->signin_state = user_profile->signin_state();
++  info->signin_state = EffectiveSigninState(user_profile->signin_state());
+   rex::string::copy_truncating(info->name, user_profile->name(), rex::countof(info->name));
+   return X_E_SUCCESS;
+ }
+@@ -382,8 +395,8 @@ u32 XamUserCheckPrivilege_entry(u32 user_index, u32 mask, mapped_u32 out_value)
+     }
+   }
+ 
+-  // If we deny everything, games should hopefully not try to do stuff.
+-  *out_value = 0;
++  // Denied unless LIVE sign-in is being presented, so games skip LIVE-only paths.
++  *out_value = LiveSignedIn() ? 1 : 0;
+   return X_ERROR_SUCCESS;
+ }
+ 
+@@ -595,6 +608,72 @@ class XStaticAchievementEnumerator : public XEnumerator {
+   size_t current_item_ = 0;
+ };
+ 
++// Leaderboard reads (XUserCreateStatsEnumeratorByRank / ByXuid) from the online server. The
++// results are one XUSER_STATS_READ_RESULTS block with pointers into the caller's buffer, so the
++// enumerator writes them when it knows that buffer's address.
++class XStatsEnumerator : public XEnumerator {
++ public:
++  XStatsEnumerator(KernelState* kernel_state, uint32_t size,
++                   std::vector<rex::system::ranked::ViewRequest> requests,
++                   std::vector<rex::system::ranked::ViewResult> results, uint64_t local_xuid)
++      : XEnumerator(kernel_state, 1, size),
++        requests_(std::move(requests)),
++        results_(std::move(results)),
++        local_xuid_(local_xuid) {}
++
++  uint32_t WriteItems(uint32_t buffer_ptr, uint8_t* buffer_data,
++                      uint32_t* written_count) override {
++    if (written_) return X_ERROR_NO_MORE_FILES;
++    written_ = true;
++    std::memset(buffer_data, 0, item_size());
++    rex::system::ranked::WriteStatsResults(buffer_data, buffer_ptr, requests_, results_,
++                                           local_xuid_);
++    if (written_count) *written_count = 1;
++    return X_ERROR_SUCCESS;
++  }
++
++ private:
++  std::vector<rex::system::ranked::ViewRequest> requests_;
++  std::vector<rex::system::ranked::ViewResult> results_;
++  uint64_t local_xuid_;
++  bool written_ = false;
++};
++
++// mode 1: rows from rank `pivot` (1-based); mode 0: rows around the player with XUID `pivot`.
++u32 XamUserCreateStatsEnumerator_entry(u32 title_id, u32 mode, u64 pivot, u32 num_rows,
++                                       u32 num_specs, mapped_void specs_ptr,
++                                       mapped_u32 buffer_size_ptr, mapped_u32 handle_ptr) {
++  if (!num_rows || num_rows > 100 || !num_specs || num_specs > 64 || !specs_ptr ||
++      !buffer_size_ptr) {
++    return X_ERROR_INVALID_PARAMETER;
++  }
++  auto requests = rex::system::ranked::ParseStatsSpecs(specs_ptr.as<const uint8_t*>(), num_specs);
++  const uint32_t size = rex::system::ranked::StatsResultsSize(requests, num_rows);
++  *buffer_size_ptr = size;
++  if (!handle_ptr) return X_ERROR_SUCCESS;  // size query only
++
++  const uint64_t local_xuid = rex::system::ranked::LocalXuid();
++  const bool around_player = mode == 0;
++  const uint32_t start = around_player ? 1 : std::max<uint32_t>(1, uint32_t(pivot));
++  auto results =
++      rex::system::ranked::FetchViews(requests, start, num_rows, around_player, false);
++  REXKRNL_INFO("XamUserCreateStatsEnumerator({:08X}, {}, {:X}, rows {}, views {}): {} rows",
++               title_id, around_player ? "around player" : "by rank", pivot, num_rows,
++               num_specs, results.empty() ? 0 : results[0].rows.size());
++
++  for (const auto& request : requests) {
++    std::string ids;
++    for (uint16_t id : request.column_ids) ids += fmt::format(" {:04X}", id);
++    REXKRNL_DEBUG("  view {:08X} columns:{}", request.view_id, ids);
++  }
++  auto e = object_ref<XStatsEnumerator>(new XStatsEnumerator(
++      REX_KERNEL_STATE(), size, std::move(requests), std::move(results), local_xuid));
++  auto result = e->Initialize(0xFF, 0xFB, 0xB0022, 0xB0023, 0);
++  if (XFAILED(result)) return result;
++  *handle_ptr = e->handle();
++  return X_ERROR_SUCCESS;
++}
++
+ u32 XamUserCreateAchievementEnumerator_entry(u32 title_id, u32 user_index, u32 xuid, u32 flags,
+                                              u32 offset, u32 count, mapped_u32 buffer_size_ptr,
+                                              mapped_u32 handle_ptr) {
+@@ -749,6 +828,7 @@ REX_EXPORT(__imp__XamUserIsOnlineEnabled, rex::kernel::xam::XamUserIsOnlineEnabl
+ REX_EXPORT(__imp__XamUserGetMembershipTier, rex::kernel::xam::XamUserGetMembershipTier_entry)
+ REX_EXPORT(__imp__XamUserAreUsersFriends, rex::kernel::xam::XamUserAreUsersFriends_entry)
+ REX_EXPORT(__imp__XamShowSigninUI, rex::kernel::xam::XamShowSigninUI_entry)
++REX_EXPORT(__imp__XamUserCreateStatsEnumerator, rex::kernel::xam::XamUserCreateStatsEnumerator_entry)
+ REX_EXPORT(__imp__XamUserCreateAchievementEnumerator,
+            rex::kernel::xam::XamUserCreateAchievementEnumerator_entry)
+ REX_EXPORT(__imp__XamParseGamerTileKey, rex::kernel::xam::XamParseGamerTileKey_entry)
+@@ -761,7 +841,6 @@ REX_EXPORT_STUB(__imp__XamUserAddRecentPlayer);
+ REX_EXPORT_STUB(__imp__XamUserAllowedToPostToSocialNetwork);
+ REX_EXPORT_STUB(__imp__XamUserCreateAvatarAssetEnumerator);
+ REX_EXPORT_STUB(__imp__XamUserCreatePlayerEnumerator);
+-REX_EXPORT_STUB(__imp__XamUserCreateStatsEnumerator);
+ REX_EXPORT_STUB(__imp__XamUserCreateTitlesPlayedEnumerator);
+ REX_EXPORT_STUB(__imp__XamUserFlushLogonQueue);
+ REX_EXPORT_STUB(__imp__XamUserGetAge);
+diff --git a/src/system/CMakeLists.txt b/src/system/CMakeLists.txt
+index 34cc952..fd2ef63 100644
+--- a/src/system/CMakeLists.txt
++++ b/src/system/CMakeLists.txt
+@@ -18,6 +18,7 @@ set(REXSYSTEM_SOURCES
+     xenumerator.cpp
+     xsocket.cpp
+     voice_chat.cpp
++    ranked.cpp
+     xsymboliclink.cpp
+     xobject.cpp
+     xmodule.cpp
+@@ -76,6 +77,7 @@ target_include_directories(rexruntime PUBLIC
+ )
+ target_include_directories(rexruntime PRIVATE
+     ${REXGLUE_ROOT}/thirdparty
++    ${REXGLUE_ROOT}/thirdparty/inja/third_party/include
+ )
+ 
+ target_link_libraries(rexruntime
+diff --git a/src/system/ranked.cpp b/src/system/ranked.cpp
+new file mode 100644
+index 0000000..f4b0d1c
+--- /dev/null
++++ b/src/system/ranked.cpp
+@@ -0,0 +1,754 @@
++/**
++ * @file        system/ranked.cpp
++ * @brief       Ranked matches and leaderboards on the online server (see rex/system/ranked.h)
++ */
++
++#include <rex/system/ranked.h>
++
++#include <rex/cvar.h>
++#include <rex/logging.h>
++#include <rex/platform.h>
++#include <rex/runtime.h>
++#include <rex/system/kernel_state.h>
++#include <rex/system/xam/user_profile.h>
++#include <rex/system/xsocket.h>
++
++#include <nlohmann/json.hpp>
++
++#include "crypto/sha256.h"
++
++#include <chrono>
++#include <cstdlib>
++#include <cstring>
++#include <filesystem>
++#include <fstream>
++#include <map>
++#include <set>
++#include <mutex>
++#include <random>
++#include <thread>
++
++#if REX_PLATFORM_WIN32
++#include <WinSock2.h>
++#include <WS2tcpip.h>
++#else
++#include <fcntl.h>
++#include <netdb.h>
++#include <netinet/in.h>
++#include <poll.h>
++#include <sys/socket.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#endif
++
++REXCVAR_DECLARE(std::string, online_server);
++REXCVAR_DECLARE(std::string, user_name);
++
++namespace rex::system::ranked {
++namespace {
++using json = nlohmann::json;
++constexpr uint16_t kDefaultServerPort = 27360;
++constexpr int kTimeoutMs = 4000;      // background requests
++constexpr int kReadTimeoutMs = 2000;  // leaderboard reads, which the title waits for
++
++// --- crypto ---------------------------------------------------------------------------------
++std::string Hex(const uint8_t* data, size_t size) {
++  static const char* digits = "0123456789abcdef";
++  std::string out;
++  for (size_t i = 0; i < size; ++i) {
++    out += digits[data[i] >> 4];
++    out += digits[data[i] & 15];
++  }
++  return out;
++}
++
++std::string RandomHex(size_t bytes) {
++  std::random_device device;
++  std::vector<uint8_t> data(bytes);
++  for (auto& b : data) b = uint8_t(device());
++  return Hex(data.data(), data.size());
++}
++
++std::string HmacSha256Hex(const std::string& key, const std::string& message) {
++  constexpr size_t kBlock = sha256::SHA256::BlockSize;
++  uint8_t k[kBlock] = {};
++  if (key.size() > kBlock) {
++    sha256::SHA256 h;
++    h.add(key.data(), key.size());
++    h.getHash(k);
++  } else {
++    std::memcpy(k, key.data(), key.size());
++  }
++  uint8_t inner_pad[kBlock], outer_pad[kBlock];
++  for (size_t i = 0; i < kBlock; ++i) {
++    inner_pad[i] = k[i] ^ 0x36;
++    outer_pad[i] = k[i] ^ 0x5C;
++  }
++  uint8_t inner[sha256::SHA256::HashBytes], outer[sha256::SHA256::HashBytes];
++  sha256::SHA256 hi;
++  hi.add(inner_pad, kBlock);
++  hi.add(message.data(), message.size());
++  hi.getHash(inner);
++  sha256::SHA256 ho;
++  ho.add(outer_pad, kBlock);
++  ho.add(inner, sizeof(inner));
++  ho.getHash(outer);
++  return Hex(outer, sizeof(outer));
++}
++
++// --- HTTP -----------------------------------------------------------------------------------
++struct Response {
++  int status = 0;  // 0: no answer
++  json body;
++};
++
++bool ServerAddress(std::string* host, uint16_t* port) {
++  std::string text = REXCVAR_GET(online_server);
++  if (text.empty()) return false;
++  *port = kDefaultServerPort;
++  const size_t colon = text.rfind(':');
++  if (colon != std::string::npos) {
++    *port = uint16_t(std::atoi(text.c_str() + colon + 1));
++    text.resize(colon);
++  }
++  *host = text;
++  return !host->empty() && *port;
++}
++
++void CloseSocket(intptr_t fd) {
++#if REX_PLATFORM_WIN32
++  closesocket(SOCKET(fd));
++#else
++  close(int(fd));
++#endif
++}
++
++// One HTTP/1.0 request to the online server's TCP port (the server answers and closes).
++Response Http(const std::string& method, const std::string& target, const std::string& body,
++              int timeout_ms = kTimeoutMs) {
++  Response result;
++  std::string host;
++  uint16_t port;
++  if (!ServerAddress(&host, &port)) return result;
++  addrinfo hints{};
++  hints.ai_family = AF_INET;
++  hints.ai_socktype = SOCK_STREAM;
++  addrinfo* address = nullptr;
++  if (getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &address) != 0 || !address) {
++    return result;
++  }
++  const auto fd = intptr_t(socket(AF_INET, SOCK_STREAM, 0));
++  if (fd < 0) {
++    freeaddrinfo(address);
++    return result;
++  }
++#if REX_PLATFORM_WIN32
++  DWORD timeout = DWORD(timeout_ms);
++#else
++  timeval timeout{timeout_ms / 1000, (timeout_ms % 1000) * 1000};
++#endif
++  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
++  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
++  const bool connected = connect(fd, address->ai_addr, socklen_t(address->ai_addrlen)) == 0;
++  freeaddrinfo(address);
++  if (!connected) {
++    CloseSocket(fd);
++    return result;
++  }
++  std::string request = method + " " + target + " HTTP/1.0\r\nHost: " + host +
++                        "\r\nContent-Type: application/json\r\nContent-Length: " +
++                        std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
++  for (size_t sent = 0; sent < request.size();) {
++    const auto n = send(fd, request.data() + sent, int(request.size() - sent), 0);
++    if (n <= 0) {
++      CloseSocket(fd);
++      return result;
++    }
++    sent += size_t(n);
++  }
++  std::string reply;
++  char buffer[4096];
++  while (reply.size() < (1u << 20)) {
++    const auto n = recv(fd, buffer, sizeof(buffer), 0);
++    if (n <= 0) break;
++    reply.append(buffer, size_t(n));
++  }
++  CloseSocket(fd);
++  const size_t space = reply.find(' ');
++  const size_t header_end = reply.find("\r\n\r\n");
++  if (reply.rfind("HTTP/", 0) != 0 || space == std::string::npos || header_end == std::string::npos) {
++    return result;
++  }
++  result.status = std::atoi(reply.c_str() + space + 1);
++  result.body = json::parse(reply.begin() + header_end + 4, reply.end(), nullptr, false);
++  if (result.body.is_discarded()) result.body = json::object();
++  return result;
++}
++
++std::string UrlEncode(const std::string& text) {
++  std::string out;
++  for (unsigned char c : text) {
++    if (std::isalnum(c) || c == '-' || c == '_' || c == '.') {
++      out += char(c);
++    } else {
++      out += fmt::format("%{:02X}", c);
++    }
++  }
++  return out;
++}
++
++// --- account --------------------------------------------------------------------------------
++struct Account {
++  std::string device, secret, online_id, name;
++};
++
++class Client {
++ public:
++  static Client& Get() {
++    static Client client;
++    return client;
++  }
++
++  AccountStatus status() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    if (!rex::system::net::OnlineEnabled() && status_ != AccountStatus::kPending) {
++      return AccountStatus::kOffline;
++    }
++    return status_;
++  }
++  std::string name() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    return account_.name;
++  }
++  std::string link_code() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    return link_code_;
++  }
++  std::string link_message() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    return link_message_;
++  }
++  std::string online_id() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    Load();
++    return account_.online_id;
++  }
++
++  void EnsureAccount() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    Load();
++    const std::string wanted = PlayerName();
++    if (busy_ || wanted.empty() || !rex::system::net::OnlineEnabled()) return;
++    if (!account_.online_id.empty() && account_.name == wanted) {
++      status_ = AccountStatus::kReady;
++      return;
++    }
++    if (claim_failed_for_ == wanted) return;  // already refused; wait for a rename or a link
++    Start(true, [this, wanted] {
++      json request = {{"name", wanted}, {"device", account_.device}, {"secret", account_.secret}};
++      const Response r = Http("POST", "/api/claim", request.dump());
++      std::lock_guard<std::mutex> lock(mutex_);
++      if (r.status == 200 && r.body.contains("online_id")) {
++        account_.online_id = r.body.value("online_id", "");
++        account_.name = r.body.value("name", wanted);
++        Save();
++        status_ = AccountStatus::kReady;
++        REXSYS_INFO("Ranked: signed in as {}", account_.name);
++      } else if (r.status == 409) {
++        claim_failed_for_ = wanted;
++        status_ = AccountStatus::kNameTaken;
++        REXSYS_INFO("Ranked: the name {} belongs to another account", wanted);
++      } else {
++        status_ = AccountStatus::kError;
++        REXSYS_WARN("Ranked: claiming {} failed (HTTP {})", wanted, r.status);
++      }
++    });
++  }
++
++  void RequestLinkCode() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    Load();
++    link_code_.clear();
++    if (account_.online_id.empty()) {
++      link_message_ = "NO ACCOUNT ON THIS DEVICE YET";
++      return;
++    }
++    link_message_ = "";
++    Start(false, [this] {
++      const Response r = Signed("/api/link/create", "{}");
++      std::lock_guard<std::mutex> lock(mutex_);
++      if (r.status == 200) {
++        link_code_ = r.body.value("code", "");
++      } else {
++        link_message_ = r.status ? "SERVER REFUSED THE REQUEST" : "SERVER NOT REACHABLE";
++      }
++    });
++  }
++
++  void RedeemLinkCode(const std::string& code) {
++    std::lock_guard<std::mutex> lock(mutex_);
++    Load();
++    link_message_ = "LINKING...";
++    Start(false, [this, code] {
++      json request = {{"code", code}, {"device", account_.device}, {"secret", account_.secret}};
++      const Response r = Http("POST", "/api/link/redeem", request.dump());
++      std::lock_guard<std::mutex> lock(mutex_);
++      if (r.status == 200) {
++        account_.online_id = r.body.value("online_id", "");
++        account_.name = r.body.value("name", "");
++        Save();
++        claim_failed_for_.clear();
++        status_ = AccountStatus::kReady;
++        link_message_ = "LINKED TO " + account_.name;
++        // The leaderboards show the account name; make the player name match it.
++        rex::cvar::SetFlagByName("user_name", account_.name);
++        REXSYS_INFO("Ranked: device linked to {}", account_.name);
++      } else if (r.status == 404) {
++        link_message_ = "WRONG OR EXPIRED CODE";
++      } else {
++        link_message_ = r.status ? "SERVER REFUSED THE REQUEST" : "SERVER NOT REACHABLE";
++      }
++    });
++  }
++
++  // Signed POST: ?device=ID&ts=UNIX&sig=HMAC(secret, path\nts\nbody).
++  Response Signed(const std::string& path, const std::string& body) {
++    std::string device, secret;
++    {
++      std::lock_guard<std::mutex> lock(account_mutex_);
++      device = account_.device;
++      secret = account_.secret;
++    }
++    const std::string ts = std::to_string(
++        std::chrono::duration_cast<std::chrono::seconds>(
++            std::chrono::system_clock::now().time_since_epoch()).count());
++    const std::string sig = HmacSha256Hex(secret, path + "\n" + ts + "\n" + body);
++    return Http("POST", path + "?device=" + device + "&ts=" + ts + "&sig=" + sig, body);
++  }
++
++  // Runs a request in the background. Account requests (claims) run one at a time and show as
++  // pending in the account status; link requests leave the status alone.
++  template <typename F>
++  void Start(bool account_request, F&& work) {
++    if (account_request) {
++      busy_ = true;
++      status_ = AccountStatus::kPending;
++    }
++    std::thread([this, account_request, work = std::forward<F>(work)]() mutable {
++      work();
++      if (!account_request) return;
++      std::lock_guard<std::mutex> lock(mutex_);
++      busy_ = false;
++      if (status_ == AccountStatus::kPending) status_ = AccountStatus::kError;
++    }).detach();
++  }
++
++  std::mutex mutex_;
++  std::mutex account_mutex_;
++
++ private:
++  std::filesystem::path Path() const {
++    auto* kernel = rex::system::kernel_state();
++    std::filesystem::path root = kernel ? kernel->emulator()->user_data_root() : "";
++    return root.empty() ? std::filesystem::path("online_account.txt") : root / "online_account.txt";
++  }
++
++  static std::string PlayerName() {
++    std::string name;
++    for (char c : std::string(REXCVAR_GET(user_name))) {
++      if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') name += c;
++      if (name.size() == 15) break;
++    }
++    if (name.empty()) {
++      if (auto* kernel = rex::system::kernel_state()) {
++        for (char c : kernel->user_profile()->name()) {
++          if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') name += c;
++          if (name.size() == 15) break;
++        }
++      }
++    }
++    return name;
++  }
++
++  // Reads online_account.txt once; creates the device identity when there is none.
++  void Load() {
++    if (loaded_) return;
++    loaded_ = true;
++    std::ifstream in(Path());
++    std::string line;
++    while (std::getline(in, line)) {
++      const size_t eq = line.find('=');
++      if (eq == std::string::npos) continue;
++      const std::string key = line.substr(0, eq), value = line.substr(eq + 1);
++      if (key == "device") account_.device = value;
++      if (key == "secret") account_.secret = value;
++      if (key == "online_id") account_.online_id = value;
++      if (key == "name") account_.name = value;
++    }
++    if (account_.device.size() < 16 || account_.secret.size() < 32) {
++      account_ = {RandomHex(16), RandomHex(32), "", ""};
++      Save();
++    }
++    if (!account_.online_id.empty()) status_ = AccountStatus::kReady;
++  }
++
++  void Save() {
++    std::lock_guard<std::mutex> lock(account_mutex_);
++    const auto path = Path();
++    const auto temp = std::filesystem::path(path.string() + ".tmp");
++    {
++      std::ofstream out(temp, std::ios::trunc);
++      out << "# Online account for ranked matches and leaderboards. Keep this file private:\n"
++             "# the secret proves to the server that this device belongs to the account.\n"
++          << "device=" << account_.device << "\nsecret=" << account_.secret
++          << "\nonline_id=" << account_.online_id << "\nname=" << account_.name << "\n";
++    }
++#if !REX_PLATFORM_WIN32
++    chmod(temp.string().c_str(), 0600);
++#endif
++    std::error_code ec;
++    std::filesystem::rename(temp, path, ec);
++  }
++
++  Account account_;
++  bool loaded_ = false;
++  bool busy_ = false;
++  AccountStatus status_ = AccountStatus::kOffline;
++  std::string claim_failed_for_;
++  std::string link_code_, link_message_;
++};
++
++// --- stats ----------------------------------------------------------------------------------
++// The ranked TrueSkill view (system view); the title writes it only for ranked matches.
++constexpr uint32_t kTrueSkillView = 0xFFFF0000;
++// Match results in the title's stats views: games won, as written for each player.
++constexpr uint32_t kWinsProperty = 0x20000019;
++
++struct PendingSession {
++  std::map<uint32_t, std::map<uint32_t, double>> views;  // this player: view -> property -> value
++  std::set<uint64_t> players;  // every XUID the title wrote stats for (both players)
++  uint64_t local = 0;
++  bool ranked = false;
++};
++
++std::mutex stats_mutex;
++uint64_t local_xuid = 0;
++// XUIDs handed to the title for other players' leaderboard rows -> their online IDs, so the
++// title can read those players' other stats by XUID afterwards.
++std::map<uint64_t, std::string> known_players;
++std::map<uint64_t, PendingSession> pending_stats;
++
++}  // namespace
++
++AccountStatus GetAccountStatus() { return Client::Get().status(); }
++std::string AccountName() { return Client::Get().name(); }
++void EnsureAccount() { Client::Get().EnsureAccount(); }
++void RequestLinkCode() { Client::Get().RequestLinkCode(); }
++std::string LinkCode() { return Client::Get().link_code(); }
++void RedeemLinkCode(const std::string& code) { Client::Get().RedeemLinkCode(code); }
++std::string LinkMessage() { return Client::Get().link_message(); }
++
++void SetLocalXuid(uint64_t xuid) {
++  std::lock_guard<std::mutex> lock(stats_mutex);
++  local_xuid = xuid;
++}
++
++uint64_t LocalXuid() {
++  {
++    std::lock_guard<std::mutex> lock(stats_mutex);
++    if (local_xuid) return local_xuid;
++  }
++  auto* kernel = rex::system::kernel_state();
++  return kernel ? kernel->user_profile()->xuid() : 0;
++}
++
++void WriteStats(uint64_t session_id, uint64_t xuid, uint32_t view_id,
++                const std::vector<StatValue>& values) {
++  auto* kernel = rex::system::kernel_state();
++  const uint64_t profile_xuid = kernel ? kernel->user_profile()->xuid() : 0;
++  std::lock_guard<std::mutex> lock(stats_mutex);
++  // The title writes the local player's stats under its profile XUID or the session XUID.
++  const bool local = xuid == profile_xuid || (local_xuid && xuid == local_xuid);
++  REXSYS_DEBUG("Ranked: stats for {:016X} ({}), view {:#x}, {} values", xuid,
++               local ? "this player" : "another player", view_id, values.size());
++  if (!rex::system::net::OnlineEnabled()) return;
++  auto& session = pending_stats[session_id];
++  session.players.insert(xuid);
++  if (!local) return;
++  session.local = xuid;
++  if (view_id == kTrueSkillView) {
++    session.ranked = true;
++    return;  // the server keeps TrueSkill itself from the agreed results
++  }
++  auto& props = session.views[view_id];
++  for (const auto& v : values) props[v.property_id] = v.value;
++}
++
++void FlushStats(uint64_t session_id) {
++  PendingSession session;
++  {
++    std::lock_guard<std::mutex> lock(stats_mutex);
++    auto it = pending_stats.find(session_id);
++    if (it == pending_stats.end()) return;
++    session = std::move(it->second);
++    pending_stats.erase(it);
++  }
++  if (session.views.empty()) return;
++  json views = json::array();
++  for (const auto& [view_id, props] : session.views) {
++    json p = json::object();
++    for (const auto& [prop, value] : props) p[fmt::format("{:#x}", prop)] = value;
++    views.push_back({{"view", view_id}, {"props", p}});
++  }
++  json request = {{"views", views}};
++  // Ranked 1v1: both players report the result under the same key (their two XUIDs, which each
++  // side's title wrote stats for); the server moves TrueSkill only when the reports agree.
++  if (session.ranked && session.players.size() == 2 && session.local) {
++    const uint64_t a = *session.players.begin(), b = *session.players.rbegin();
++    double wins = 0;
++    for (const auto& [view_id, props] : session.views) {
++      auto it = props.find(kWinsProperty);
++      if (it != props.end()) wins = std::max(wins, it->second);
++    }
++    request["ranked"] = {{"session", fmt::format("{:016x}{:016x}", a, b)}, {"won", wins > 0}};
++    REXSYS_INFO("Ranked: reporting a {} in a ranked match", wins > 0 ? "win" : "loss");
++  }
++  const std::string body = request.dump();
++  Client::Get().EnsureAccount();
++  std::thread([body] {
++    // The account claim may still be on its way the first time.
++    for (int attempt = 0; attempt < 5; ++attempt) {
++      if (Client::Get().online_id().empty()) {
++        std::this_thread::sleep_for(std::chrono::seconds(2));
++        continue;
++      }
++      const Response r = Client::Get().Signed("/api/stats", body);
++      if (r.status == 200) {
++        REXSYS_INFO("Ranked: stats sent ({} properties applied)", r.body.value("applied", 0));
++        return;
++      }
++      REXSYS_WARN("Ranked: sending stats failed (HTTP {})", r.status);
++      if (r.status == 400 || r.status == 403) return;
++      std::this_thread::sleep_for(std::chrono::seconds(3));
++    }
++  }).detach();
++}
++
++bool ReadLeaderboard(uint32_t view_id, uint32_t start, uint32_t count, bool around_local,
++                     uint32_t* total, std::vector<Row>* rows) {
++  rows->clear();
++  *total = 0;
++  if (!rex::system::net::OnlineEnabled()) return false;
++  const std::string self = Client::Get().online_id();
++  std::string target = fmt::format("/api/leaderboard?view={}&start={}&count={}", view_id,
++                                   std::max(1u, start), std::max(1u, count));
++  if (around_local && !self.empty()) target += "&pivot=" + UrlEncode(self);
++  const Response r = Http("GET", target, "", kReadTimeoutMs);
++  if (r.status != 200) return false;
++  *total = r.body.value("total", 0u);
++  for (const auto& item : r.body.value("rows", json::array())) {
++    Row row;
++    row.rank = item.value("rank", 0u);
++    row.online_id = item.value("online_id", "");
++    row.gamertag = item.value("gamertag", "");
++    row.rating = item.value("rating", 0.0);
++    row.skill = item.value("skill", 0u);
++    row.is_local = !self.empty() && row.online_id == self;
++    for (const auto& [key, value] : item.value("columns", json::object()).items()) {
++      row.columns.emplace_back(uint16_t(std::strtoul(key.c_str(), nullptr, 10)),
++                               value.is_number() ? value.get<double>() : 0.0);
++    }
++    rows->push_back(std::move(row));
++  }
++  return true;
++}
++
++namespace {
++// XUSER_STATS_SPEC: view id, column count, 64 column ids.
++constexpr uint32_t kSpecSize = 136;
++constexpr uint32_t kMaxSpecColumns = 64;
++// XUSER_STATS_READ_RESULTS {views, pViews}; XUSER_STATS_VIEW {id, total, rows, pRows};
++// XUSER_STATS_ROW {xuid, rank, pad, rating, gamertag[16], columns, pColumns};
++// XUSER_STATS_COLUMN {id, pad, XUSER_DATA {type, pad, value}}.
++constexpr uint32_t kResultsSize = 8, kViewSize = 16, kRowSize = 48, kColumnSize = 24;
++constexpr uint8_t kDataInt64 = 2;
++constexpr uint16_t kRatingColumn = 0xFFFE, kRankColumn = 0xFFFF;
++
++uint32_t LoadBe32(const uint8_t* p) { return uint32_t(p[0]) << 24 | p[1] << 16 | p[2] << 8 | p[3]; }
++void StoreBe16(uint8_t* p, uint16_t v) {
++  p[0] = uint8_t(v >> 8);
++  p[1] = uint8_t(v);
++}
++void StoreBe32(uint8_t* p, uint32_t v) {
++  for (int i = 0; i < 4; ++i) p[i] = uint8_t(v >> (24 - 8 * i));
++}
++void StoreBe64(uint8_t* p, uint64_t v) {
++  for (int i = 0; i < 8; ++i) p[i] = uint8_t(v >> (56 - 8 * i));
++}
++
++// Other players have no XUID of their own here; derive a stable one from their online ID
++// (online XUIDs start with 0x0009).
++uint64_t RowXuid(const Row& row, uint64_t local_xuid) {
++  if (row.is_local && local_xuid) return local_xuid;
++  uint64_t hash = 1469598103934665603ull;  // FNV-1a
++  for (unsigned char c : row.online_id) hash = (hash ^ c) * 1099511628211ull;
++  return 0x0009000000000000ull | (hash & 0x0000FFFFFFFFFFFFull);
++}
++
++double ColumnValue(const Row& row, uint16_t column_id) {
++  if (column_id == kRatingColumn) return row.rating;
++  if (column_id == kRankColumn) return row.rank;
++  for (const auto& [id, value] : row.columns) {
++    if (id == column_id) return value;
++  }
++  return 0;
++}
++}  // namespace
++
++std::vector<ViewRequest> ParseStatsSpecs(const uint8_t* specs, uint32_t count) {
++  std::vector<ViewRequest> requests;
++  for (uint32_t i = 0; i < count && i < 64; ++i) {
++    const uint8_t* spec = specs + i * kSpecSize;
++    ViewRequest request;
++    request.view_id = LoadBe32(spec);
++    const uint32_t columns = std::min(LoadBe32(spec + 4), kMaxSpecColumns);
++    for (uint32_t c = 0; c < columns; ++c) {
++      request.column_ids.push_back(uint16_t(spec[8 + 2 * c] << 8 | spec[9 + 2 * c]));
++    }
++    requests.push_back(std::move(request));
++  }
++  return requests;
++}
++
++uint32_t StatsResultsSize(const std::vector<ViewRequest>& requests, uint32_t max_rows) {
++  uint32_t size = kResultsSize;
++  for (const auto& request : requests) {
++    size += kViewSize + max_rows * (kRowSize + uint32_t(request.column_ids.size()) * kColumnSize);
++  }
++  return size;
++}
++
++std::vector<ViewResult> FetchViews(const std::vector<ViewRequest>& requests, uint32_t start,
++                                   uint32_t count, bool around_local, bool local_only) {
++  std::vector<ViewResult> results(requests.size());
++  for (size_t i = 0; i < requests.size(); ++i) {
++    auto& result = results[i];
++    if (local_only) {
++      // A one-row page centred on this account is this account's row, if it has one.
++      std::vector<Row> rows;
++      if (ReadLeaderboard(requests[i].view_id, 1, 1, true, &result.total_rows, &rows)) {
++        for (auto& row : rows) {
++          if (row.is_local) result.rows.push_back(std::move(row));
++        }
++      }
++    } else {
++      ReadLeaderboard(requests[i].view_id, start, count, around_local, &result.total_rows,
++                      &result.rows);
++      if (result.rows.size() > count) result.rows.resize(count);
++    }
++    const uint64_t local = LocalXuid();
++    std::lock_guard<std::mutex> lock(stats_mutex);
++    for (const auto& row : result.rows) {
++      if (!row.is_local) known_players[RowXuid(row, local)] = row.online_id;
++    }
++  }
++  return results;
++}
++
++std::vector<ViewResult> FetchPlayers(const std::vector<ViewRequest>& requests,
++                                     const std::vector<uint64_t>& xuids) {
++  std::vector<ViewResult> results(requests.size());
++  if (!rex::system::net::OnlineEnabled()) return results;
++  const uint64_t local = LocalXuid();
++  auto* kernel = rex::system::kernel_state();
++  const uint64_t profile_xuid = kernel ? kernel->user_profile()->xuid() : 0;
++  const std::string self = Client::Get().online_id();
++  std::vector<std::string> ids;  // online ID per requested XUID ("" = unknown)
++  {
++    std::lock_guard<std::mutex> lock(stats_mutex);
++    for (uint64_t xuid : xuids) {
++      if (xuid == local || xuid == profile_xuid) {
++        ids.push_back(self);
++      } else {
++        auto it = known_players.find(xuid);
++        ids.push_back(it == known_players.end() ? std::string() : it->second);
++      }
++    }
++  }
++  std::string list;
++  for (const auto& id : ids) {
++    if (id.empty() || list.find(id) != std::string::npos) continue;
++    list += (list.empty() ? "" : ",") + UrlEncode(id);
++  }
++  if (list.empty()) return results;
++  for (size_t i = 0; i < requests.size(); ++i) {
++    const Response r = Http("GET", fmt::format("/api/players?view={}&ids={}", requests[i].view_id,
++                                               list), "", kReadTimeoutMs);
++    if (r.status != 200) continue;
++    results[i].total_rows = r.body.value("total", 0u);
++    std::map<std::string, Row> by_id;
++    for (const auto& item : r.body.value("rows", json::array())) {
++      Row row;
++      row.rank = item.value("rank", 0u);
++      row.online_id = item.value("online_id", "");
++      row.gamertag = item.value("gamertag", "");
++      row.rating = item.value("rating", 0.0);
++      row.skill = item.value("skill", 0u);
++      row.is_local = !self.empty() && row.online_id == self;
++      for (const auto& [key, value] : item.value("columns", json::object()).items()) {
++        row.columns.emplace_back(uint16_t(std::strtoul(key.c_str(), nullptr, 10)),
++                                 value.is_number() ? value.get<double>() : 0.0);
++      }
++      by_id[row.online_id] = std::move(row);
++    }
++    for (const auto& id : ids) {
++      auto it = by_id.find(id);
++      if (!id.empty() && it != by_id.end()) results[i].rows.push_back(it->second);
++    }
++  }
++  return results;
++}
++
++void WriteStatsResults(uint8_t* out, uint32_t guest_address,
++                       const std::vector<ViewRequest>& requests,
++                       const std::vector<ViewResult>& results, uint64_t local_xuid) {
++  const uint32_t views = uint32_t(requests.size());
++  StoreBe32(out, views);
++  StoreBe32(out + 4, guest_address + kResultsSize);
++  uint32_t next = kResultsSize + views * kViewSize;  // rows and columns follow the views
++  for (uint32_t v = 0; v < views; ++v) {
++    const auto& request = requests[v];
++    const auto& result = results[v];
++    const uint32_t rows = uint32_t(result.rows.size());
++    const uint32_t columns = uint32_t(request.column_ids.size());
++    uint8_t* view = out + kResultsSize + v * kViewSize;
++    StoreBe32(view, request.view_id);
++    StoreBe32(view + 4, result.total_rows);
++    StoreBe32(view + 8, rows);
++    StoreBe32(view + 12, rows ? guest_address + next : 0);
++    const uint32_t rows_offset = next;
++    next += rows * kRowSize;
++    for (uint32_t r = 0; r < rows; ++r) {
++      const Row& source = result.rows[r];
++      uint8_t* row = out + rows_offset + r * kRowSize;
++      std::memset(row, 0, kRowSize);
++      StoreBe64(row, RowXuid(source, local_xuid));
++      StoreBe32(row + 8, source.rank);
++      StoreBe64(row + 16, uint64_t(int64_t(source.rating)));
++      std::memcpy(row + 24, source.gamertag.data(), std::min<size_t>(source.gamertag.size(), 15));
++      StoreBe32(row + 40, columns);
++      StoreBe32(row + 44, columns ? guest_address + next : 0);
++      for (uint32_t c = 0; c < columns; ++c) {
++        uint8_t* column = out + next + c * kColumnSize;
++        std::memset(column, 0, kColumnSize);
++        StoreBe16(column, request.column_ids[c]);
++        column[8] = kDataInt64;
++        StoreBe64(column + 16,
++                  uint64_t(int64_t(ColumnValue(source, request.column_ids[c]))));
++      }
++      next += columns * kColumnSize;
++    }
++  }
++}
++
++}  // namespace rex::system::ranked

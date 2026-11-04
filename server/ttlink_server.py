@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import ipaddress
 import json
+import sys
 import logging
 import os
 import random
@@ -434,26 +435,43 @@ class Server(asyncio.DatagramProtocol):
         }
 
 
-async def http_status(server, reader, writer):
-    """Minimal HTTP: GET /status returns JSON; anything else a short text page."""
+async def http_status(server, reader, writer, api=None):
+    """Minimal HTTP: GET /status returns JSON, /api/* is the ranked API (ranked_api.py), anything
+    else a short text page."""
     try:
-        request = await asyncio.wait_for(reader.read(2048), timeout=5.0)
-        line = request.split(b"\r\n", 1)[0].decode("latin-1", "replace")
-        path = line.split(" ")[1] if line.count(" ") >= 2 else "/"
-        if path.startswith("/status"):
-            body = json.dumps(server.status(), indent=1).encode()
+        head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5.0)
+        lines = head.decode("latin-1", "replace").split("\r\n")
+        parts = lines[0].split(" ")
+        method, path = (parts[0], parts[1]) if len(parts) >= 3 else ("GET", "/")
+        length = 0
+        for line in lines[1:]:
+            if line.lower().startswith("content-length:"):
+                length = int(line.split(":", 1)[1].strip() or 0)
+        if length > 64 * 1024:
+            raise ValueError("body too large")
+        body = await asyncio.wait_for(reader.readexactly(length), timeout=5.0) if length else b""
+        code = 200
+        if path.startswith("/api/") and api is not None:
+            code, result = api.handle(method, path, body)
+            body_out = json.dumps(result).encode()
+            kind = "application/json"
+        elif path.startswith("/status"):
+            body_out = json.dumps(server.status(), indent=1).encode()
             kind = "application/json"
         else:
             s = server.status()
-            body = ("Table Tennis online server\n%d players online, %d in the public room, "
-                    "%d private rooms\n" % (s["players_online"], s["public_room_players"],
-                                            s["private_rooms"])).encode()
+            body_out = ("Table Tennis online server\n%d players online, %d in the public room, "
+                        "%d private rooms\n" % (s["players_online"], s["public_room_players"],
+                                                s["private_rooms"])).encode()
             kind = "text/plain; charset=utf-8"
-        writer.write(b"HTTP/1.0 200 OK\r\nContent-Type: " + kind.encode() +
-                     b"\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: " +
-                     str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
+        reason = {200: "OK", 400: "Bad Request", 403: "Forbidden", 404: "Not Found",
+                  409: "Conflict"}.get(code, "OK")
+        writer.write(f"HTTP/1.0 {code} {reason}\r\nContent-Type: {kind}\r\n".encode() +
+                     b"Access-Control-Allow-Origin: *\r\nContent-Length: " +
+                     str(len(body_out)).encode() + b"\r\nConnection: close\r\n\r\n" + body_out)
         await writer.drain()
-    except (asyncio.TimeoutError, ConnectionError, IndexError):
+    except (asyncio.TimeoutError, asyncio.IncompleteReadError, asyncio.LimitOverrunError,
+            ConnectionError, IndexError, ValueError):
         pass
     finally:
         writer.close()
@@ -465,6 +483,8 @@ async def main():
                         help="UDP port for the game, and TCP port for /status (default 27360)")
     parser.add_argument("--bind", default=os.environ.get("TTLINK_BIND", "0.0.0.0"))
     parser.add_argument("--quiet", action="store_true", help="log only warnings")
+    parser.add_argument("--stats-db", default=os.environ.get("TTLINK_STATS_DB", "ttlink_stats.db"),
+                        help="SQLite file for ranked accounts and leaderboards")
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING if args.quiet else logging.INFO,
                         format="%(asctime)s %(message)s")
@@ -475,7 +495,10 @@ async def main():
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
     sock.bind((args.bind, args.port))
     await loop.create_datagram_endpoint(lambda: server, sock=sock)
-    http = await asyncio.start_server(lambda r, w: http_status(server, r, w), args.bind, args.port)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # ranked_api.py et al. ship alongside
+    from ranked_api import RankedApi
+    api = RankedApi(args.stats_db)
+    http = await asyncio.start_server(lambda r, w: http_status(server, r, w, api), args.bind, args.port)
     logging.info("listening on %s:%d (UDP game traffic, TCP /status)", args.bind, args.port)
     async with http:
         await server.housekeeping()

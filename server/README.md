@@ -117,13 +117,13 @@ The game side is in the SDK patches `project/sdk-patches/0010-online-play.patch`
 
 For tests, the game can simulate a distant player without root: `--online_test_delay_ms=300` delays every packet it sends, `--online_test_loss_percent=5` drops some, and `--online_utc_offset=330` reports another time zone.
 
-## Not included: ranked matches and leaderboards
+## Ranked matches and leaderboards
 
-RANKED MATCH, TABLE TENNIS NETWORK and LEADERBOARDS were Xbox LIVE services. Bringing them back would need the server to take over what LIVE did:
+The server also stands in for Xbox LIVE's stats service, over plain HTTP on the same TCP port (`ranked_api.py`, `leaderboards.py`, `leaderboard_schema.py`; SQLite, standard library only). The database is `--stats-db` (default `ttlink_stats.db`, or `TTLINK_STATS_DB`); the systemd unit keeps it in `/var/lib/ttlink`.
 
-- player identity that lasts between sessions (an account, or a key kept by the game);
-- arbitration: both machines report the result of a ranked match and the server settles disagreements and drop-outs;
-- a stats store with the game's leaderboard views (the game reads and writes them with XUserReadStats and XSessionWriteStats, which the SDK would forward to the server);
-- some protection against faked results.
+- **Accounts.** Every copy of the game has the same profile XUID, so players are accounts named after their player name (unique, case-insensitive). Each device makes a random secret and registers it once (`POST /api/claim`, or `POST /api/link/redeem` with a one-time code from `POST /api/link/create` on a device that already has the account; codes last five minutes). Later requests carry `?device=&ts=&sig=`, with `sig = HMAC-SHA256(secret, path + "\n" + ts + "\n" + body)`; old timestamps (over five minutes) and repeated signatures are refused.
+- **Stats.** At the end of a match the game writes stats for both players; each client sends only its own (`POST /api/stats`, signed). The views come from the game's own definitions (`leaderboard_schema.py`, generated from the title's XVC2 section): each property is summed or replaced, in weekly or yearly buckets.
+- **Ranked results.** A ranked match adds `"ranked": {"session", "won"}`, where the session is the pair of the two players' session XUIDs. When both reports for a session arrive within 30 minutes and name one winner, the server moves both players' TrueSkill (mu 25, sigma 25/3); disagreeing reports are dropped. The leaderboards show the conservative skill, mu - 3 sigma, clamped to 1-50.
+- **Reads.** `GET /api/leaderboard?view=&start=&count=[&pivot=online_id]` returns a page by rank; `GET /api/players?view=&ids=` the rows of given players. The TrueSkill views (0xFFFF0000, 0xFFFF0001) answer from the ratings.
 
-That is a larger project with stored personal data, so it is left out for now.
+What this does not protect against: a player who controls both machines in a match can agree with themself. Results are only as trustworthy as the two players.

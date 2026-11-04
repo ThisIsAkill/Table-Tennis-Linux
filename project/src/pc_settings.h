@@ -90,6 +90,8 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   void EditName(ImGuiIO& io, uint16_t pressed, uint16_t held, double now);
   void SaveName();
   void DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, float alpha);
+  // ENTER LINK CODE uses the same editor with the link code alphabet.
+  void OpenLinkCodeEditor();
 
   rex::ui::Window* window_ = nullptr;
   LiveHooks hooks_;
@@ -104,6 +106,7 @@ class SettingsPage : public rex::ui::ImGuiDialog {
   bool confirm_ = false;  // "update now?" box showing
   double confirm_at_ = 0.0;
   bool naming_ = false;   // name editor showing
+  bool editing_link_ = false;  // ... for ENTER LINK CODE instead of the player name
   double naming_at_ = 0.0;
   std::string name_edit_;
   int name_pos_ = 0;
