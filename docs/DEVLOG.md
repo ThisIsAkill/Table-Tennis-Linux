@@ -185,3 +185,13 @@ PC SETTINGS has a fifth tab, GRAPHICS, for the options that change how the game 
 Texture filtering is new. The engine has always forced 4x anisotropic filtering under the hood; it is now a setting from off to 16x, defaulting to 16x, and applies the moment it changes. Side by side, the carpet weave and the floor lettering stay crisp further into the distance; the camera rarely looks along the floor at a steep angle, so the change is subtle, and it costs nothing measurable.
 
 Render scale was already in the launcher (render_scale= in tt-recomp.ini) but hidden: it draws the whole game at 2x or 3x its 720p resolution and scales the picture down to the window, which is real supersampling. It is the only true anti-aliasing available, because the game never enables MSAA itself. It also sharpens the shadows, since their shadow maps are render targets that scale with everything else; a separate shadow-size setting is not possible, as the game sizes those targets to fit the Xbox's 10 MB of EDRAM. On the RTX 3070 here, 2x at a 960x540 window runs at the same frame rate as 1x.
+
+## 2026-11-04 — HD texture packs
+
+The game can now load replacement textures. Nobody has made an HD pack for Table Tennis yet, so the feature comes with the tool to start one: launched with `--texture_dump=true`, the game writes every texture it uses to a folder, once each, named by a hash of its contents. A replacement with the same name in `mods/textures` takes its place.
+
+Naming textures by content rather than by where they sit in memory matters here, because the game reuses the same memory for different pictures as it loads venues and players. Every time a texture's data is (re)loaded, the cache hashes it and decides again whether it has a replacement. Replacements are separate images, shared by every texture with the same contents and uploaded once.
+
+The dump writes each texture in the format the graphics card already uses for it: the Xbox's DXT1/3/5 textures become BC1/2/3 DDS files after untiling them and fixing their byte order, and 32-bit textures stay 32-bit. A replacement has to keep that format but may be any size with the same aspect ratio, so the existing channel swizzles and gamma handling apply to it unchanged. Bigger pictures sample correctly because the game addresses textures in normalised coordinates.
+
+Tested in a match: 285 textures dumped and checked (faces, kits, shoes with their sponsor logos, hair with alpha). One shirt was swapped for a 2x version with a yellow grid drawn on, saved as DXT1 with Pillow, and the player walked out wearing it.

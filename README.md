@@ -163,6 +163,14 @@ Then one player chooses **PLAYER MATCH > CREATE MATCH**, sets up the match and w
 - Your ranked account is your player name. It is created the first time you go ONLINE and kept in `online_account.txt` in the save folder (keep that file private; it proves the account is yours). If another player already has the name, PC SETTINGS > ONLINE > RANKED ACCOUNT says **NAME TAKEN**: choose another player name.
 - **Same account on another device** (a PC and a Steam Deck, say): on the device that has the account, choose **SHOW LINK CODE**; on the other, choose **ENTER LINK CODE** and type the six characters within five minutes. Both devices then share the rating and the leaderboard place, and the second device takes the account's player name after a restart.
 
+### HD texture packs
+
+The game can show replacement textures, for example higher-resolution versions made by fans. Each texture is identified by its content, so a replacement shows wherever and whenever the game uses that picture.
+
+- **Using a pack:** put its `.dds` files in a folder named `mods/textures` in the game's folder (next to `tt-recomp.sh`; subfolders are fine). They load the next time the game starts. Updates leave the `mods` folder alone.
+- **Making a pack:** start the game once with `tt-recomp.sh -- --texture_dump=true` and play through the screens you want to change. Every texture the game uses is written once to a `texture_dump` folder as `<hash>.dds`. Edit a file (any size with the same aspect ratio: 2x or 4x for HD), keep its name and its format (DXT1, DXT3, DXT5 or uncompressed 32-bit, as dumped), and put it in `mods/textures`. Saving with mip levels keeps the picture smooth at a distance.
+- Uncompressed textures are dumped in the game's own channel order, which can look color-swapped in an image editor; keep that order when saving. `--texture_pack=false` turns packs off, and `--texture_pack_dir=` / `--texture_dump_dir=` choose other folders.
+
 ### Steam Deck
 
 - Add the game to Steam during installation and play it in Game Mode with the Deck's controls; outside Steam, the Deck's desktop layout turns B into Escape and the right stick into a mouse.
