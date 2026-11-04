@@ -105,7 +105,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 | Setting | Values |
 |---|---|
-| Game resolution | auto / 720p / 900p / 1080p: the size the game itself renders at, menus, text and HUD included. The Xbox 360 game rendered at 720p; at 1080p it is sharp on 1080p screens, for about twice the GPU work. **Auto** is 1080p for 1080p and larger windows and 720p for smaller ones (the Steam Deck). Applies after a restart |
+| Game resolution | auto / 720p / 900p / 1080p: the size the game itself renders at, menus, text and HUD included. The Xbox 360 game rendered at 720p; at 1080p it is sharp on 1080p screens, for about twice the GPU work. **Auto** is 1080p for 1080p and larger windows and 720p for smaller ones (the Steam Deck); if 1080p cannot hold 60 FPS during a match, it uses 720p from the next start (choosing the setting again measures anew). Applies after a restart |
 | Render scale | auto / 1x / 2x / 3x: draws the game at a multiple of its game resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). 2x costs about 3 times the GPU work of 1x and 3x about 14 times, because the Xbox 360's way of rendering is emulated at that size too. **Auto** starts at 1x; when matches hold 60 FPS it tries the next level at the next start (never above what the window shows) and goes back down if that level drops frames. Applies after a restart |
 | Texture filtering | off / 2x / 4x / 8x / 16x anisotropic filtering (default 16x): the floor, table and walls stay sharp at shallow angles |
 | Anti-aliasing | off / FXAA / FXAA extreme |
@@ -188,7 +188,7 @@ The game can show replacement textures, for example higher-resolution versions m
 ### Tips
 
 - Keep the frame rate at 60. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation slows gameplay down.
-- With a 1080p or larger window the game renders at native 1080p (GAME RESOLUTION AUTO). If a slower GPU drops frames there, set GAME RESOLUTION to 720P (`native_res=720p` in `tt-recomp.ini`) and use FSR. On a 4K screen with a fast GPU, RENDER SCALE 2X on top of 1080p renders the 3D view at 3840x2160. Render scale does not hold 60 FPS on the Steam Deck.
+- With a 1080p or larger window the game renders at native 1080p (GAME RESOLUTION AUTO). If the GPU cannot hold 60 FPS there, AUTO notices in the first match and switches to 720p with FSR from the next start; `native_res=720p` in `tt-recomp.ini` sets it directly. On a 4K screen with a fast GPU, RENDER SCALE 2X on top of 1080p renders the 3D view at 3840x2160. Render scale does not hold 60 FPS on the Steam Deck.
 
 ### Reporting problems
 

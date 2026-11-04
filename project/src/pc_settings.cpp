@@ -164,7 +164,8 @@ std::vector<Row> MakeRows() {
       {"native_res", "GAME RESOLUTION", "The size the game itself renders at, menus and HUD "
        "included; the Xbox 360 rendered at 720p. 1080P is sharp on 1080p screens and costs about "
        "twice the GPU work of 720P. AUTO is 1080P for 1080p and larger windows and 720P for "
-       "smaller ones such as the Steam Deck. Applies at the next start.", Apply::kRestart,
+       "smaller ones such as the Steam Deck; if 1080P cannot hold 60 FPS in a match, AUTO uses 720P "
+       "from the next start. Applies at the next start.", Apply::kRestart,
        {{"auto", "AUTO"}, {"720p", "720P"}, {"900p", "900P"}, {"1080p", "1080P"}},
        0},
       {"render_scale", "RENDER SCALE", "Draws the game at a multiple of GAME RESOLUTION and "
@@ -611,8 +612,12 @@ std::string SharpeningEffect() {
 // logged alongside, but it does not decide: GPUs lower their clocks under light load, so the
 // time at one level does not predict the next. The frame rate is the presented one: the game's
 // own frame rate stays at 60 when the GPU falls behind and the presenter shows every other frame.
+// GAME RESOLUTION AUTO is measured the same way: when it chose 1080p and that cannot hold 60 FPS at
+// 1X, native_res_auto=720p makes the launcher use 720p from the next start (choosing GAME
+// RESOLUTION again clears it).
 struct AutoScale {
   bool initialised = false, active = false, decided = false, match_seen = false;
+  bool scale_auto = false, native_trial = false;
   int level = 1, cap = 1, failed = 0;
   std::vector<float> fps;
   std::vector<double> gpu_ms;
@@ -658,8 +663,12 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
     a.initialised = true;
     const auto ini = ReadIni();
     const auto scale_it = ini.find("render_scale");
-    a.active = scale_it == ini.end() || scale_it->second == "auto";
+    a.scale_auto = scale_it == ini.end() || scale_it->second == "auto";
     a.level = std::clamp(std::atoi(rex::cvar::GetFlagByName("draw_resolution_scale_x").c_str()), 1, 3);
+    const auto native_it = ini.find("native_res");
+    a.native_trial = (native_it == ini.end() || native_it->second == "auto") && NativeHeight() > 720 &&
+                     a.level == 1;
+    a.active = a.scale_auto || a.native_trial;
     const auto failed_it = ini.find("render_scale_auto_failed");
     a.failed = failed_it == ini.end() ? 0 : std::atoi(failed_it->second.c_str());
     int width = 1280, height = 720;
@@ -684,7 +693,7 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
   a.gpu_ms.push_back(rex::system::gpu_frame_time::LastMs());
   // A level that clearly fails is given up after 15 seconds instead of a minute.
   bool clearly_failing = false;
-  if (a.level > 1 && a.fps.size() >= 15) {
+  if ((a.level > 1 || a.native_trial) && a.fps.size() >= 15) {
     std::vector<float> so_far = a.fps;
     std::sort(so_far.begin(), so_far.end());
     clearly_failing = so_far[so_far.size() / 2] < 50.0f;
@@ -702,11 +711,15 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
   std::snprintf(measured, sizeof(measured), "%.0f FPS, slowest tenth %.0f, GPU %.1f ms per frame",
                 median, low, gpu_median);
   const std::string here = std::to_string(a.level) + "X";
-  if (holds && a.level < a.cap && (a.failed == 0 || a.level + 1 < a.failed)) {
+  if (!holds && a.native_trial) {
+    WriteIniValue("native_res_auto", "720p");
+    a.status = "AUTO: " + std::to_string(NativeHeight()) + "p could not hold 60 FPS (" +
+               std::string(measured) + "); GAME RESOLUTION AUTO uses 720p from the next start.";
+  } else if (holds && a.scale_auto && a.level < a.cap && (a.failed == 0 || a.level + 1 < a.failed)) {
     WriteIniValue("render_scale_auto", std::to_string(a.level + 1));
     a.status = "AUTO: " + here + " holds 60 FPS here (" + measured + "); the next start tries " +
                std::to_string(a.level + 1) + "X.";
-  } else if (!holds && a.level > 1) {
+  } else if (!holds && a.scale_auto && a.level > 1) {
     WriteIniValue("render_scale_auto", std::to_string(a.level - 1));
     WriteIniValue("render_scale_auto_failed", std::to_string(a.level));
     a.status = "AUTO: " + here + " could not hold 60 FPS (" + std::string(measured) +
@@ -1024,6 +1037,8 @@ void SettingsPage::Change(int row_index, int delta) {
   REXLOG_INFO("Tabletennis: PC setting {} = {}", row.key, row.choices[row.current].value);
   notice_.clear();
   Save();
+  // A GAME RESOLUTION choice gives AUTO a fresh measurement.
+  if (row_index == kNativeRes) WriteIniValue("native_res_auto", "");
 }
 
 // True on a Steam Deck: Steam sets SteamDeck=1, and the built-in screen is 1280x800.

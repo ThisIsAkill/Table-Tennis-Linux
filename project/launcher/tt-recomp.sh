@@ -65,6 +65,7 @@ achievement_sound="true"
 haptics="true"
 button_prompts="auto"
 native_res="auto"
+native_res_auto=""
 render_scale="auto"
 render_scale_auto="1"
 render_scale_auto_failed="0"
@@ -105,6 +106,7 @@ set_option() {
     voice_chat) voice_chat="$value" ;;
     button_prompts) button_prompts="$value" ;;
     native_res) native_res="$value" ;;
+    native_res_auto) native_res_auto="$value" ;;
     render_scale) render_scale="$value" ;;
     render_scale_auto) render_scale_auto="$value" ;;
     render_scale_auto_failed) render_scale_auto_failed="$value" ;;
@@ -158,9 +160,12 @@ case "$resolution" in
   *) die "unknown resolution '$resolution' (720p, 800p, 1080p, 1440p, 4k)" ;;
 esac
 # The size the game itself renders at, menus and HUD included (the Xbox 360 original: 720p).
-# auto is 1080p for 1080p and larger windows and 720p for smaller ones (the Steam Deck).
+# auto is 1080p for 1080p and larger windows and 720p for smaller ones (the Steam Deck), and 720p
+# when the game measured that 1080p cannot hold 60 FPS here (native_res_auto=720p).
 case "$native_res" in
-  auto) if (( height >= 1080 )); then native_res_used=1080p; else native_res_used=720p; fi ;;
+  auto)
+    if (( height >= 1080 )) && [[ "$native_res_auto" != 720p ]]; then native_res_used=1080p
+    else native_res_used=720p; fi ;;
   720p|900p|1080p) native_res_used="$native_res" ;;
   *) die "native_res must be auto, 720p, 900p or 1080p" ;;
 esac
@@ -242,6 +247,7 @@ achievement_sound=$achievement_sound
 haptics=$haptics
 button_prompts=$button_prompts
 native_res=$native_res
+native_res_auto=$native_res_auto
 render_scale=$render_scale
 render_scale_auto=$render_scale_auto
 render_scale_auto_failed=$render_scale_auto_failed
