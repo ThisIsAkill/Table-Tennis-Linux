@@ -15,7 +15,8 @@
 #                  [--auto_update=true|false] [--system_link=true|false]
 #                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
 #                  [--online_redundancy=auto|on|off] [--keyboard=on|off]
-#                  [--vsync=auto|on|off] [--brightness=0.8..2.0] [--save]
+#                  [--vsync=auto|on|off] [--brightness=0.8..2.0]
+#                  [--texture_filtering=off|2x|4x|8x|16x] [--save]
 #                  [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
@@ -75,6 +76,7 @@ online_redundancy="auto"
 keyboard="off"
 vsync="auto"
 brightness="1.0"
+texture_filtering="16x"
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -109,6 +111,7 @@ set_option() {
     keyboard) keyboard="$value" ;;
     vsync) vsync="$value" ;;
     brightness) brightness="$value" ;;
+    texture_filtering) texture_filtering="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -168,6 +171,11 @@ case "$system_link" in true|false) ;; *) die "system_link must be true or false"
 case "$keyboard" in on|off) ;; *) die "keyboard must be on or off" ;; esac
 case "$vsync" in auto|on|off) ;; *) die "vsync must be auto, on or off" ;; esac
 [[ "$brightness" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "brightness must be a number (1.0 = normal)"
+# Anisotropic filtering keeps floor and table textures sharp at shallow angles.
+case "$texture_filtering" in
+  off) anisotropic=0 ;; 2x) anisotropic=2 ;; 4x) anisotropic=3 ;; 8x) anisotropic=4 ;; 16x) anisotropic=5 ;;
+  *) die "texture_filtering must be off, 2x, 4x, 8x or 16x" ;;
+esac
 [[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
 [[ "$server" =~ ^[A-Za-z0-9.:_-]*$ ]] || die "server must be a host name or address, optionally with :port"
 [[ "$lan_peers" =~ ^[0-9.,\ ]*$ ]] || die "lan_peers must be IPv4 addresses separated by commas"
@@ -201,6 +209,7 @@ online_redundancy=$online_redundancy
 keyboard=$keyboard
 vsync=$vsync
 brightness=$brightness
+texture_filtering=$texture_filtering
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -218,6 +227,7 @@ args=(
   --present_safe_area_x=100 --present_safe_area_y=100
   "--system_link=$system_link"
   "--display_brightness=$brightness"
+  "--anisotropic_override=$anisotropic"
 )
 # vsync=on presents in step with the display (no tearing; mailbox or FIFO), off presents at once
 # (lowest latency). auto is on for macOS, where MoltenVK's immediate mode tears visibly, and off

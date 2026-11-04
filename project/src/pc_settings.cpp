@@ -85,7 +85,7 @@ struct Row {
 
 enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
-  kAchievementSound, kButtonPrompts,
+  kAchievementSound, kButtonPrompts, kRenderScale, kTextureFiltering,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat, kAccount, kShowLinkCode, kEnterLinkCode,
   // UPDATES section
@@ -93,12 +93,13 @@ enum RowId {
 };
 
 // Tabs (LB / RB), each with its own rows in this order.
-enum Tab { kTabDisplay, kTabGame, kTabOnline, kTabUpdates, kTabCount };
-constexpr const char* kTabNames[kTabCount] = {"DISPLAY", "GAME", "ONLINE", "UPDATES"};
+enum Tab { kTabDisplay, kTabGraphics, kTabGame, kTabOnline, kTabUpdates, kTabCount };
+constexpr const char* kTabNames[kTabCount] = {"DISPLAY", "GRAPHICS", "GAME", "ONLINE", "UPDATES"};
 
 const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
-      {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kAntiAliasing, kSharpening, kShowFps},
+      {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kShowFps},
+      {kRenderScale, kTextureFiltering, kAntiAliasing, kSharpening},
       {kButtonPrompts, kHaptics, kAchievementSound},
       {kPlayerName, kAccount, kShowLinkCode, kEnterLinkCode, kOnlineServer, kOnlineStatus, kVoiceChat},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
@@ -154,6 +155,17 @@ std::vector<Row> MakeRows() {
        "while a PlayStation controller is in use and Xbox icons otherwise.", Apply::kLive,
        {{"auto", "AUTO"}, {"xbox", "XBOX"}, {"playstation", "PLAYSTATION"}},
        0},
+      {"render_scale", "RENDER SCALE", "Draws the game at a multiple of its 720p resolution and "
+       "scales the picture to the window: smoother edges and sharper detail (supersampling). AUTO "
+       "follows RESOLUTION (2X at 1440P, 3X at 4K). 2X and 3X need a fast graphics card; keep "
+       "AUTO on the Steam Deck.", Apply::kRestart,
+       {{"auto", "AUTO"}, {"1", "1X"}, {"2", "2X"}, {"3", "3X"}},
+       0},
+      {"texture_filtering", "TEXTURE FILTERING", "Anisotropic filtering keeps the floor, the "
+       "table and the walls sharp when seen at a shallow angle. The Xbox 360 used little or none; "
+       "16X costs almost nothing on current hardware.", Apply::kLive,
+       {{"off", "OFF"}, {"2x", "2X"}, {"4x", "4X"}, {"8x", "8X"}, {"16x", "16X"}},
+       4},
       {"player_name", "PLAYER NAME", "The name other players see online and in SYSTEM LINK. Press A "
        "to change it (player_name= in tt-recomp.ini).", Apply::kRestart, {}, 0},
       {"", "ONLINE SERVER", "The server ONLINE in the main menu plays through (server= in "
@@ -684,10 +696,15 @@ void PollFrontend(PPCContext& ctx, uint8_t* base, uint32_t movie) {
   if (!movie) return;
   lan::PollFrontend(ctx, base, movie);
   g_frontend_tick_ns.store(NowNs());
-  // Test hook: TT_TEST_OPEN_PC_SETTINGS=1 opens the page a few seconds after the main menu.
+  // Test hook: TT_TEST_OPEN_PC_SETTINGS=1 opens the page a few seconds after the main menu;
+  // a tab name (TT_TEST_OPEN_PC_SETTINGS=GRAPHICS) opens that tab.
   static const bool test_open = [] {
     const char* value = std::getenv("TT_TEST_OPEN_PC_SETTINGS");
-    return value && std::strcmp(value, "pause") != 0;
+    if (!value || std::strcmp(value, "pause") == 0) return false;
+    for (int tab = 0; tab < kTabCount; ++tab) {
+      if (std::strcmp(value, kTabNames[tab]) == 0) g_tab = tab;
+    }
+    return true;
   }();
   if (test_open) {
     static int frames = 0;
@@ -937,6 +954,12 @@ void SettingsPage::ApplyLive(int row_index) {
     case kButtonPrompts:
       tabletennis::prompts::SetSetting(g_rows[kButtonPrompts].choices[g_rows[kButtonPrompts].current].value);
       break;
+    case kTextureFiltering: {
+      // anisotropic_override: 0 off, 2 = 2x, 3 = 4x, 4 = 8x, 5 = 16x (no 1x step here).
+      static constexpr const char* kLevels[] = {"0", "2", "3", "4", "5"};
+      rex::cvar::SetFlagByName("anisotropic_override", kLevels[g_rows[kTextureFiltering].current]);
+      break;
+    }
     case kAntiAliasing:
       if (hooks_.set_anti_aliasing) hooks_.set_anti_aliasing(g_rows[row_index].choices[g_rows[row_index].current].value);
       break;

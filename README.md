@@ -78,7 +78,7 @@ Any controller SDL supports works, including the Steam Deck's own controls. The 
 
 ### PC SETTINGS
 
-The game's **OPTIONS** menu, in the main menu and in the pause menu during a match, has a **PC SETTINGS** entry. It opens a page in the game's own style with four tabs, switched with **LB / RB**. Use the D-pad to choose and change, **X** to restore the defaults (1280x800 fullscreen on a Steam Deck) and **B** to go back. Changes are saved to `tt-recomp.ini`, and everything applies at once except the two settings marked below.
+The game's **OPTIONS** menu, in the main menu and in the pause menu during a match, has a **PC SETTINGS** entry. It opens a page in the game's own style with five tabs, switched with **LB / RB**. Use the D-pad to choose and change, **X** to restore the defaults (1280x800 fullscreen on a Steam Deck) and **B** to go back. Changes are saved to `tt-recomp.ini`, and everything applies at once except the two settings marked below.
 
 <p align="center">
   <img src="docs/images/linux-pc-settings.jpg" width="70%" alt="PC SETTINGS page with its DISPLAY tab">
@@ -93,9 +93,16 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 | Picture | for screens that are not 16:9 (see below): auto / letterbox / fill screen |
 | VSync | auto (on for macOS, off elsewhere) / on / off: waits for the display, so the picture does not tear |
 | Brightness | -2 to +5; NORMAL is the picture as the game draws it. Lightens dark and middle tones, white stays white |
+| Show FPS | on / off; also shows the game's own frame rate with its worst frame times |
+
+**GRAPHICS**
+
+| Setting | Values |
+|---|---|
+| Render scale | auto / 1x / 2x / 3x: draws the game at a multiple of its 720p resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). Auto follows the resolution (2x at 1440p, 3x at 4K). Applies after a restart; keep auto on the Steam Deck |
+| Texture filtering | off / 2x / 4x / 8x / 16x anisotropic filtering (default 16x): the floor, table and walls stay sharp at shallow angles |
 | Anti-aliasing | off / FXAA / FXAA extreme |
 | Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) |
-| Show FPS | on / off; also shows the game's own frame rate with its worst frame times |
 
 **GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a light tick in menus) and the achievement unlock sound, on or off.
 

@@ -177,3 +177,11 @@ Identity was the interesting design question. Every copy of the game has the sam
 On the reading side, the leaderboard screen first lists a page of the TrueSkill view and then asks for each listed player's other stats by their ID; the SDK remembers which made-up ID belongs to which account so that second read finds them. Tested with two instances against a local server: a full ranked match (two games), results reported and agreed, TrueSkill moved (winner 8, loser 1), and the game's own LEADERBOARDS screen showing both players with their rating, wins and losses. A normal online player match with LIVE sign-in on still plays to the end and leaves the rankings alone.
 
 What it cannot do: if one person controls both machines in a match, they can agree with themselves. For a game played among friends that seems fine.
+
+## 2026-11-04 — A GRAPHICS tab
+
+PC SETTINGS has a fifth tab, GRAPHICS, for the options that change how the game is drawn rather than how it is shown: render scale, texture filtering, anti-aliasing and sharpening.
+
+Texture filtering is new. The engine has always forced 4x anisotropic filtering under the hood; it is now a setting from off to 16x, defaulting to 16x, and applies the moment it changes. Side by side, the carpet weave and the floor lettering stay crisp further into the distance; the camera rarely looks along the floor at a steep angle, so the change is subtle, and it costs nothing measurable.
+
+Render scale was already in the launcher (render_scale= in tt-recomp.ini) but hidden: it draws the whole game at 2x or 3x its 720p resolution and scales the picture down to the window, which is real supersampling. It is the only true anti-aliasing available, because the game never enables MSAA itself. It also sharpens the shadows, since their shadow maps are render targets that scale with everything else; a separate shadow-size setting is not possible, as the game sizes those targets to fit the Xbox's 10 MB of EDRAM. On the RTX 3070 here, 2x at a 960x540 window runs at the same frame rate as 1x.
