@@ -1,0 +1,60 @@
+name: Problem report
+description: Something does not work or performs badly (Linux, Steam Deck or macOS)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The game's log answers most questions, so please attach it. It never contains game files.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux PC
+        - Steam Deck
+        - Other handheld or Steam Machine
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware and system
+      description: CPU, GPU and operating system, e.g. "Ryzen 5 5600, RX 6700 XT, Fedora 41".
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown at PC SETTINGS > UPDATES > VERSION, e.g. 1.4.0.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: |
+        Drag the newest `tabletennis_*.log` from the `logs` folder in the game's folder (on a Steam Deck usually `~/Games/TableTennis/logs`) into this box, from a session where the problem happened.
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: Paste your `tt-recomp.ini` from the game's folder (it holds the resolution, render scale, anti-aliasing and online settings).
+      render: ini
+  - type: checkboxes
+    id: online
+    attributes:
+      label: Online problems
+      options:
+        - label: This happens in ONLINE or SYSTEM LINK play (please mention the other player's platform above)

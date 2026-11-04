@@ -189,6 +189,10 @@ The game can show replacement textures, for example higher-resolution versions m
 - Keep the frame rate at 60. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation slows gameplay down.
 - On a PC with a strong GPU, `render_scale=2` (or `3`) in `tt-recomp.ini` renders the 3D view above the screen's resolution and scales it down for a sharper picture. The Steam Deck cannot hold 60 FPS with it.
 
+### Reporting problems
+
+Open an issue at [github.com/ThisIsAkill/Table-Tennis-Linux/issues](https://github.com/ThisIsAkill/Table-Tennis-Linux/issues) and attach the newest `tabletennis_*.log` from the `logs` folder in the game's folder (from a session where the problem happened) and your `tt-recomp.ini`. The log names the GPU and records the game's frame times, so it answers most questions straight away.
+
 ## macOS (experimental)
 
 `build.sh` also builds the game on Macs with Apple silicon, rendering through MoltenVK (Vulkan on Metal). It starts and plays, but it is not part of the releases yet: on an M2 it runs at about 25 to 35 game frames per second, because the GPU emulation starts far more render passes per frame than Apple's tile-based GPUs handle well, and Low Power Mode holds the GPU at its lowest clock. Resizing the window can turn the picture black. Faster rendering on Apple silicon is being worked on.
