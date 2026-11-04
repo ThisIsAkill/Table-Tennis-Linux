@@ -17,6 +17,7 @@ set(TABLETENNIS_SOURCES
     src/achievement_ui.cpp
     src/pc_settings.cpp
     src/haptics.cpp
+    src/motion.cpp
     src/system_link.cpp
     src/pc_features.cpp
     src/frame_pacer.cpp

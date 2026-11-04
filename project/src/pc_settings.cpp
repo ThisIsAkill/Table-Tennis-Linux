@@ -1,6 +1,7 @@
 // pc_settings.cpp - see pc_settings.h.
 
 #include "pc_settings.h"
+#include "motion.h"
 #include "time_now.h"
 using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 #include "menu_style.h"
@@ -85,7 +86,7 @@ struct Row {
 
 enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
-  kAchievementSound, kButtonPrompts, kRenderScale, kTextureFiltering,
+  kAchievementSound, kButtonPrompts, kRenderScale, kTextureFiltering, kMotionSwing,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat, kAccount, kShowLinkCode, kEnterLinkCode,
   // UPDATES section
@@ -100,7 +101,7 @@ const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
       {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kShowFps},
       {kRenderScale, kTextureFiltering, kAntiAliasing, kSharpening},
-      {kButtonPrompts, kHaptics, kAchievementSound},
+      {kButtonPrompts, kHaptics, kMotionSwing, kAchievementSound},
       {kPlayerName, kAccount, kShowLinkCode, kEnterLinkCode, kOnlineServer, kOnlineStatus, kVoiceChat},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
   return rows[tab];
@@ -166,6 +167,12 @@ std::vector<Row> MakeRows() {
        "16X costs almost nothing on current hardware.", Apply::kLive,
        {{"off", "OFF"}, {"2x", "2X"}, {"4x", "4X"}, {"8x", "8X"}, {"16x", "16X"}},
        4},
+      {"motion_swing", "MOTION SWING", "Play shots with a flick of the wrist, on a controller with "
+       "a gyro (DualSense, DualShock 4, Switch Pro; Steam Deck with Steam Input off for the game). "
+       "Tip the top forward for topspin, back for backspin, turn left or right for sidespin. "
+       "STRONG needs a firm flick, LIGHT a gentle one. Only during a rally.", Apply::kLive,
+       {{"off", "OFF"}, {"strong", "STRONG"}, {"normal", "NORMAL"}, {"light", "LIGHT"}},
+       0},
       {"player_name", "PLAYER NAME", "The name other players see online and in SYSTEM LINK. Press A "
        "to change it (player_name= in tt-recomp.ini).", Apply::kRestart, {}, 0},
       {"", "ONLINE SERVER", "The server ONLINE in the main menu plays through (server= in "
@@ -954,6 +961,13 @@ void SettingsPage::ApplyLive(int row_index) {
     case kButtonPrompts:
       tabletennis::prompts::SetSetting(g_rows[kButtonPrompts].choices[g_rows[kButtonPrompts].current].value);
       break;
+    case kMotionSwing: {
+      static constexpr const char* kSensitivity[] = {"3", "2", "3", "4"};
+      const int choice = g_rows[kMotionSwing].current;
+      rex::cvar::SetFlagByName("motion_swing", choice ? "true" : "false");
+      rex::cvar::SetFlagByName("motion_swing_sensitivity", kSensitivity[choice]);
+      break;
+    }
     case kTextureFiltering: {
       // anisotropic_override: 0 off, 2 = 2x, 3 = 4x, 4 = 8x, 5 = 16x (no 1x step here).
       static constexpr const char* kLevels[] = {"0", "2", "3", "4", "5"};
@@ -1400,6 +1414,9 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
         extra = link_message;
       } else if (selected_ == kAccount) {
         extra = account_help;
+      } else if (selected_ == kMotionSwing && g_rows[kMotionSwing].current &&
+                 !tabletennis::motion::GyroAvailable()) {
+        extra = std::string(row.help) + " No controller with a gyro is connected right now.";
       }
       const char* help = selected_ == kOnlineStatus ? status_help.c_str()
                          : !extra.empty()           ? extra.c_str()

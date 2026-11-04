@@ -195,3 +195,11 @@ Naming textures by content rather than by where they sit in memory matters here,
 The dump writes each texture in the format the graphics card already uses for it: the Xbox's DXT1/3/5 textures become BC1/2/3 DDS files after untiling them and fixing their byte order, and 32-bit textures stay 32-bit. A replacement has to keep that format but may be any size with the same aspect ratio, so the existing channel swizzles and gamma handling apply to it unchanged. Bigger pictures sample correctly because the game addresses textures in normalised coordinates.
 
 Tested in a match: 285 textures dumped and checked (faces, kits, shoes with their sponsor logos, hair with alpha). One shirt was swapped for a 2x version with a yellow grid drawn on, saved as DXT1 with Pillow, and the player walked out wearing it.
+
+## 2026-11-04 — Motion swing
+
+Controllers with a gyro can now play shots with a flick of the wrist (PC SETTINGS > GAME > MOTION SWING). The flick chooses the spin the way the face buttons' diamond does: tip the top of the controller forward for topspin, pull it back for backspin, turn it left or right for sidespin. The flick is turned into a short press of that face button, so the game's own timing and shot logic decide the rest.
+
+It lives entirely in the game layer. The pad poll every frame passes through one hook already (the intro skip, PC SETTINGS and the achievements list use it), and SDL hands over the controller's gyro there. A flick counts when the rotation on one axis passes a threshold (STRONG, NORMAL or LIGHT) and clearly beats the other axis, followed by a short cool-down so one flick plays one shot. It only acts while a rally is in play, the same signal the haptics use, so waving the controller around never presses A or B in a menu.
+
+There is no gyro controller here, so the test goes through the same detector with a synthetic flick (TT_TEST_MOTION). In a match the game's own debug log shows the presses arriving as swings ("Attempting Specialty Swing", and "swing input was locked out" when the flick came at the wrong moment). The axis signs follow SDL's convention for gamepads; if forward and back come out swapped on a real controller, --motion_swing_invert=true flips them. Steam Input hides the gyro from games, so on the Steam Deck it needs Steam Input off for the game, or Steam's own gyro mapping.
