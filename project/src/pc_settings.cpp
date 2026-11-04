@@ -833,14 +833,8 @@ void Arrow(ImDrawList* dl, ImVec2 center, float size, bool right, ImU32 col) {
 }
 
 void FaceButton(ImDrawList* dl, ImVec2 center, float radius, ImU32 fill, const char* letter, float alpha) {
-  if (tabletennis::prompts::DrawFace(dl, center, radius, letter, alpha)) return;
-  dl->AddCircleFilled(center, radius, Col(20, 22, 28, 0.9f * alpha), 24);
-  dl->AddCircleFilled(center, radius * 0.82f, fill, 24);
-  const float px = radius * 1.5f;
-  ImFont* font = achievement_ui::HeadlineFont(px);
-  const float w = TextWidth(font, px, letter);
-  AddText(dl, font, px, ImVec2(center.x - w * 0.5f, CapsTop(center.y, px)), Col(255, 255, 255, alpha),
-          letter);
+  tabletennis::prompts::DrawButton(dl, center, radius, fill, letter,
+                                   achievement_ui::HeadlineFont(radius * 1.65f), alpha);
 }
 
 // The game's menus sit at a slight angle, rising to the right.

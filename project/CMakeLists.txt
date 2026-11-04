@@ -33,6 +33,8 @@ else()
 endif()
 
 rexglue_setup_target(tabletennis)
+# The SDK's texture load hook (SDK patch 0017), which button_prompts.cpp uses for PlayStation icons.
+target_compile_definitions(tabletennis PRIVATE TT_TEXTURE_LOAD_HOOK=1)
 
 # Optimization level for the generated (recompiled) game code only, e.g. -O2 to compile faster.
 # Empty keeps the build type's default (-O3 for Release); the SDK and src/ keep their flags.

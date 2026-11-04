@@ -325,6 +325,9 @@ class TabletennisApp : public rex::ReXApp {
     // BUTTON PROMPTS (button_prompts.h): Xbox or PlayStation icons in the menus.
     tabletennis::prompts::Init(runtime()->memory(), runtime()->graphics_system());
     if (window()) {
+      // The mouse pointer disappears after two seconds without motion (from upstream).
+      window()->SetCursorAutoHideDelayMs(2000);
+      window()->SetCursorVisibility(rex::ui::Window::CursorVisibility::kAutoHidden);
       tabletennis::pc::SetSurfaceSize(window()->GetActualPhysicalWidth(), window()->GetActualPhysicalHeight());
     }
     auto vfs = runtime()->kernel_state()->file_system();

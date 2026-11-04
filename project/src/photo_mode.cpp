@@ -105,7 +105,7 @@ struct OptionInfo {
   int min, max, initial;
 };
 constexpr OptionInfo kOptionInfo[kOptionCount] = {
-    {"ZOOM", 7, 50, 10},  // tenths: 1.0X is the game's own view
+    {"ZOOM", 5, 50, 10},  // tenths: 1.0X is the game's own view
     {"TILT", -45, 45, 0},
     {"FILTER", 0, kFilterCount - 1, 0},
     {"EXPOSURE", -10, 10, 0},
@@ -466,15 +466,7 @@ void BuildMatrix(uint8_t* base, uint32_t out, uint32_t original) {
     right = r2;
     up = u2;
   }
-  // ZOOM: scale the picture around its centre by scaling right and up (the renderer turns the
-  // camera into a view with a transpose, so this scales screen x and y; depth is unchanged).
-  // (The game builds its projection inside the camera update, so its own field of view cannot
-  // be changed from here; zooming out is kept mild because the game culls with its own view.)
-  const float k = float(g_options[kFov].load()) / 10.0f;
-  if (k != 1.0f) {
-    right = {right.x * k, right.y * k, right.z * k};
-    up = {up.x * k, up.y * k, up.z * k};
-  }
+  // ZOOM changes the field of view where the renderer builds the projection (sub_82153598).
   const Vec3 rows[4] = {right, up, back, g_pos};
   for (int r = 0; r < 4; ++r) {
     StoreF(base, out + r * 16 + 0, rows[r].x);
@@ -851,4 +843,27 @@ extern "C" void sub_821709F8(PPCContext& ctx, uint8_t* base) {
   }
   BuildMatrix(base, g_scratch, g_matrix);
   std::memcpy(base + g_matrix, base + g_scratch, 64);
+}
+
+// ZOOM: the renderer rebuilds a view's perspective projection in sub_82153598 from the field of
+// view in degrees at view+824 (found by David Petersson for the Windows build). Zoom narrows or
+// widens it for that call only and puts the game's value back, so frames never compound and
+// culling follows the zoomed view.
+extern "C" void __imp__sub_82153598(PPCContext& ctx, uint8_t* base);
+extern "C" void sub_82153598(PPCContext& ctx, uint8_t* base) {
+  const uint32_t view = ctx.r3.u32;
+  const float magnification = float(g_options[kFov].load()) / 10.0f;
+  if (!g_active.load() || !view || magnification == 1.0f) {
+    __imp__sub_82153598(ctx, base);
+    return;
+  }
+  const uint32_t original = REX_LOAD_U32(view + 824);
+  const float degrees = LoadF(base, view + 824);
+  if (std::isfinite(degrees) && degrees > 0.0f && degrees < 180.0f) {
+    constexpr double kRadians = 3.14159265358979323846 / 180.0;
+    const double zoomed = 2.0 * std::atan(std::tan(degrees * kRadians / 2.0) / magnification) / kRadians;
+    StoreF(base, view + 824, float(std::clamp(zoomed, 5.0, 150.0)));
+  }
+  __imp__sub_82153598(ctx, base);
+  REX_STORE_U32(view + 824, original);
 }
