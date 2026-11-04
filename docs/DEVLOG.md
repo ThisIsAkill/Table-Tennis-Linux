@@ -231,3 +231,22 @@ A Steam Machine owner (Zen 4, RX 7600M-class GPU) reported the game being GPU-bo
 That costs far more than the pixel count suggests. The Xbox 360 drew this game in three tiles with 2x MSAA and copies render targets into textures many times per frame (shadows, light masks, bloom), and the emulated GPU repeats all of that at the higher size. Measured on a Steam Deck at the main menu, render scale 1x takes about 6 ms of GPU time per frame, 2x about 19 ms (45 FPS) and 3x about 87 ms (11 FPS). The Deck's log also rules out the slow fallback render path on AMD's driver, which was the first suspect.
 
 So AUTO is now 1x at every resolution: the window can be 1440p or 4K while the game renders at 720p, and FSR or CAS upscales it. Changing the resolution therefore no longer needs a restart. 2x and 3x stay in GRAPHICS > RENDER SCALE for fast graphics cards, and the help says what they cost. The reporter has been asked for a log to confirm their case.
+
+## 2026-11-04 — Where the GPU time goes, and an AUTO that measures
+
+To see why higher render scales cost so much, the engine now has frame counters (TT_GPU_STATS=1): draws, render-target transfers, resolves and texture loads, with their sizes, logged every two seconds. Per frame in a match:
+
+| | 1x | 2x | 3x |
+|---|---|---|---|
+| resolves (EDRAM to memory) | 39, 9.7 Mpixels | 39, 39 Mpixels | 39, 88 Mpixels |
+| render-target transfers | 29, 7.5 Msamples | 29, 30 M | 29, 67 M |
+| textures reloaded from resolves | ~40 MB | 155 MB | 350 MB |
+
+The game renders into textures about 31 times a frame: bloom and blur chains, light masks, and several full-screen targets, some twice in one frame. In the emulated GPU each of those goes from EDRAM to memory and back into a texture, so at 2x roughly half a gigabyte moves per frame, and at 3x a gigabyte. That explains the steep cost. Removing it would mean rendering straight into textures, a large change to the engine's design, so it is left for now.
+
+What changed for players instead:
+
+- SHARPENING has an AUTO setting, the new default for new installs. It upscales with FSR when the window is at least 1.4 times taller than the rendered picture (1080p and up at 1x) and leaves smaller windows as they are.
+- RENDER SCALE AUTO now finds the right level by trying it. The engine times every GPU submission with timestamp queries (GPU time per frame is available to the game). AUTO starts at 1x; after 30 seconds of matches holding 60 FPS, the next start tries one level up, never above what the window shows. A level that drops frames goes back down (after 10 seconds if it clearly fails) and is not tried again. The decision uses the real frame rate rather than predicting from GPU time, because GPUs lower their clocks under light load: on the RTX 3070 here, 1x measured 9 ms of GPU time per frame, which predicts nothing about 2x.
+
+The shader warm-up that seemed worth adding already exists: the Vulkan backend stores every pipeline it builds and recreates all of them at startup ("Created 156 graphics pipelines from Vulkan storage"). Stutter therefore only happens the first time a scene is seen on a machine.

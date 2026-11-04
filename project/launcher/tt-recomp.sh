@@ -64,6 +64,8 @@ achievement_sound="true"
 haptics="true"
 button_prompts="auto"
 render_scale="auto"
+render_scale_auto="1"
+render_scale_auto_failed="0"
 gamemode="auto"
 check_updates="true"
 auto_update="false"
@@ -101,6 +103,8 @@ set_option() {
     voice_chat) voice_chat="$value" ;;
     button_prompts) button_prompts="$value" ;;
     render_scale) render_scale="$value" ;;
+    render_scale_auto) render_scale_auto="$value" ;;
+    render_scale_auto_failed) render_scale_auto_failed="$value" ;;
     gamemode) gamemode="$value" ;;
     check_updates) check_updates="$value" ;;
     auto_update) auto_update="$value" ;;
@@ -154,7 +158,12 @@ esac
 # (FSR or CAS can upscale): 2 and 3 cost about 3x and 14x the GPU time of 1, far more than their
 # pixel count suggests, so they are only used when chosen.
 case "$render_scale" in
-  auto) ;;
+  auto)
+    # The game measures its GPU time in matches and remembers the level this PC can afford
+    # (render_scale_auto=); it never goes above what the window can show.
+    case "$render_scale_auto" in 1|2|3) scale="$render_scale_auto" ;; *) scale=1 ;; esac
+    if (( height <= 800 )); then scale=1; elif (( height <= 1440 && scale > 2 )); then scale=2; fi
+    ;;
   1|2|3) scale="$render_scale" ;;
   *) die "render_scale must be auto, 1, 2 or 3" ;;
 esac
@@ -215,6 +224,8 @@ achievement_sound=$achievement_sound
 haptics=$haptics
 button_prompts=$button_prompts
 render_scale=$render_scale
+render_scale_auto=$render_scale_auto
+render_scale_auto_failed=$render_scale_auto_failed
 gamemode=$gamemode
 check_updates=$check_updates
 auto_update=$auto_update

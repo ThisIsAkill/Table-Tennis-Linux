@@ -105,7 +105,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 
 | Setting | Values |
 |---|---|
-| Render scale | auto (1x) / 1x / 2x / 3x: draws the game at a multiple of its 720p resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). 2x costs about 3 times the GPU work of 1x and 3x about 14 times, because the Xbox 360's way of rendering is emulated at that size too: use them only on a fast graphics card. Applies after a restart |
+| Render scale | auto / 1x / 2x / 3x: draws the game at a multiple of its 720p resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). 2x costs about 3 times the GPU work of 1x and 3x about 14 times, because the Xbox 360's way of rendering is emulated at that size too. **Auto** starts at 1x; when matches hold 60 FPS it tries the next level at the next start (never above what the window shows) and goes back down if that level drops frames. Applies after a restart |
 | Texture filtering | off / 2x / 4x / 8x / 16x anisotropic filtering (default 16x): the floor, table and walls stay sharp at shallow angles |
 | Anti-aliasing | off / FXAA / FXAA extreme |
 | Sharpening | auto (FSR on 1080p and larger windows, plain scaling below) / off / CAS (sharpens; good on the Steam Deck) / FSR (upscales and sharpens) |

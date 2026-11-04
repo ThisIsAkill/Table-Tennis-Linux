@@ -11,6 +11,8 @@ using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 
 #include "generated/default/tabletennis_init.h"
 #include "haptics.h"
+#include "frame_pacer.h"
+#include "photo_mode.h"
 #include "intro_skip.h"
 #include "system_link.h"
 
@@ -20,6 +22,7 @@ using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system/gpu_frame_time.h>
 #include <rex/system/ranked.h>
 #include <rex/system/xsocket.h>
 #include <rex/ui/window.h>
@@ -159,9 +162,11 @@ std::vector<Row> MakeRows() {
        {{"auto", "AUTO"}, {"xbox", "XBOX"}, {"playstation", "PLAYSTATION"}},
        0},
       {"render_scale", "RENDER SCALE", "Draws the game at a multiple of its 720p resolution and "
-       "scales the picture to the window: smoother edges and sharper detail (supersampling). AUTO "
-       "is 1X. 2X costs about 3 times the GPU work and 3X about 14 times (the Xbox 360's "
-       "rendering is emulated at that size too), so use them only on a fast graphics card.", Apply::kRestart,
+       "scales the picture to the window: smoother edges and sharper detail (supersampling). 2X "
+       "costs about 3 times the GPU work of 1X and 3X about 14 times (the Xbox 360's rendering is "
+       "emulated at that size too). AUTO starts at 1X and, while matches hold 60 FPS, tries the "
+       "next level at the next start (never above what the window shows); a level that drops "
+       "frames goes back down.", Apply::kRestart,
        {{"auto", "AUTO"}, {"1", "1X"}, {"2", "2X"}, {"3", "3X"}},
        0},
       {"texture_filtering", "TEXTURE FILTERING", "Anisotropic filtering keeps the floor, the "
@@ -576,10 +581,116 @@ std::string SharpeningEffect() {
   if (!WindowSize(g_rows[kResolution].choices[g_rows[kResolution].current].value, width, height)) {
     return "bilinear";
   }
-  const Row& scale_row = g_rows[kRenderScale];
-  const std::string scale_value = scale_row.choices[scale_row.running].value;
-  const int scale = scale_value == "auto" ? 1 : std::max(1, std::atoi(scale_value.c_str()));
+  // The scale this session runs with (AUTO may be above 1X).
+  const int scale = std::max(1, std::atoi(rex::cvar::GetFlagByName("draw_resolution_scale_x").c_str()));
   return height * 10 >= 720 * scale * 14 ? "fsr" : "bilinear";
+}
+
+// --- RENDER SCALE AUTO --------------------------------------------------------------------------
+// With RENDER SCALE on AUTO the game finds the highest level this PC holds at 60 FPS by trying it:
+// after 30 seconds of matches at a level that keeps 60 FPS, the next start tries one level up
+// (never above what the window shows); a level that drops frames goes back down and is not tried
+// again. The ini remembers render_scale_auto= (the level the launcher uses) and
+// render_scale_auto_failed= (the lowest level that could not hold 60 FPS). GPU time per frame is
+// logged alongside, but it does not decide: GPUs lower their clocks under light load, so the
+// time at one level does not predict the next.
+struct AutoScale {
+  bool initialised = false, active = false, decided = false;
+  int level = 1, cap = 1, failed = 0;
+  std::vector<float> fps;
+  std::vector<double> gpu_ms;
+  double next_sample = 0.0;
+  std::string status;
+};
+AutoScale g_auto_scale;
+
+void WriteIniValue(const std::string& key, const std::string& value) {
+  const auto path = IniPath();
+  std::vector<std::string> lines;
+  {
+    std::ifstream file(path);
+    std::string line;
+    while (std::getline(file, line)) {
+      if (!line.empty() && line.back() == '\r') line.pop_back();
+      lines.push_back(line);
+    }
+  }
+  bool found = false;
+  for (auto& line : lines) {
+    const auto eq = line.find('=');
+    if (eq != std::string::npos && Trim(line.substr(0, eq)) == key) {
+      line = key + "=" + value;
+      found = true;
+    }
+  }
+  if (!found) lines.push_back(key + "=" + value);
+  auto temp = path;
+  temp += ".tmp";
+  {
+    std::ofstream out(temp, std::ios::trunc);
+    for (const auto& line : lines) out << line << '\n';
+    if (!out) return;
+  }
+  std::error_code ec;
+  std::filesystem::rename(temp, path, ec);
+}
+
+void UpdateAutoRenderScale() {
+  AutoScale& a = g_auto_scale;
+  if (!a.initialised) {
+    a.initialised = true;
+    const auto ini = ReadIni();
+    const auto scale_it = ini.find("render_scale");
+    a.active = scale_it == ini.end() || scale_it->second == "auto";
+    a.level = std::clamp(std::atoi(rex::cvar::GetFlagByName("draw_resolution_scale_x").c_str()), 1, 3);
+    const auto failed_it = ini.find("render_scale_auto_failed");
+    a.failed = failed_it == ini.end() ? 0 : std::atoi(failed_it->second.c_str());
+    int width = 1280, height = 720;
+    const auto res_it = ini.find("resolution");
+    WindowSize(res_it == ini.end() ? "1080p" : res_it->second, width, height);
+    a.cap = height <= 800 ? 1 : height <= 1440 ? 2 : 3;
+  }
+  if (!a.active || a.decided) return;
+  const double now = ImGui::GetTime();
+  if (now < a.next_sample) return;
+  a.next_sample = now + 1.0;
+  if (!haptics::MatchInPlay() || tabletennis::photo::Active()) return;
+  const float fps = tabletennis::pacing::GetStats().fps;
+  if (fps <= 0.0f) return;
+  a.fps.push_back(fps);
+  a.gpu_ms.push_back(rex::system::gpu_frame_time::LastMs());
+  // A level that clearly fails is given up after 10 seconds instead of 30.
+  bool clearly_failing = false;
+  if (a.level > 1 && a.fps.size() >= 10) {
+    std::vector<float> so_far = a.fps;
+    std::sort(so_far.begin(), so_far.end());
+    clearly_failing = so_far[so_far.size() / 2] < 50.0f;
+  }
+  if (a.fps.size() < 30 && !clearly_failing) return;
+  a.decided = true;
+  std::vector<float> sorted = a.fps;
+  std::sort(sorted.begin(), sorted.end());
+  const float median = sorted[sorted.size() / 2], low = sorted[sorted.size() / 10];
+  std::vector<double> gpu = a.gpu_ms;
+  std::sort(gpu.begin(), gpu.end());
+  const double gpu_median = gpu[gpu.size() / 2];
+  const bool holds = median >= 58.5f && low >= 55.0f;
+  char measured[96];
+  std::snprintf(measured, sizeof(measured), "%.0f FPS, GPU %.1f ms per frame", median, gpu_median);
+  const std::string here = std::to_string(a.level) + "X";
+  if (holds && a.level < a.cap && (a.failed == 0 || a.level + 1 < a.failed)) {
+    WriteIniValue("render_scale_auto", std::to_string(a.level + 1));
+    a.status = "AUTO: " + here + " holds 60 FPS here (" + measured + "); the next start tries " +
+               std::to_string(a.level + 1) + "X.";
+  } else if (!holds && a.level > 1) {
+    WriteIniValue("render_scale_auto", std::to_string(a.level - 1));
+    WriteIniValue("render_scale_auto_failed", std::to_string(a.level));
+    a.status = "AUTO: " + here + " could not hold 60 FPS (" + std::string(measured) +
+               "); back to " + std::to_string(a.level - 1) + "X from the next start.";
+  } else {
+    a.status = "AUTO renders at " + here + " (" + measured + ").";
+  }
+  REXLOG_INFO("Tabletennis: render scale {}", a.status);
 }
 
 // Resizes the game window (its windowed size, kept for when fullscreen is turned off). The page
@@ -1068,6 +1179,7 @@ void SettingsPage::Save() {
 }
 
 void SettingsPage::OnDraw(ImGuiIO& io) {
+  UpdateAutoRenderScale();
   PollUpdate();
   PollUpdateCheck();  // also while the page is closed, so a started check always finishes
   if (!g_open.load()) {
@@ -1427,6 +1539,12 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
         extra = link_message;
       } else if (selected_ == kAccount) {
         extra = account_help;
+      } else if (selected_ == kRenderScale && g_rows[kRenderScale].current == 0) {
+        extra = std::string(row.help) + " " +
+                (g_auto_scale.status.empty()
+                     ? "AUTO renders at " + std::to_string(g_auto_scale.level) +
+                           "X now and measures the GPU during matches to pick the level for the next start."
+                     : g_auto_scale.status);
       } else if (selected_ == kMotionSwing && g_rows[kMotionSwing].current &&
                  !tabletennis::motion::GyroAvailable()) {
         extra = std::string(row.help) + " No controller with a gyro is connected right now.";
