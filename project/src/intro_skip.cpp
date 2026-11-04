@@ -4,6 +4,7 @@
 #include "pc_settings.h"
 #include "haptics.h"
 #include "motion.h"
+#include "photo_mode.h"
 
 #include <SDL3/SDL.h>
 #include <array>
@@ -225,7 +226,8 @@ void FilterInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t state) 
     pad.buttons = swung;
     REX_STORE_U16(state + 4, pad.buttons);
   }
-  if (pc_settings::FilterInput(user, pad) || achievement_ui::FilterInput(user, pad)) {
+  if (photo::FilterInput(user, pad) || pc_settings::FilterInput(user, pad) ||
+      achievement_ui::FilterInput(user, pad)) {
     REX_STORE_U16(state + 4, pad.buttons);
     REX_STORE_U8(state + 6, pad.left_trigger);
     REX_STORE_U8(state + 7, pad.right_trigger);

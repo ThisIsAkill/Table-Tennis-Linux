@@ -19,6 +19,7 @@
 #include "achievement_ui.h"
 #include "frame_pacer.h"
 #include "pc_features.h"
+#include "photo_mode.h"
 #include "pc_settings.h"
 
 #include <rex/system/voice_chat.h>
@@ -442,7 +443,17 @@ class TabletennisApp : public rex::ReXApp {
       drawer->AddDialog(online_prompt_.get());
       connection_indicator_ = std::make_unique<tabletennis::pc_settings::ConnectionIndicator>(drawer);
       drawer->AddDialog(connection_indicator_.get());
+      photo_overlay_ = std::make_unique<tabletennis::photo::Overlay>(drawer);
+      drawer->AddDialog(photo_overlay_.get());
+      tabletennis::photo::Init([this]() -> rex::ui::Presenter* {
+        auto* graphics = runtime() ? runtime()->graphics_system() : nullptr;
+        return graphics ? graphics->presenter() : nullptr;
+      });
     }
+
+    // F9: photo mode (also both sticks clicked on a controller).
+    rex::ui::RegisterBind("bind_photo_mode", "F9", "Photo Mode",
+                          [] { tabletennis::photo::RequestToggle(); });
 
     // Hotkey F10 toggles FPS overlay during gameplay
     rex::ui::RegisterBind("bind_toggle_fps", "F10", "Toggle In-Game FPS Counter", [this] {
@@ -525,5 +536,6 @@ class TabletennisApp : public rex::ReXApp {
   std::unique_ptr<tabletennis::pc_settings::UpdateToast> update_toast_;
   std::unique_ptr<tabletennis::pc_settings::OnlinePrompt> online_prompt_;
   std::unique_ptr<tabletennis::pc_settings::ConnectionIndicator> connection_indicator_;
+  std::unique_ptr<tabletennis::photo::Overlay> photo_overlay_;
   rex::ui::ImGuiDrawer* imgui_drawer_ = nullptr;
 };

@@ -64,8 +64,9 @@ The game looks for a new release in the background when it starts, at most every
 Any controller SDL supports works, including the Steam Deck's own controls. The game's **OPTIONS > CONTROLS** screen shows the layout: the left stick moves, the face buttons (or the right stick) play the four spins, the left trigger plays soft shots, the right trigger focus shots, the bumpers full focus, and Back changes the camera.
 
 - **Motion swing:** with a controller that has a gyro (DualSense, DualShock 4, Switch Pro), turn on **PC SETTINGS > GAME > MOTION SWING** and play shots with a flick of the wrist: tip the top of the controller forward for topspin, back for backspin, turn it left or right for sidespin. STRONG, NORMAL and LIGHT set how firm the flick must be; it only acts during a rally, so waving the controller never clicks through menus. Steam Input hides the gyro from games, so on the Steam Deck (or with a controller through Steam) turn Steam Input off for the game, or map the gyro in Steam instead. `--motion_swing_invert=true` swaps forward and back.
+- **Photo mode:** during a match, click both sticks (or press **F9**) to freeze the action, hide the HUD and fly a free camera: left stick moves, right stick (or a mouse drag) looks, LT/RT go down and up, LB/RB move slower/faster, Y resets the view, A hides the help, and **X saves the picture** to a `photos` folder in the game's folder, as a PNG at the render resolution (RENDER SCALE 2X or 3X gives 2560x1440 or 3840x2160 shots). B or both sticks again goes back to the match. Not available in ONLINE or SYSTEM LINK matches, where the other player's game cannot pause.
 - **QUIT GAME**, the last item in the main menu, closes the game. With a keyboard, Escape pressed twice within two seconds does the same.
-- **F7** opens the achievements list, **F10** toggles the FPS counter.
+- **F7** opens the achievements list, **F9** photo mode, **F10** toggles the FPS counter.
 - **Keyboard controls** for playing without a controller are off by default; set `keyboard=on` in `tt-recomp.ini`:
 
 | Action | Keys |
