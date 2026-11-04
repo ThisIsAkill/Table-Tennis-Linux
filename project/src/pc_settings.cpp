@@ -129,9 +129,10 @@ std::vector<Row> MakeRows() {
       {"aa", "ANTI-ALIASING", "Smooths jagged edges with FXAA after each frame.", Apply::kLive,
        {{"none", "OFF"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
        0},
-      {"post", "SHARPENING", "CAS sharpens the picture (best on the Steam Deck); FSR upscales "
-       "it to large screens and sharpens it.", Apply::kLive,
-       {{"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
+      {"post", "SHARPENING", "The game renders at 720p (times RENDER SCALE). AUTO upscales it "
+       "with FSR to 1080p and larger windows and leaves smaller ones as they are. CAS sharpens "
+       "(good on the Steam Deck); FSR upscales and sharpens.", Apply::kLive,
+       {{"auto", "AUTO"}, {"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
        0},
       {"vsync", "VSYNC", "Waits for the display before showing each frame, so the picture does not "
        "tear. AUTO is on for macOS and off elsewhere (lowest latency).", Apply::kLive,
@@ -565,6 +566,22 @@ bool WindowSize(const std::string& resolution, int& width, int& height) {
   return true;
 }
 
+// The output effect SHARPENING stands for. AUTO, like the launcher: FSR when the window is at
+// least 1.4 times taller than the rendered picture (720p times the running render scale).
+std::string SharpeningEffect() {
+  const Row& row = g_rows[kSharpening];
+  const std::string value = row.choices[row.current].value;
+  if (value != "auto") return value;
+  int width = 0, height = 0;
+  if (!WindowSize(g_rows[kResolution].choices[g_rows[kResolution].current].value, width, height)) {
+    return "bilinear";
+  }
+  const Row& scale_row = g_rows[kRenderScale];
+  const std::string scale_value = scale_row.choices[scale_row.running].value;
+  const int scale = scale_value == "auto" ? 1 : std::max(1, std::atoi(scale_value.c_str()));
+  return height * 10 >= 720 * scale * 14 ? "fsr" : "bilinear";
+}
+
 // Resizes the game window (its windowed size, kept for when fullscreen is turned off). The page
 // draws on the UI thread, where SDL video calls belong.
 void ResizeGameWindow(int width, int height) {
@@ -936,6 +953,8 @@ void SettingsPage::ApplyLive(int row_index) {
           WindowSize(g_rows[kResolution].choices[g_rows[kResolution].current].value, width, height)) {
         ResizeGameWindow(width, height);
       }
+      // AUTO sharpening depends on the window size.
+      if (hooks_.set_sharpening) hooks_.set_sharpening(SharpeningEffect());
       break;
     }
     case kShowFps:
@@ -972,7 +991,7 @@ void SettingsPage::ApplyLive(int row_index) {
       if (hooks_.set_anti_aliasing) hooks_.set_anti_aliasing(g_rows[row_index].choices[g_rows[row_index].current].value);
       break;
     case kSharpening:
-      if (hooks_.set_sharpening) hooks_.set_sharpening(g_rows[row_index].choices[g_rows[row_index].current].value);
+      if (hooks_.set_sharpening) hooks_.set_sharpening(SharpeningEffect());
       break;
     case kVsync: {
       // auto is on for macOS and off elsewhere, as in the launcher.

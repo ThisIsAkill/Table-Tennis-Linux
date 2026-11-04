@@ -8,7 +8,7 @@
 #   ./tt-recomp.sh [--iso=PATH] [--resolution=720p|800p|1080p|1440p|4k]
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
-#                  [--post=fsr|cas|bilinear] [--aspect=auto|letterbox|fill]
+#                  [--post=auto|fsr|cas|bilinear] [--aspect=auto|letterbox|fill]
 #                  [--achievement_sound=true|false] [--haptics=true|false]
 #                  [--button_prompts=auto|xbox|playstation] [--voice_chat=true|false]
 #                  [--render_scale=auto|1|2|3] [--check_updates=true|false]
@@ -58,7 +58,7 @@ framerate="60"
 fullscreen="false"
 show_fps="false"
 aa="none"
-post="bilinear"
+post="auto"
 aspect="auto"
 achievement_sound="true"
 haptics="true"
@@ -162,7 +162,13 @@ case "$framerate" in 0|60|120|144|240) ;; *) die "unknown framerate '$framerate'
 case "$fullscreen" in true|false) ;; *) die "fullscreen must be true or false" ;; esac
 case "$show_fps" in true|false) ;; *) die "show_fps must be true or false" ;; esac
 case "$aa" in none|fxaa|fxaa_extreme) ;; *) die "unknown aa '$aa' (none, fxaa, fxaa_extreme)" ;; esac
-case "$post" in fsr|cas|bilinear) ;; *) die "unknown post '$post' (fsr, cas, bilinear)" ;; esac
+case "$post" in auto|fsr|cas|bilinear) ;; *) die "unknown post '$post' (auto, fsr, cas, bilinear)" ;; esac
+# auto: the game renders at 720p (times the render scale); FSR upscales it to 1080p and larger
+# windows, smaller ones are close enough to native for plain scaling.
+present_effect="$post"
+if [[ "$post" == auto ]]; then
+  if (( height * 10 >= 720 * ${scale:-1} * 14 )); then present_effect=fsr; else present_effect=bilinear; fi
+fi
 case "$aspect" in auto|letterbox|fill) ;; *) die "unknown aspect '$aspect' (auto, letterbox, fill)" ;; esac
 case "$achievement_sound" in true|false) ;; *) die "achievement_sound must be true or false" ;; esac
 case "$haptics" in true|false) ;; *) die "haptics must be true or false" ;; esac
@@ -231,7 +237,7 @@ args=(
   "--game_data_root=$iso_path"
   "--resolution_scale=$scale" "--draw_resolution_scale_x=$scale" "--draw_resolution_scale_y=$scale"
   "--window_width=$width" "--window_height=$height" "--fullscreen=$fullscreen"
-  "--swap_post_effect=$aa" "--present_effect=$post"
+  "--swap_post_effect=$aa" "--present_effect=$present_effect"
   "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound" "--haptics=$haptics" "--button_prompts=$button_prompts"
   "--voice_chat=$voice_chat"
   --protect_zero=false --gpu_allow_invalid_fetch_constants=true

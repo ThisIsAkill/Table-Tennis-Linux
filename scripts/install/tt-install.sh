@@ -745,7 +745,7 @@ in_swap=0
 # Settings: keep every existing choice; set iso_path and add missing keys with defaults.
 ini="$prefix/tt-recomp.ini"
 if ((is_deck)); then res=800p; fs=true; else res=1080p; fs=false; fi
-defaults=("resolution=$res" "framerate=60" "fullscreen=$fs" "show_fps=false" "aa=none" "post=bilinear"
+defaults=("resolution=$res" "framerate=60" "fullscreen=$fs" "show_fps=false" "aa=none" "post=auto"
   "aspect=letterbox" "achievement_sound=true" "haptics=true" "render_scale=auto" "gamemode=auto")
 {
   echo "iso_path=$iso"

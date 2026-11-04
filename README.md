@@ -108,7 +108,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 | Render scale | auto (1x) / 1x / 2x / 3x: draws the game at a multiple of its 720p resolution and scales it to the window (supersampling: smoother edges, sharper textures and shadows). 2x costs about 3 times the GPU work of 1x and 3x about 14 times, because the Xbox 360's way of rendering is emulated at that size too: use them only on a fast graphics card. Applies after a restart |
 | Texture filtering | off / 2x / 4x / 8x / 16x anisotropic filtering (default 16x): the floor, table and walls stay sharp at shallow angles |
 | Anti-aliasing | off / FXAA / FXAA extreme |
-| Sharpening | off / CAS (sharpens; best on the Steam Deck) / FSR (upscales to large screens and sharpens) |
+| Sharpening | auto (FSR on 1080p and larger windows, plain scaling below) / off / CAS (sharpens; good on the Steam Deck) / FSR (upscales and sharpens) |
 
 **GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a light tick in menus), **motion swing** (see Controls) and the achievement unlock sound.
 
