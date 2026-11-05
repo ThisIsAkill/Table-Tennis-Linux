@@ -8,7 +8,7 @@
 #   ./tt-recomp.sh [--iso=PATH] [--resolution=720p|800p|1080p|1440p|4k]
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
-#                  [--post=auto|fsr|cas|bilinear] [--aspect=auto|letterbox|fill]
+#                  [--post=auto|fsr|cas|bilinear|integer] [--aspect=auto|letterbox|fill]
 #                  [--achievement_sound=true|false] [--haptics=true|false]
 #                  [--button_prompts=auto|xbox|playstation] [--voice_chat=true|false]
 #                  [--native_res=auto|720p|900p|1080p] [--render_scale=auto|1|2|3]
@@ -194,7 +194,7 @@ case "$framerate" in 0|60|120|144|240) ;; *) die "unknown framerate '$framerate'
 case "$fullscreen" in true|false) ;; *) die "fullscreen must be true or false" ;; esac
 case "$show_fps" in true|false) ;; *) die "show_fps must be true or false" ;; esac
 case "$aa" in none|fxaa|fxaa_extreme) ;; *) die "unknown aa '$aa' (none, fxaa, fxaa_extreme)" ;; esac
-case "$post" in auto|fsr|cas|bilinear) ;; *) die "unknown post '$post' (auto, fsr, cas, bilinear)" ;; esac
+case "$post" in auto|fsr|cas|bilinear|integer) ;; *) die "unknown post '$post' (auto, fsr, cas, bilinear, integer)" ;; esac
 # auto: FSR upscales the game's picture (native resolution times the render scale) to windows
 # at least 1.4 times as tall; smaller steps are close enough for plain scaling.
 present_effect="$post"

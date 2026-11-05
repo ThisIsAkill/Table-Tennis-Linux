@@ -1,0 +1,282 @@
+diff --git a/include/rex/ui/d3d12/d3d12_presenter.h b/include/rex/ui/d3d12/d3d12_presenter.h
+index 83d09f7..ae69e04 100644
+--- a/include/rex/ui/d3d12/d3d12_presenter.h
++++ b/include/rex/ui/d3d12/d3d12_presenter.h
+@@ -147,6 +147,7 @@ class D3D12Presenter final : public Presenter {
+     switch (effect) {
+       case GuestOutputPaintEffect::kBilinear:
+       case GuestOutputPaintEffect::kBilinearDither:
++      case GuestOutputPaintEffect::kPoint:
+         return kGuestOutputPaintRootSignatureIndexBilinear;
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+       case GuestOutputPaintEffect::kCasSharpen:
+diff --git a/include/rex/ui/presenter.h b/include/rex/ui/presenter.h
+index 042699f..78ef33f 100644
+--- a/include/rex/ui/presenter.h
++++ b/include/rex/ui/presenter.h
+@@ -213,6 +213,9 @@ class Presenter {
+    public:
+     enum class Effect {
+       kBilinear,
++      // Nearest-neighbour when the output is a whole multiple of the guest output (1080p on a
++      // 4K screen: every pixel a clean 2x2 block, text and UI stay crisp), bilinear otherwise.
++      kInteger,
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+       kCas,
+       // AMD FidelityFX Super Resolution upsampling, Contrast Adaptive
+@@ -432,6 +435,8 @@ class Presenter {
+   enum class GuestOutputPaintEffect {
+     kBilinear,
+     kBilinearDither,
++    // Nearest-neighbour stretch by a whole factor (Effect::kInteger).
++    kPoint,
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+     kCasSharpen,
+     kCasSharpenDither,
+@@ -451,6 +456,7 @@ class Presenter {
+       // Dithering is never performed in intermediate passes because it may be
+       // interpreted as features by the subsequent passes.
+       case GuestOutputPaintEffect::kBilinearDither:
++      case GuestOutputPaintEffect::kPoint:
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+       case GuestOutputPaintEffect::kCasSharpenDither:
+       case GuestOutputPaintEffect::kCasResampleDither:
+diff --git a/include/rex/ui/vulkan/presenter.h b/include/rex/ui/vulkan/presenter.h
+index 56ee43b..e15090f 100644
+--- a/include/rex/ui/vulkan/presenter.h
++++ b/include/rex/ui/vulkan/presenter.h
+@@ -245,6 +245,7 @@ class VulkanPresenter final : public Presenter {
+     switch (effect) {
+       case GuestOutputPaintEffect::kBilinear:
+       case GuestOutputPaintEffect::kBilinearDither:
++      case GuestOutputPaintEffect::kPoint:
+         return kGuestOutputPaintPipelineLayoutIndexBilinear;
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+       case GuestOutputPaintEffect::kCasSharpen:
+diff --git a/src/ui/d3d12/d3d12_presenter.cpp b/src/ui/d3d12/d3d12_presenter.cpp
+index 306118e..211b91b 100644
+--- a/src/ui/d3d12/d3d12_presenter.cpp
++++ b/src/ui/d3d12/d3d12_presenter.cpp
+@@ -1353,6 +1353,8 @@ bool D3D12Presenter::InitializeSurfaceIndependent() {
+     GuestOutputPaintEffect guest_output_paint_effect = GuestOutputPaintEffect(i);
+     switch (guest_output_paint_effect) {
+       case GuestOutputPaintEffect::kBilinear:
++      // No D3D12 nearest-neighbour shader yet: integer scaling stays bilinear there.
++      case GuestOutputPaintEffect::kPoint:
+         guest_output_paint_pipeline_desc.PS.pShaderBytecode = shaders::guest_output_bilinear_ps;
+         guest_output_paint_pipeline_desc.PS.BytecodeLength =
+             sizeof(shaders::guest_output_bilinear_ps);
+diff --git a/src/ui/presenter.cpp b/src/ui/presenter.cpp
+index 7641ba5..ee36cb9 100644
+--- a/src/ui/presenter.cpp
++++ b/src/ui/presenter.cpp
+@@ -42,8 +42,8 @@ REXCVAR_DEFINE_INT32(present_safe_area_y, 90, "UI/Presenter",
+ 
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+ REXCVAR_DEFINE_STRING(present_effect, "bilinear", "UI/Presenter",
+-                      "Guest output effect: bilinear, cas, fsr, fsr2, fsr3")
+-    .allowed({"bilinear", "cas", "fsr", "fsr2", "fsr3"})
++                      "Guest output effect: bilinear, integer, cas, fsr, fsr2, fsr3")
++    .allowed({"bilinear", "integer", "cas", "fsr", "fsr2", "fsr3"})
+     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+ 
+ REXCVAR_DEFINE_DOUBLE(present_cas_additional_sharpness,
+@@ -72,8 +72,9 @@ REXCVAR_DEFINE_STRING(
+     .allowed({"auto", "nativeaa", "quality", "balanced", "performance", "ultra_performance"})
+     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+ #else
+-REXCVAR_DEFINE_STRING(present_effect, "bilinear", "UI/Presenter", "Guest output effect: bilinear")
+-    .allowed({"bilinear"})
++REXCVAR_DEFINE_STRING(present_effect, "bilinear", "UI/Presenter",
++                      "Guest output effect: bilinear, integer")
++    .allowed({"bilinear", "integer"})
+     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+ #endif
+ 
+@@ -92,6 +93,9 @@ GuestOutputPaintConfig::Effect ParsePresentEffect(const std::string& effect_name
+   std::string lowered = effect_name;
+   std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                  [](unsigned char c) { return char(std::tolower(c)); });
++  if (lowered == "integer") {
++    return GuestOutputPaintConfig::Effect::kInteger;
++  }
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+   if (lowered == "cas") {
+     return GuestOutputPaintConfig::Effect::kCas;
+@@ -1175,7 +1179,16 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
+     }
+     assert_true(flow.effect_count < flow.effects.size());
+     flow.effect_output_sizes[flow.effect_count] = std::make_pair(output_width, output_height);
+-    flow.effects[flow.effect_count++] = GuestOutputPaintEffect::kBilinear;
++    // Integer scaling: a whole factor, the same both ways, straight from the guest output.
++    const bool whole_factor =
++        config.GetEffect() == GuestOutputPaintConfig::Effect::kInteger && !flow.effect_count &&
++        properties.frontbuffer_width && properties.frontbuffer_height &&
++        output_width % properties.frontbuffer_width == 0 &&
++        output_height % properties.frontbuffer_height == 0 &&
++        output_width / properties.frontbuffer_width ==
++            output_height / properties.frontbuffer_height;
++    flow.effects[flow.effect_count++] =
++        whole_factor ? GuestOutputPaintEffect::kPoint : GuestOutputPaintEffect::kBilinear;
+   }
+ 
+   assert_not_zero(flow.effect_count);
+diff --git a/src/ui/shaders/vulkan_spirv/guest_output_point_ps.h b/src/ui/shaders/vulkan_spirv/guest_output_point_ps.h
+new file mode 100644
+index 0000000..3acbb93
+--- /dev/null
++++ b/src/ui/shaders/vulkan_spirv/guest_output_point_ps.h
+@@ -0,0 +1,130 @@
++// Nearest-neighbour guest output pass: guest_output_bilinear_ps with the lookup snapped to the
++// centre of the source pixel (built from its SPIR-V for TT SDK patch 0026).
++#if 0
++; SPIR-V
++; Version: 1.0
++; Generator: Khronos SPIR-V Tools Assembler; 0
++; Bound: 61
++; Schema: 0
++               OpCapability Shader
++               OpCapability ImageQuery
++          %1 = OpExtInstImport "GLSL.std.450"
++               OpMemoryModel Logical GLSL450
++               OpEntryPoint Fragment %2 "main" %gl_FragCoord %4
++               OpExecutionMode %2 OriginUpperLeft
++               OpDecorate %gl_FragCoord BuiltIn FragCoord
++               OpDecorate %_struct_5 Block
++               OpMemberDecorate %_struct_5 0 Offset 16
++               OpMemberDecorate %_struct_5 1 Offset 24
++               OpDecorate %6 Binding 0
++               OpDecorate %6 DescriptorSet 0
++               OpDecorate %7 Binding 1
++               OpDecorate %7 DescriptorSet 0
++               OpDecorate %4 Location 0
++       %void = OpTypeVoid
++          %9 = OpTypeFunction %void
++       %uint = OpTypeInt 32 0
++     %v2uint = OpTypeVector %uint 2
++      %float = OpTypeFloat 32
++    %v4float = OpTypeVector %float 4
++%_ptr_Input_v4float = OpTypePointer Input %v4float
++%gl_FragCoord = OpVariable %_ptr_Input_v4float Input
++    %v2float = OpTypeVector %float 2
++        %int = OpTypeInt 32 1
++      %v2int = OpTypeVector %int 2
++  %_struct_5 = OpTypeStruct %v2int %v2float
++%_ptr_PushConstant__struct_5 = OpTypePointer PushConstant %_struct_5
++         %19 = OpVariable %_ptr_PushConstant__struct_5 PushConstant
++      %int_0 = OpConstant %int 0
++%_ptr_PushConstant_v2int = OpTypePointer PushConstant %v2int
++         %22 = OpTypeImage %float 2D 0 0 0 1 Unknown
++%_ptr_UniformConstant_22 = OpTypePointer UniformConstant %22
++          %6 = OpVariable %_ptr_UniformConstant_22 UniformConstant
++         %24 = OpTypeSampler
++%_ptr_UniformConstant_24 = OpTypePointer UniformConstant %24
++          %7 = OpVariable %_ptr_UniformConstant_24 UniformConstant
++         %26 = OpTypeSampledImage %22
++  %float_0_5 = OpConstant %float 0.5
++      %int_1 = OpConstant %int 1
++%_ptr_PushConstant_v2float = OpTypePointer PushConstant %v2float
++    %float_0 = OpConstant %float 0
++    %float_1 = OpConstant %float 1
++%_ptr_Output_v4float = OpTypePointer Output %v4float
++          %4 = OpVariable %_ptr_Output_v4float Output
++         %33 = OpConstantComposite %v2float %float_0_5 %float_0_5
++          %2 = OpFunction %void None %9
++         %34 = OpLabel
++         %35 = OpLoad %v4float %gl_FragCoord
++         %36 = OpVectorShuffle %v2float %35 %35 0 1
++         %37 = OpConvertFToS %v2int %36
++         %38 = OpAccessChain %_ptr_PushConstant_v2int %19 %int_0
++         %39 = OpLoad %v2int %38
++         %40 = OpISub %v2int %37 %39
++         %41 = OpBitcast %v2uint %40
++         %42 = OpLoad %22 %6
++         %43 = OpLoad %24 %7
++         %44 = OpSampledImage %26 %42 %43
++         %45 = OpConvertUToF %v2float %41
++         %46 = OpFAdd %v2float %45 %33
++         %47 = OpAccessChain %_ptr_PushConstant_v2float %19 %int_1
++         %48 = OpLoad %v2float %47
++         %49 = OpFMul %v2float %46 %48
++         %50 = OpImageQuerySizeLod %v2int %42 %int_0
++         %51 = OpConvertSToF %v2float %50
++         %52 = OpFMul %v2float %49 %51
++         %53 = OpExtInst %v2float %1 Floor %52
++         %54 = OpFAdd %v2float %53 %33
++         %55 = OpFDiv %v2float %54 %51
++         %56 = OpImageSampleExplicitLod %v4float %44 %55 Lod %float_0
++         %57 = OpCompositeExtract %float %56 0
++         %58 = OpCompositeExtract %float %56 1
++         %59 = OpCompositeExtract %float %56 2
++         %60 = OpCompositeConstruct %v4float %57 %58 %59 %float_1
++               OpStore %4 %60
++               OpReturn
++               OpFunctionEnd
++#endif
++
++const uint32_t guest_output_point_ps[] = {
++    0x07230203, 0x00010000, 0x00070000, 0x0000003D, 0x00000000, 0x00020011, 0x00000001, 0x00020011,
++    0x00000032, 0x0006000B, 0x00000001, 0x4C534C47, 0x6474732E, 0x3035342E, 0x00000000, 0x0003000E,
++    0x00000000, 0x00000001, 0x0007000F, 0x00000004, 0x00000002, 0x6E69616D, 0x00000000, 0x00000003,
++    0x00000004, 0x00030010, 0x00000002, 0x00000007, 0x00040047, 0x00000003, 0x0000000B, 0x0000000F,
++    0x00030047, 0x00000005, 0x00000002, 0x00050048, 0x00000005, 0x00000000, 0x00000023, 0x00000010,
++    0x00050048, 0x00000005, 0x00000001, 0x00000023, 0x00000018, 0x00040047, 0x00000006, 0x00000021,
++    0x00000000, 0x00040047, 0x00000006, 0x00000022, 0x00000000, 0x00040047, 0x00000007, 0x00000021,
++    0x00000001, 0x00040047, 0x00000007, 0x00000022, 0x00000000, 0x00040047, 0x00000004, 0x0000001E,
++    0x00000000, 0x00020013, 0x00000008, 0x00030021, 0x00000009, 0x00000008, 0x00040015, 0x0000000A,
++    0x00000020, 0x00000000, 0x00040017, 0x0000000B, 0x0000000A, 0x00000002, 0x00030016, 0x0000000C,
++    0x00000020, 0x00040017, 0x0000000D, 0x0000000C, 0x00000004, 0x00040020, 0x0000000E, 0x00000001,
++    0x0000000D, 0x0004003B, 0x0000000E, 0x00000003, 0x00000001, 0x00040017, 0x0000000F, 0x0000000C,
++    0x00000002, 0x00040015, 0x00000010, 0x00000020, 0x00000001, 0x00040017, 0x00000011, 0x00000010,
++    0x00000002, 0x0004001E, 0x00000005, 0x00000011, 0x0000000F, 0x00040020, 0x00000012, 0x00000009,
++    0x00000005, 0x0004003B, 0x00000012, 0x00000013, 0x00000009, 0x0004002B, 0x00000010, 0x00000014,
++    0x00000000, 0x00040020, 0x00000015, 0x00000009, 0x00000011, 0x00090019, 0x00000016, 0x0000000C,
++    0x00000001, 0x00000000, 0x00000000, 0x00000000, 0x00000001, 0x00000000, 0x00040020, 0x00000017,
++    0x00000000, 0x00000016, 0x0004003B, 0x00000017, 0x00000006, 0x00000000, 0x0002001A, 0x00000018,
++    0x00040020, 0x00000019, 0x00000000, 0x00000018, 0x0004003B, 0x00000019, 0x00000007, 0x00000000,
++    0x0003001B, 0x0000001A, 0x00000016, 0x0004002B, 0x0000000C, 0x0000001B, 0x3F000000, 0x0004002B,
++    0x00000010, 0x0000001C, 0x00000001, 0x00040020, 0x0000001D, 0x00000009, 0x0000000F, 0x0004002B,
++    0x0000000C, 0x0000001E, 0x00000000, 0x0004002B, 0x0000000C, 0x0000001F, 0x3F800000, 0x00040020,
++    0x00000020, 0x00000003, 0x0000000D, 0x0004003B, 0x00000020, 0x00000004, 0x00000003, 0x0005002C,
++    0x0000000F, 0x00000021, 0x0000001B, 0x0000001B, 0x00050036, 0x00000008, 0x00000002, 0x00000000,
++    0x00000009, 0x000200F8, 0x00000022, 0x0004003D, 0x0000000D, 0x00000023, 0x00000003, 0x0007004F,
++    0x0000000F, 0x00000024, 0x00000023, 0x00000023, 0x00000000, 0x00000001, 0x0004006E, 0x00000011,
++    0x00000025, 0x00000024, 0x00050041, 0x00000015, 0x00000026, 0x00000013, 0x00000014, 0x0004003D,
++    0x00000011, 0x00000027, 0x00000026, 0x00050082, 0x00000011, 0x00000028, 0x00000025, 0x00000027,
++    0x0004007C, 0x0000000B, 0x00000029, 0x00000028, 0x0004003D, 0x00000016, 0x0000002A, 0x00000006,
++    0x0004003D, 0x00000018, 0x0000002B, 0x00000007, 0x00050056, 0x0000001A, 0x0000002C, 0x0000002A,
++    0x0000002B, 0x00040070, 0x0000000F, 0x0000002D, 0x00000029, 0x00050081, 0x0000000F, 0x0000002E,
++    0x0000002D, 0x00000021, 0x00050041, 0x0000001D, 0x0000002F, 0x00000013, 0x0000001C, 0x0004003D,
++    0x0000000F, 0x00000030, 0x0000002F, 0x00050085, 0x0000000F, 0x00000031, 0x0000002E, 0x00000030,
++    0x00050067, 0x00000011, 0x00000032, 0x0000002A, 0x00000014, 0x0004006F, 0x0000000F, 0x00000033,
++    0x00000032, 0x00050085, 0x0000000F, 0x00000034, 0x00000031, 0x00000033, 0x0006000C, 0x0000000F,
++    0x00000035, 0x00000001, 0x00000008, 0x00000034, 0x00050081, 0x0000000F, 0x00000036, 0x00000035,
++    0x00000021, 0x00050088, 0x0000000F, 0x00000037, 0x00000036, 0x00000033, 0x00070058, 0x0000000D,
++    0x00000038, 0x0000002C, 0x00000037, 0x00000002, 0x0000001E, 0x00050051, 0x0000000C, 0x00000039,
++    0x00000038, 0x00000000, 0x00050051, 0x0000000C, 0x0000003A, 0x00000038, 0x00000001, 0x00050051,
++    0x0000000C, 0x0000003B, 0x00000038, 0x00000002, 0x00070050, 0x0000000D, 0x0000003C, 0x00000039,
++    0x0000003A, 0x0000003B, 0x0000001F, 0x0003003E, 0x00000004, 0x0000003C, 0x000100FD, 0x00010038,
++};
+diff --git a/src/ui/vulkan/vulkan_presenter.cpp b/src/ui/vulkan/vulkan_presenter.cpp
+index 23645ef..1cd5ff5 100644
+--- a/src/ui/vulkan/vulkan_presenter.cpp
++++ b/src/ui/vulkan/vulkan_presenter.cpp
+@@ -109,6 +109,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL FfxVkGetDeviceProcAddrCompat(VkDevice d
+ namespace shaders {
+ #include "../shaders/vulkan_spirv/guest_output_bilinear_dither_ps.h"
+ #include "../shaders/vulkan_spirv/guest_output_bilinear_ps.h"
++#include "../shaders/vulkan_spirv/guest_output_point_ps.h"
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+ #include "../shaders/vulkan_spirv/guest_output_ffx_cas_resample_dither_ps.h"
+ #include "../shaders/vulkan_spirv/guest_output_ffx_cas_resample_ps.h"
+@@ -2389,6 +2390,10 @@ bool VulkanPresenter::InitializeSurfaceIndependent() {
+         shader_module_create_info.codeSize = sizeof(shaders::guest_output_bilinear_dither_ps);
+         shader_module_create_info.pCode = shaders::guest_output_bilinear_dither_ps;
+         break;
++      case GuestOutputPaintEffect::kPoint:
++        shader_module_create_info.codeSize = sizeof(shaders::guest_output_point_ps);
++        shader_module_create_info.pCode = shaders::guest_output_point_ps;
++        break;
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+       case GuestOutputPaintEffect::kCasSharpen:
+         shader_module_create_info.codeSize = sizeof(shaders::guest_output_ffx_cas_sharpen_ps);

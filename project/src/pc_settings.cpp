@@ -133,9 +133,11 @@ std::vector<Row> MakeRows() {
        {{"none", "OFF"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
        0},
       {"post", "SHARPENING", "The game renders at GAME RESOLUTION (times RENDER SCALE). AUTO "
-       "upscales it with FSR to windows at least 1.4 times as tall and leaves smaller steps as they "
-       "are. CAS sharpens (good on the Steam Deck); FSR upscales and sharpens.", Apply::kLive,
-       {{"auto", "AUTO"}, {"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}},
+       "upscales it with FSR to windows at least 1.4 times as tall. CAS sharpens (good on the Steam "
+       "Deck); FSR upscales and sharpens. INTEGER keeps menus and text crisp when the window is a "
+       "whole multiple of the picture (1080P on a 4K screen: each pixel a clean 2 X 2 block).",
+       Apply::kLive,
+       {{"auto", "AUTO"}, {"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}, {"integer", "INTEGER"}},
        0},
       {"vsync", "VSYNC", "Waits for the display before showing each frame, so the picture does not "
        "tear. AUTO is on for macOS and off elsewhere (lowest latency).", Apply::kLive,
