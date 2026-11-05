@@ -185,12 +185,17 @@ if want sources && [[ ! -f "$out/$sources_asset" ]]; then
         echo "$src $ver" >> /tmp/wanted
       fi
     done < /tmp/pkgs
-    sort -u /tmp/wanted > /out/INDEX.txt
+    sort -u /tmp/wanted > /tmp/wanted.sorted
+    command cp /tmp/wanted.sorted /out/INDEX.txt
     cd /out/ubuntu
     missing=0
+    : > /tmp/missing
+    # Read the sorted list, never the INDEX.txt being appended to (that loops forever once a
+    # version has left the archive).
     while read -r src ver; do
-      apt-get source -q --download-only "$src=$ver" >/dev/null 2>&1 || { echo "MISSING $src $ver" >> /out/INDEX.txt; missing=1; }
-    done < /out/INDEX.txt
+      apt-get source -q --download-only "$src=$ver" >/dev/null 2>&1 || { echo "MISSING $src $ver" >> /tmp/missing; missing=1; }
+    done < /tmp/wanted.sorted
+    cat /tmp/missing >> /out/INDEX.txt
     [ "$missing" = 0 ] || echo "some source packages were not found (see INDEX.txt)" >&2'
   {
     echo "Sources for $toolchain_asset"
