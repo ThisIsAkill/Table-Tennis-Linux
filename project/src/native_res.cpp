@@ -45,9 +45,15 @@ uint32_t FrameTiles(uint32_t width, uint32_t height) {
   return (width + 79) / 80 * ((height + 15) / 16);
 }
 
-// Parses native_resolution. Sizes the game cannot handle fall back to the original 720p: the
-// game places its full-frame colour surfaces right after the depth surface, and EDRAM bases are
-// 11 bits, so a frame may take at most 2047 tiles (about 2.6 million pixels, e.g. 2048x1152).
+// The largest frame the game's memory holds. The game keeps 12 frame-sized 32-bit buffers (post
+// processing copies, depth copy, crossfade screenshot, frontend target and others) in the Xbox
+// 360's 512 MiB, 48 MiB per million pixels: at 1080p the lowest free memory in a match is 27 MiB,
+// at 1440p allocations fail, and 4K (380 MiB of buffers) cannot fit on any backend. 2.4 million
+// pixels (e.g. 2048x1152) keeps about 10 MiB spare. The EDRAM bases (11 bits: up to 2047 tiles,
+// about 2.6 million pixels) are the second limit.
+constexpr uint32_t kMaxPixels = 2400000;
+
+// Parses native_resolution. Sizes the game cannot handle fall back to the original 720p.
 bool RequestedSize(uint32_t& width, uint32_t& height) {
   const std::string text = REXCVAR_GET(native_resolution);
   const size_t x = text.find('x');
@@ -55,9 +61,9 @@ bool RequestedSize(uint32_t& width, uint32_t& height) {
   width = uint32_t(std::strtoul(text.c_str(), nullptr, 10));
   height = uint32_t(std::strtoul(text.c_str() + x + 1, nullptr, 10));
   if (width < 640 || height < 360 || width > 4096 || height > 4096 ||
-      FrameTiles(width, height) > 2047) {
-    REXLOG_WARN("Tabletennis: native resolution {} not supported (up to about 2.6 million "
-                "pixels, e.g. 1920x1080); using 1280x720",
+      width * height > kMaxPixels || FrameTiles(width, height) > 2047) {
+    REXLOG_WARN("Tabletennis: native resolution {} not supported (up to 2.4 million pixels, "
+                "e.g. 1920x1080 or 2048x1152); using 1280x720",
                 text);
     return false;
   }
