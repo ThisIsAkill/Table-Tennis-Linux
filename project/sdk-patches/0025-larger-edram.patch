@@ -36,6 +36,24 @@ index f7fd14e..b46a31a 100644
  constexpr uint32_t kEdramSizeBytes =
      kEdramTileCount * kEdramTileHeightSamples * kEdramTileWidthSamples * sizeof(uint32_t);
  
+diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
+index d3ff7cf..eb5e86a 100644
+--- a/src/graphics/graphics_system.cpp
++++ b/src/graphics/graphics_system.cpp
+@@ -36,6 +36,13 @@ REXCVAR_DEFINE_STRING(swap_post_effect, "none", "GPU", "Swap post effect: none,
+     .allowed({"none", "fxaa", "fxaa_extreme"})
+     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+ 
++// How much of the EDRAM a title may use, in 80x16-sample tiles. The Xenos has 2048 (10 MiB); a
++// backend whose resolve path handles more raises it when it initialises (Vulkan:
++// xenos::kEdramTileCount). Titles that render above their original resolution read it by name and
++// stay within it; it never needs setting by hand, though it may be lowered for testing.
++REXCVAR_DEFINE_INT32(edram_tile_limit, 2048, "GPU",
++                     "EDRAM tiles a title may use (set by the GPU backend; 2048 = the Xbox 360's 10 MiB)");
++
+ REXCVAR_DEFINE_BOOL(store_shaders, true, "GPU",
+                     "Store shaders persistently and load them when loading games to avoid "
+                     "runtime spikes and freezes when playing the game not for the first time.");
 diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
 index 953c5fd..fe63201 100644
 --- a/src/graphics/pipeline/render_target/cache.cpp
@@ -87,10 +105,19 @@ index 305380e..9e96082 100644
      color_edram_info.format_is_64bpp = is_64bpp;
      color_edram_info.fill_half_pixel_offset = uint32_t(fill_half_pixel_offset);
 diff --git a/src/graphics/vulkan/render_target_cache.cpp b/src/graphics/vulkan/render_target_cache.cpp
-index cca31df..cac73d3 100644
+index cca31df..9fcfd8d 100644
 --- a/src/graphics/vulkan/render_target_cache.cpp
 +++ b/src/graphics/vulkan/render_target_cache.cpp
-@@ -95,6 +95,91 @@ namespace shaders {
+@@ -63,6 +63,8 @@ REXCVAR_DEFINE_STRING(render_target_path_vulkan, "", "GPU/Vulkan",
+ //     "always FB because the FSI path is much slower now).",
+ //     "GPU");
+ 
++REXCVAR_DECLARE(int32_t, edram_tile_limit);
++
+ namespace rex::graphics::vulkan {
+ 
+ // Generated with `xb buildshaders`.
+@@ -95,6 +97,91 @@ namespace shaders {
  #include "../shaders/vulkan_spirv/resolve_full_8bpp_scaled_cs.h"
  }  // namespace shaders
  
@@ -182,7 +209,19 @@ index cca31df..cac73d3 100644
  const VulkanRenderTargetCache::ResolveCopyShaderCode
      VulkanRenderTargetCache::kResolveCopyShaders[size_t(
          draw_util::ResolveCopyShaderIndex::kCount)] = {
-@@ -622,7 +707,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
+@@ -194,6 +281,11 @@ VulkanRenderTargetCache::~VulkanRenderTargetCache() {
+ }
+ 
+ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
++  // The resolve shaders are adapted to the full emulated EDRAM (AdaptEdramShader), so titles may
++  // use all of it; a lower value set by hand is kept.
++  if (REXCVAR_GET(edram_tile_limit) == 2048) {
++    REXCVAR_SET(edram_tile_limit, int32_t(xenos::kEdramTileCount));
++  }
+   const ui::vulkan::VulkanDevice* const vulkan_device = command_processor_.GetVulkanDevice();
+   const ui::vulkan::VulkanInstance::Functions& ifn = vulkan_device->vulkan_instance()->functions();
+   const VkPhysicalDevice physical_device = vulkan_device->physical_device();
+@@ -622,7 +714,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
      // Somewhat verification whether resolve_copy_shaders_ is up to date.
      assert_true(resolve_copy_shader_code.unscaled && resolve_copy_shader_code.unscaled_size_bytes &&
                  resolve_copy_shader_code.scaled && resolve_copy_shader_code.scaled_size_bytes);
@@ -191,7 +230,7 @@ index cca31df..cac73d3 100644
          vulkan_device, resolve_copy_pipeline_layout_,
          draw_resolution_scaled ? resolve_copy_shader_code.scaled
                                 : resolve_copy_shader_code.unscaled,
-@@ -860,7 +945,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
+@@ -860,7 +952,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
        Shutdown();
        return false;
      }
@@ -200,7 +239,7 @@ index cca31df..cac73d3 100644
          vulkan_device, resolve_fsi_clear_pipeline_layout_,
          draw_resolution_scaled ? shaders::resolve_clear_32bpp_scaled_cs
                                 : shaders::resolve_clear_32bpp_cs,
-@@ -873,7 +958,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
+@@ -873,7 +965,7 @@ bool VulkanRenderTargetCache::Initialize(uint32_t shared_memory_binding_count) {
        Shutdown();
        return false;
      }
