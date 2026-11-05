@@ -168,12 +168,10 @@ std::vector<Row> MakeRows() {
        "from the next start. Applies at the next start.", Apply::kRestart,
        {{"auto", "AUTO"}, {"720p", "720P"}, {"900p", "900P"}, {"1080p", "1080P"}},
        0},
-      {"render_scale", "RENDER SCALE", "Draws the game at a multiple of GAME RESOLUTION and "
-       "scales the picture to the window: smoother edges and sharper detail (supersampling). 2X "
-       "costs about 3 times the GPU work of 1X and 3X about 14 times (the Xbox 360's rendering is "
-       "emulated at that size too). AUTO starts at 1X and, while matches hold 60 FPS, tries the "
-       "next level at the next start (never above what the window shows); a level that drops "
-       "frames goes back down.", Apply::kRestart,
+      {"render_scale", "RENDER SCALE", "Multiples of GAME RESOLUTION (supersampling). WARNING: "
+       "very demanding. 2X needs about 3 times the GPU power of 1X (3840 X 2160 at 1080P); 3X about "
+       "14 times, for the fastest GPUs only. AUTO starts at 1X and moves up only after a match "
+       "holds 60 FPS.", Apply::kRestart,
        {{"auto", "AUTO"}, {"1", "1X"}, {"2", "2X"}, {"3", "3X"}},
        0},
       {"texture_filtering", "TEXTURE FILTERING", "Anisotropic filtering keeps the floor, the "
