@@ -216,6 +216,9 @@ fi
 
 if want sdk; then
   say "SDK $patchset"
+  # Always a clean build: a previous build's precompiled headers break when the toolchain was
+  # rebuilt, and a leftover SDK must never be packed under a new patch set if this build fails.
+  rm -rf "${work:?}/sdk-cache/build/sdk-build-ubuntu2404" "${work:?}/sdk-cache/build/sdk-ubuntu2404"
   # The installer's own SDK build (rootless Ubuntu 24.04, clang 20, x86-64-v3), without an ISO.
   "$root/scripts/install/tt-install.sh" --sdk-only --toolchain rootfs --cache "$work/sdk-cache" --jobs "$jobs" \
     | grep -E '^@@(step|error|warn)' || true
