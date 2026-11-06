@@ -24,6 +24,8 @@ enum class Picture { kAuto, kLetterbox, kFill };
 void SetPicture(const std::string& name);
 // The window's drawable size in pixels. Thread-safe; ignores a zero size (minimized).
 void SetSurfaceSize(uint32_t width, uint32_t height);
+// A match is being played (the wider FILL picture is used only then; menus stay 16:9).
+void SetGameplay(bool active);
 
 // Aspect ratio of the picture the game draws into, for overlays laid out inside it: 16:9 unless
 // FILL stretches it to a narrower window.

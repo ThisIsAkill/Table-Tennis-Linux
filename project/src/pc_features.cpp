@@ -22,12 +22,16 @@ namespace {
 
 std::atomic<double> g_window_aspect{layout::kBaseAspect};
 std::atomic<int> g_picture{int(Picture::kAuto)};
+// False in menus, loading and pause; true only while a match is being played (set every match
+// frame by the sub_82160698 native edit, cleared by ObserveFrontend when a menu is input-ready).
+// The wider FILL picture is used only during a match; menus keep their 16:9 proportions.
+std::atomic<bool> g_gameplay{false};
 std::atomic<uint32_t> g_device{0};
 std::mutex g_letterbox_mutex;
 int g_letterbox_applied = -1;  // under g_letterbox_mutex
 
-// Whether the picture fills the window, and the aspect the game then draws for.
-bool Fills() {
+// Whether the PICTURE setting wants to fill this window shape, menus aside.
+bool WantsFill() {
   const double window = g_window_aspect.load();
   switch (Picture(g_picture.load())) {
     case Picture::kLetterbox:
@@ -39,6 +43,10 @@ bool Fills() {
       return window > layout::kBaseAspect + 0.01;
   }
 }
+
+// Whether the picture fills the window right now: only while a match is being played. Menus,
+// loading and pause keep 16:9 (pillarboxed on a wider screen) so their artwork is undistorted.
+bool Fills() { return WantsFill() && g_gameplay.load(); }
 
 double PictureAspect() { return Fills() ? g_window_aspect.load() : layout::kBaseAspect; }
 
@@ -91,6 +99,13 @@ void SetSurfaceSize(uint32_t width, uint32_t height) {
   if (!width || !height) return;  // keep the last valid shape while minimized
   g_window_aspect.store(double(width) / double(height));
   UpdateLetterbox();
+}
+
+void SetGameplay(bool active) {
+  if (g_gameplay.exchange(active) == active) return;
+  UpdateLetterbox();
+  REXLOG_INFO("Tabletennis: picture context {} (aspect {:.4f})", active ? "gameplay" : "menu",
+              PictureAspect());
 }
 
 double OverlayAspect() {

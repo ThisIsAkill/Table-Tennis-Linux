@@ -1,5 +1,6 @@
 #include "generated/default/tabletennis_init.h"
 #include "intro_skip.h"
+#include "pc_features.h"
 #include "achievement_ui.h"
 #include "pc_settings.h"
 #include "haptics.h"
@@ -274,6 +275,8 @@ void FilterIntroInput(PPCContext& ctx, uint8_t* base, uint32_t user, uint32_t st
 void ObserveFrontend(PPCContext& ctx, uint8_t* base) {
   frontend_started.store(true);
   const auto movie = REX_LOAD_U32(ctx.r4.u32 + 92);
+  // A menu that is accepting input means we are not in a match: keep 16:9 menu proportions.
+  if (movie && FrontendReady(ctx, base, movie)) tabletennis::pc::SetGameplay(false);
   if (phase.load() == Phase::Done || phase.load() == Phase::Drain) {
     pc_settings::PollFrontend(ctx, base, movie);
     return;
