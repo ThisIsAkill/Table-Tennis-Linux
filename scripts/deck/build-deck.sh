@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Portable Linux build for the Steam Deck and other distros older than the build machine.
 #
 #   scripts/deck/build-deck.sh [--jobs N]

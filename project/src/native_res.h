@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 #pragma once
 #include <cstdint>
 

@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 """Leaderboards and TrueSkill for the Table Tennis online server.
 
 Stats arrive per player as (view, property, value) the way the game writes them on Xbox LIVE, and

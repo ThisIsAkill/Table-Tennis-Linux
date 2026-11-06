@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // app.h - the installer's state machine: which screen is shown, what the user chose, and the
 // running install. Drawing lives in screens.cpp; this header is shared by app.cpp, screens.cpp
 // and main.cpp.

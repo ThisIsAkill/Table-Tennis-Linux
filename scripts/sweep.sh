@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # scripts/sweep.sh PREFIX SCENARIO FLAGSFILE
 # One autotest run per line of FLAGSFILE (engine flags, space separated; "-" = none).
 # Writes logs/runs/PREFIX-sweep.done when finished, with one result line per run.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Drives the installer through every screen against fake-backend.sh on a virtual display and
 # captures each one. Needs Xvfb, xdotool and ImageMagick's import. Nothing real is touched:
 # HOME is pointed at a scratch folder, the disc images are sparse files, and the fake backend

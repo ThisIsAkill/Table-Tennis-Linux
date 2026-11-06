@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // pc_settings.cpp - see pc_settings.h.
 
 #include "pc_settings.h"

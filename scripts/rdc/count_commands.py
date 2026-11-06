@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # qrenderdoc --python count_commands.py   (env RDC, OUT): counts Vulkan commands in a captured
 # frame (render passes, dispatches, copies, draws), to compare GPU work between platforms.
 import os, sys, collections

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 """Virtual Xbox 360 gamepad for unattended controller tests.
 
     scripts/vpad.py FIFO

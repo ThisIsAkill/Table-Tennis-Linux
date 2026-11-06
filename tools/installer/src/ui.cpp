@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // ui.cpp - see ui.h.
 
 #include "ui.h"

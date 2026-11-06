@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // app.cpp - installer flow: screen changes, the chosen disc, the install options, and driving
 // the backend process. See app.h.
 

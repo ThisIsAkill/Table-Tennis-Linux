@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // screens.cpp - the six screens of the installer, drawn with the widgets from ui.h.
 
 #include "app.h"

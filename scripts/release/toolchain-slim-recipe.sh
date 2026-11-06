@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Installs the slim build toolchain for the installer's fast path into a fresh Ubuntu 24.04
 # base system (run as root inside it): just enough to generate and compile the game against
 # the prebuilt ReXGlue SDK.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Updates an installed copy of the game to the latest release, or checks for one.
 #
 #   tt-update.sh INSTALL_DIR [--check-only] [--release-url URL]

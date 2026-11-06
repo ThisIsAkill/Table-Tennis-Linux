@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 // pc_features.cpp - see pc_features.h.
 //
 // The camera, video and UI clipping hooks are David Petersson's (Table-Tennis-Rockstar-PC, MIT,

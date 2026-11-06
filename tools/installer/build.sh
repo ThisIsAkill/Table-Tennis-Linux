@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Builds the graphical installer as one portable binary for release.
 #
 #   tools/installer/build.sh            build in the Ubuntu 24.04 container (glibc 2.39, runs on SteamOS)

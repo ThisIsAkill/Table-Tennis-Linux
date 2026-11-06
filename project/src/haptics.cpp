@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 #include "generated/default/tabletennis_init.h"
 #include "time_now.h"
 using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file

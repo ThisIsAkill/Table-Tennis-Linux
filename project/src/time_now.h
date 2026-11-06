@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // time_now.h - a monotonic timestamp in nanoseconds, shared by the game-side modules that pace or
 // time-stamp their own work (frame pacing, haptics, the settings-page input).
 

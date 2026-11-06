@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Unattended test run of the Linux build in a virtual display.
 #
 #   scripts/autotest.sh NAME SCENARIO [extra engine flags...]

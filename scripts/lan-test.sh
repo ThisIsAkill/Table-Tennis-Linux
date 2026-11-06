@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # System link test on one machine: two game instances that see each other as separate hosts.
 #
 #   scripts/lan-test.sh NAME HOST_SCENARIO JOIN_SCENARIO [extra engine flags...]

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 // frame_pacer.cpp - see frame_pacer.h.
 
 #include "frame_pacer.h"

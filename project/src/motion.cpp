@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 #include "motion.h"
 #include "haptics.h"
 #include "time_now.h"

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // main.cpp - window, renderer, input and the frame loop of the Table Tennis installer.
 //
 //   install-table-tennis [--iso PATH] [--backend SCRIPT] [--scan-dir DIR]... [--size WxH]

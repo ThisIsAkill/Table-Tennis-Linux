@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Stand-in for scripts/install/tt-install.sh while developing the installer UI. It speaks the
 # backend's stdout protocol (@@step / @@progress / @@log / @@warn / @@error / @@done) with short
 # sleeps and touches nothing but the --prefix directory.

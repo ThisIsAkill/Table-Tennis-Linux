@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 """Accounts, device linking, stat writes and leaderboard reads for ranked play (HTTP JSON API).
 
 Identity: an account is a player name. Every device holds its own random secret, registered

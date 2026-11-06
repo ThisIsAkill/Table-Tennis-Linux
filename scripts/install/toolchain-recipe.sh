@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Installs the build toolchain into a fresh Ubuntu 24.04 system (run as root inside it):
 # clang 20, libstdc++ 14, CMake 3.31, Ninja, Python, Git and the headers SDL needs for audio,
 # gamepads and windowing. Used for the podman/docker image (scripts/deck/make-image.sh,

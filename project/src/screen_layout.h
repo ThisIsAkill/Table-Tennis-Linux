@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 // screen_layout.h - picture geometry for screens that are not 16:9.
 //
 // Adapted from David Petersson's Table-Tennis-Rockstar-PC (MIT), v1.1.0, where the 3D camera

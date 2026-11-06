@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // system.h - small operating-system helpers for the installer: home and mount discovery, free
 // space, the ISO scan, and launching things detached from the installer.
 #pragma once

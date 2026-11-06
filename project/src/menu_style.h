@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // menu_style.h - small drawing helpers shared by the game-styled overlays (the PC settings page
 // in pc_settings.cpp and the achievements popup and list in achievement_ui.cpp): the menu colour
 // palette and text drawn in the game's own style. Header-only; everything is inline.

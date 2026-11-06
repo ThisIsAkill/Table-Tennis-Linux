@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 // button_prompts.cpp - see button_prompts.h.
 
 #include "button_prompts.h"

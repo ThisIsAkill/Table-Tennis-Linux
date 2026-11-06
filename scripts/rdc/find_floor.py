@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # qrenderdoc --python find_floor.py   (env RDC=capture path, OUT=result file)
 # Lists draws whose fragment shader matches the floor shader's interface.
 import os, sys

@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # qrenderdoc --python debugpixel.py (env RDC, OUT, EVENT, X, Y): pixel shader inputs/outputs at a pixel.
 import os, sys
 import renderdoc as rd

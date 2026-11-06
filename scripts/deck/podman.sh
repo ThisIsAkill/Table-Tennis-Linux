@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # podman with storage kept inside the project (.tools/podman, gitignored) on the btrfs
 # driver, since the default overlay driver does not work on a btrfs home.
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

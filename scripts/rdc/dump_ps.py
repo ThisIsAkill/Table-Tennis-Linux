@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # qrenderdoc --python dump_ps.py (env RDC, OUT, EVENT): writes the draw's fragment shader SPIR-V to OUT.
 import os
 import renderdoc as rd

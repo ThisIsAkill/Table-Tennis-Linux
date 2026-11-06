@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // achievement_ui.h - achievement notification and achievement list drawn in the game's own
 // menu style (condensed yellow headlines, dark navy panels, halftone swooshes, button glyphs).
 //

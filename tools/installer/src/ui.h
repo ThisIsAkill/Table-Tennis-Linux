@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // ui.h - the installer's look and its small immediate-mode widget set.
 //
 // Everything is drawn straight into ImGui draw lists in the style of the game's menus (and of

@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # qrenderdoc --python list_actions.py   (env RDC, OUT): summary of actions in a capture.
 import os, sys, collections
 import renderdoc as rd

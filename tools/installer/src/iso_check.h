@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // iso_check.h - verifies that a chosen file is the supported Table Tennis disc image.
 //
 // This is the one place that knows how verification is done. Today it runs the project's own

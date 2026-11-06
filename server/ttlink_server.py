@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 """Table Tennis online server: a virtual LAN for the game's System Link play.
 
 Players who connect to the same room form one network. The game's System Link broadcasts

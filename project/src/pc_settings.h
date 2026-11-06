@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // pc_settings.h - the PC SETTINGS page behind the OPTIONS entry of the game's menus.
 //
 // project/tools/patch_menu.py adds "PC SETTINGS" below AUDIO OPTIONS in the front end's

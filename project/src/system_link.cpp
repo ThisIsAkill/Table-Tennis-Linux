@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 #include "generated/default/tabletennis_init.h"
 #include "system_link.h"
 #include "pc_settings.h"

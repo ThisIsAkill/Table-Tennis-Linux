@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # First-time setup on the Steam Deck (or any Linux PC): extracts and patches the menu archive
 # from your own retail ISO and records the ISO path. The ISO itself is only read.
 #

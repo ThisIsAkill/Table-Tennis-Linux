@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // backend.h - runs scripts/install/tt-install.sh as a child process and parses its progress
 // protocol. One line per message on stdout; anything else is plain log text:
 //

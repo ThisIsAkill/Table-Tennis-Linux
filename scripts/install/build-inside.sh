@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Build stage of scripts/install/tt-install.sh. Runs inside the build environment (container,
 # rootless Ubuntu base system, or the host) and is not meant to be started by hand.
 #

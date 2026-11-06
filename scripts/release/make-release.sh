@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Builds and signs the game-free release files for the Linux installer.
 #
 #   scripts/release/make-release.sh --out DIR --version X.Y.Z [--title TEXT] [--notes-file FILE]

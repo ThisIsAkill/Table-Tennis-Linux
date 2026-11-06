@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Generated from the title's XVC2 stats views (numbers only; the game draws its own labels).
 # view_id -> period ("week"/"year"), sort property, property aggregation, column_id -> property.
 VIEWS = {

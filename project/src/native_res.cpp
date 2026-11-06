@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // NATIVE RESOLUTION: the game sizes its frame from the rage::sysParams "width" (0x825CB6F8) and
 // "height" (0x825CB70C), read at startup by sub_82228F30 with defaults of 1280x720. Setting them
 // makes the game itself render at that size, menus and HUD included, instead of the engine

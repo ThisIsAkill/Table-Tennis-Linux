@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # qrenderdoc --python constants.py (env RDC, OUT, EVENT): fragment shader constant buffers of a draw.
 import os, sys
 import renderdoc as rd

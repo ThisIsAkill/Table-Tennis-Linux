@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 // frame_pacer.h - frame pacing and frame-time statistics.
 //
 // Adapted from David Petersson's Table-Tennis-Rockstar-PC (MIT, PR #6 and v1.1.2): the frame is

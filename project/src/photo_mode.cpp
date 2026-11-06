@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 #include "generated/default/tabletennis_init.h"
 #include "photo_mode.h"
 #include "achievement_ui.h"

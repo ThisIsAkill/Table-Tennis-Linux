@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Creates the localhost/tt-recomp-deck build image: Ubuntu 24.04 (glibc 2.39, older than
 # current SteamOS) with clang 20, libstdc++ 14 and the headers SDL needs for audio,
 # gamepads and windowing (scripts/install/toolchain-recipe.sh, shared with the installer).

@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 """Helpers for scripts/install/tt-install.sh (standard library only, Python 3.8+).
 
     tt_install.py verify ISO TOOLS_DIR

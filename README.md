@@ -262,6 +262,8 @@ Releases contain only open-source, game-free files: the installer and the source
 
 This project is the Linux port of [davidptrssvea/Table-Tennis-Rockstar-PC](https://github.com/davidptrssvea/Table-Tennis-Rockstar-PC), the Windows recompilation it is built on. For Windows, use their installer and instructions. Thanks to davidptrssvea for the recompilation, the local-build installer approach, and the widescreen, frame pacing and quit-to-desktop work adopted here.
 
+The Linux port and everything added in this repository (launcher, installer, online server, achievements UI, button prompts, haptics, motion swing, photo mode, native resolution, voice chat, ranked play and the PC SETTINGS page) are copyright (c) 2026 Akhil Moola (ThisIsAkill) and MIT licensed. If you reuse them, keep the LICENSE notice and credit [ThisIsAkill/Table-Tennis-Linux](https://github.com/ThisIsAkill/Table-Tennis-Linux).
+
 ## License and rights
 
 Desktop icon artwork by **Gary aka POOTERMAN :)** — [visit POOTERMAN on DeviantArt](https://www.deviantart.com/pooterman). The artwork is credited separately and is not covered by this project's MIT license.

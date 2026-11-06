@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // achievement_ui.cpp - see achievement_ui.h.
 
 #include "generated/default/tabletennis_init.h"

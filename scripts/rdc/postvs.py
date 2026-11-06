@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # qrenderdoc --python postvs.py  (env RDC, OUT, EVENT): vertex shader outputs of one draw.
 import os, sys, struct
 import renderdoc as rd

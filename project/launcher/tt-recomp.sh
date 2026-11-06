@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Linux and macOS launcher for the Table Tennis recompilation.
 #
 # Reads tt-recomp.ini next to this script (same keys as the Windows

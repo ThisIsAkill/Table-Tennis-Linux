@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 // iso_check.cpp - see iso_check.h.
 
 #include "iso_check.h"

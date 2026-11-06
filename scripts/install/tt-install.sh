@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE.
 # Table Tennis for Linux / Steam Deck: one-command installer.
 #
 #   scripts/install/tt-install.sh --iso PATH [--prefix DIR] [--cache DIR] [--jobs N]

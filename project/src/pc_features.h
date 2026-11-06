@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 // pc_features.h - the picture on screens that are not 16:9 (PICTURE in PC SETTINGS).
 //
 // Adapted from David Petersson's Table-Tennis-Rockstar-PC (MIT), v1.1.0. The native edits in

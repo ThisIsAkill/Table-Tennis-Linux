@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Akhil Moola (ThisIsAkill). Portions copyright (c) 2026 davidptrssvea.
+// MIT License, see LICENSE.
 // button_prompts.h - Xbox or PlayStation button icons (BUTTON PROMPTS in PC SETTINGS).
 //
 // The game's menus show the Xbox 360 A, B, X, Y, LB and RB icons as textures inside each menu
