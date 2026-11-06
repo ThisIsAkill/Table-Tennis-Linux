@@ -92,6 +92,7 @@ struct Row {
 enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
   kAchievementSound, kButtonPrompts, kNativeRes, kRenderScale, kTextureFiltering, kMotionSwing,
+  kSubtitles,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat, kAccount, kShowLinkCode, kEnterLinkCode,
   // UPDATES section
@@ -106,7 +107,7 @@ const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
       {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kShowFps},
       {kNativeRes, kRenderScale, kTextureFiltering, kAntiAliasing, kSharpening},
-      {kButtonPrompts, kHaptics, kMotionSwing, kAchievementSound},
+      {kButtonPrompts, kHaptics, kMotionSwing, kSubtitles, kAchievementSound},
       {kPlayerName, kAccount, kShowLinkCode, kEnterLinkCode, kOnlineServer, kOnlineStatus, kVoiceChat},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
   return rows[tab];
@@ -189,6 +190,11 @@ std::vector<Row> MakeRows() {
        "Tip the top forward for topspin, back for backspin, turn left or right for sidespin. "
        "STRONG needs a firm flick, LIGHT a gentle one. Only during a rally.", Apply::kLive,
        {{"off", "OFF"}, {"strong", "STRONG"}, {"normal", "NORMAL"}, {"light", "LIGHT"}},
+       0},
+      {"subtitles", "SUBTITLES", "Captions at the bottom of the screen. ANNOUNCER shows what the "
+       "match announcer says (scores, serves, faults, points, players). ALL SOUNDS also tags crowd "
+       "reactions such as cheers, applause and gasps.", Apply::kLive,
+       {{"off", "OFF"}, {"announcer", "ANNOUNCER"}, {"all", "ALL SOUNDS"}},
        0},
       {"player_name", "PLAYER NAME", "The name other players see online and in SYSTEM LINK. Press A "
        "to change it (player_name= in tt-recomp.ini).", Apply::kRestart, {}, 0},
@@ -1012,6 +1018,10 @@ void SettingsPage::Open() {
   g_rows[kAchievementSound].current = REXCVAR_GET(achievement_sound) ? 1 : 0;
   g_rows[kHaptics].current = !REXCVAR_GET(haptics) ? 0 : (REXCVAR_GET(haptic_strength) <= 50 ? 1 : 2);
   {
+    const std::string subtitles = rex::cvar::GetFlagByName("subtitles");
+    g_rows[kSubtitles].current = subtitles == "announcer" ? 1 : subtitles == "all" ? 2 : 0;
+  }
+  {
     const std::string voice = rex::cvar::GetFlagByName("voice_chat");
     g_rows[kVoiceChat].current = (voice == "true" || voice == "1") ? 1 : 0;
   }
@@ -1110,6 +1120,10 @@ void SettingsPage::ApplyLive(int row_index) {
       break;
     case kAchievementSound:
       REXCVAR_SET(achievement_sound, on);
+      break;
+    case kSubtitles:
+      // Game-side cvar (subtitles.cpp); set by name like the SDK ones.
+      rex::cvar::SetFlagByName("subtitles", g_rows[kSubtitles].choices[g_rows[kSubtitles].current].value);
       break;
     case kHaptics: {
       const std::string& v = g_rows[kHaptics].choices[g_rows[kHaptics].current].value;

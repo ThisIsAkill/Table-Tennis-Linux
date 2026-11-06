@@ -19,7 +19,7 @@
 #                  [--online_redundancy=auto|on|off] [--keyboard=on|off]
 #                  [--vsync=auto|on|off] [--brightness=0.8..2.0]
 #                  [--texture_filtering=off|2x|4x|8x|16x]
-#                  [--motion_swing=off|strong|normal|light] [--save]
+#                  [--motion_swing=off|strong|normal|light] [--subtitles=off|announcer|all] [--save]
 #                  [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
@@ -85,6 +85,7 @@ vsync="auto"
 brightness="1.0"
 texture_filtering="16x"
 motion_swing="off"
+subtitles="off"
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -125,6 +126,7 @@ set_option() {
     brightness) brightness="$value" ;;
     texture_filtering) texture_filtering="$value" ;;
     motion_swing) motion_swing="$value" ;;
+    subtitles) subtitles="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -233,6 +235,7 @@ case "$motion_swing" in
   light) motion_args=(--motion_swing=true --motion_swing_sensitivity=4) ;;
   *) die "motion_swing must be off, strong, normal or light" ;;
 esac
+case "$subtitles" in off|announcer|all) ;; *) die "subtitles must be off, announcer or all" ;; esac
 [[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
 [[ "$server" =~ ^[A-Za-z0-9.:_-]*$ ]] || die "server must be a host name or address, optionally with :port"
 [[ "$lan_peers" =~ ^[0-9.,\ ]*$ ]] || die "lan_peers must be IPv4 addresses separated by commas"
@@ -272,6 +275,7 @@ vsync=$vsync
 brightness=$brightness
 texture_filtering=$texture_filtering
 motion_swing=$motion_swing
+subtitles=$subtitles
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -292,6 +296,7 @@ args=(
   "--display_brightness=$brightness"
   "--anisotropic_override=$anisotropic"
   "${motion_args[@]}"
+  "--subtitles=$subtitles"
 )
 # vsync=on presents in step with the display (no tearing; mailbox or FIFO), off presents at once
 # (lowest latency). auto is on for macOS, where MoltenVK's immediate mode tears visibly, and off

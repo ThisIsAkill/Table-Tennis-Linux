@@ -25,6 +25,7 @@ set(TABLETENNIS_SOURCES
     src/frame_pacer.cpp
     src/button_prompts.cpp
     src/chd_disc.cpp
+    src/subtitles.cpp
 )
 
 if(WIN32)

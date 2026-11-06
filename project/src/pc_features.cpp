@@ -103,6 +103,8 @@ void SetSurfaceSize(uint32_t width, uint32_t height) {
   UpdateLetterbox();
 }
 
+bool InGameplay() { return g_gameplay.load(); }
+
 void SetGameplay(bool active) {
   if (g_gameplay.exchange(active) == active) return;
   UpdateLetterbox();

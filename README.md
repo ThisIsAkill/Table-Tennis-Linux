@@ -7,6 +7,7 @@ A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows r
 - **Widescreen and ultrawide** pictures with a wider 3D view and menus kept in proportion
 - **PlayStation button icons** in every menu while a PlayStation controller is in use
 - **Achievements** with an unlock popup and a full list, **controller haptics** on every hit, and **in-game updates**
+- **Subtitles** for the match announcer, and optional captions for crowd reactions
 
 <p align="center">
   <img src="docs/images/linux-main-menu.jpg" width="49%" alt="Main menu running natively on Linux">
@@ -15,7 +16,7 @@ A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows r
 
 ## Install
 
-1. Download **[install-table-tennis-linux-x86_64.tar.gz](https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest/download/install-table-tennis-linux-x86_64.tar.gz)** from the [latest release](https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest) and unpack it (on a Steam Deck, in Desktop Mode).
+1. Download **[install-table-tennis-linux-x86_64.tar.gz](https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest/download/install-table-tennis-linux-x86_64.tar.gz)** from the [latest release](https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest) and unpack it (on a Steam Deck, in Desktop Mode). Or download **[Install-Table-Tennis-x86_64.AppImage](https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest/download/Install-Table-Tennis-x86_64.AppImage)**, make it executable and run it, and skip step 2.
 2. Open the `TableTennis-Installer` folder and double-click **install-table-tennis** (or run `./install-table-tennis` in a terminal).
 3. Drop your Table Tennis ISO on the window, press **BROWSE...**, or pick one of the ISOs it found in your Downloads, Desktop, Games folder or on an SD card. It checks that it is the right disc.
 4. Choose where to install (internal storage is recommended; SD cards and other folders work too), whether to **add the game to Steam** (so it shows up in your library and in Game Mode on a Steam Deck) and whether to add a desktop shortcut, then press **INSTALL**.
@@ -111,7 +112,9 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 | Anti-aliasing | off / FXAA / FXAA extreme |
 | Sharpening | auto (FSR when the window is at least 1.4 times as tall as the rendered picture, e.g. 1080p on a 4K screen; plain scaling otherwise) / off / CAS (sharpens; good on the Steam Deck) / FSR (upscales and sharpens) / integer (each pixel a clean block when the window is a whole multiple of the picture, e.g. 1080p on a 4K screen: menus and text stay crisp, where FSR rounds them off; plain scaling at other sizes) |
 
-**GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a tick in menus; **off / light / normal** — light eases the menu ticks on controllers with two rumble motors), **motion swing** (see Controls) and the achievement unlock sound.
+**GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a tick in menus; **off / light / normal** — light eases the menu ticks on controllers with two rumble motors), **motion swing** (see Controls), **subtitles** and the achievement unlock sound.
+
+**SUBTITLES** puts captions at the bottom of the screen. **ANNOUNCER** shows what the match announcer says: scores, serves, faults, points, games and the player introductions, written out from the game's own line names (for example *Point, Liu Ping.* or *Match point.*), so they give the meaning rather than a word-for-word transcript. **ALL SOUNDS** also tags crowd reactions during a match, such as *[crowd cheers]*, *[applause]*, *[crowd gasps]* and *[heckling]*. Lines the announcer skips get no caption.
 
 **ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), your **ranked account** with **show link code** and **enter link code** (see Ranked matches below), **voice chat** on or off (see below), and the online server and connection status.
 
@@ -238,7 +241,7 @@ Building from a checkout needs `python3`, `git`, `cmake`, `ninja` and `clang` 19
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
 
-`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `voice_chat`, `native_res`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `voice_chat`, `native_res`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `motion_swing`, `subtitles`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
 
 | Path | What it is |
 |---|---|

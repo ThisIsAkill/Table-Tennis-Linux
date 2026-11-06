@@ -14,6 +14,7 @@
 #include <rex/system/xex_module.h>
 #include <cstdio>
 #include "chd_disc.h"
+#include "subtitles.h"
 #include "button_prompts.h"
 #include "offline_menu_device.h"
 #include "intro_skip.h"
@@ -445,6 +446,8 @@ class TabletennisApp : public rex::ReXApp {
       drawer->AddDialog(pc_settings_.get());
       update_toast_ = std::make_unique<tabletennis::pc_settings::UpdateToast>(drawer);
       drawer->AddDialog(update_toast_.get());
+      subtitles_ = std::make_unique<tabletennis::subtitles::Overlay>(drawer);
+      drawer->AddDialog(subtitles_.get());
       online_prompt_ = std::make_unique<tabletennis::pc_settings::OnlinePrompt>(drawer);
       drawer->AddDialog(online_prompt_.get());
       connection_indicator_ = std::make_unique<tabletennis::pc_settings::ConnectionIndicator>(drawer);
@@ -540,6 +543,7 @@ class TabletennisApp : public rex::ReXApp {
   std::unique_ptr<FpsOverlayDialog> fps_overlay_;
   std::unique_ptr<tabletennis::pc_settings::SettingsPage> pc_settings_;
   std::unique_ptr<tabletennis::pc_settings::UpdateToast> update_toast_;
+  std::unique_ptr<tabletennis::subtitles::Overlay> subtitles_;
   std::unique_ptr<tabletennis::pc_settings::OnlinePrompt> online_prompt_;
   std::unique_ptr<tabletennis::pc_settings::ConnectionIndicator> connection_indicator_;
   std::unique_ptr<tabletennis::photo::Overlay> photo_overlay_;
