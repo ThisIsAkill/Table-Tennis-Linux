@@ -1,0 +1,89 @@
+diff --git a/src/ui/vulkan/vulkan_provider.cpp b/src/ui/vulkan/vulkan_provider.cpp
+index 9eeb902..3596ba8 100644
+--- a/src/ui/vulkan/vulkan_provider.cpp
++++ b/src/ui/vulkan/vulkan_provider.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <algorithm>
++#include <cstring>
+ #include <vector>
+ 
+ #include <rex/cvar.h>
+@@ -22,6 +23,9 @@ REXCVAR_DEFINE_BOOL(vulkan_validation_enabled, false, "UI/Vulkan",
+                     "Enable Vulkan validation layers")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+ 
++REXCVAR_DEFINE_BOOL(vulkan_software_renderer, false, "GPU/Vulkan",
++                    "Set by the engine when the chosen Vulkan device renders on the CPU (no GPU "
++                    "driver found); the game shows a warning");
+ REXCVAR_DEFINE_INT32(vulkan_device, -1, "UI/Vulkan", "Vulkan device index (-1 for auto selection)")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+ 
+@@ -72,7 +76,10 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
+     VkPhysicalDeviceProperties physical_device_properties;
+     ifn.vkGetPhysicalDeviceProperties(physical_devices[physical_device_index],
+                                       &physical_device_properties);
+-    REXLOG_WARN("* {}: {}", physical_device_index, physical_device_properties.deviceName);
++    REXLOG_WARN("* {}: {}{}", physical_device_index, physical_device_properties.deviceName,
++                physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU
++                    ? " (software, CPU)"
++                    : "");
+   }
+ 
+   if (REXCVAR_GET(vulkan_device) >= 0 &&
+@@ -129,6 +136,29 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
+         }
+       }
+     }
++    // A real GPU always comes before a software renderer (llvmpipe, which supports the same
++    // features and so ties on the score above), and a dedicated GPU before an integrated one.
++    // The Vulkan loader's own order is not guaranteed to do this.
++    auto type_rank = [&ifn](VkPhysicalDevice physical_device) {
++      VkPhysicalDeviceProperties properties;
++      ifn.vkGetPhysicalDeviceProperties(physical_device, &properties);
++      switch (properties.deviceType) {
++        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
++          return 0;
++        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
++          return 1;
++        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
++          return 2;
++        case VK_PHYSICAL_DEVICE_TYPE_CPU:
++          return 4;
++        default:
++          return 3;
++      }
++    };
++    std::stable_sort(physical_devices_ordered.begin(), physical_devices_ordered.end(),
++                     [&type_rank](VkPhysicalDevice a, VkPhysicalDevice b) {
++                       return type_rank(a) < type_rank(b);
++                     });
+ 
+     for (const VkPhysicalDevice physical_device : physical_devices_ordered) {
+       provider->vulkan_device_ = VulkanDevice::CreateIfSupported(
+@@ -146,6 +176,24 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
+     }
+   }
+ 
++  {
++    VkPhysicalDeviceProperties chosen;
++    ifn.vkGetPhysicalDeviceProperties(provider->vulkan_device_->physical_device(), &chosen);
++    const bool software = chosen.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ||
++                          std::strstr(chosen.deviceName, "llvmpipe") ||
++                          std::strstr(chosen.deviceName, "lavapipe") ||
++                          std::strstr(chosen.deviceName, "SwiftShader");
++    if (software) {
++      REXLOG_ERROR(
++          "Vulkan is running on '{}', a software renderer on the CPU: no Vulkan driver for the "
++          "graphics card was found, so the game will run very slowly. Install your distribution's "
++          "Mesa Vulkan driver (mesa-vulkan-drivers on Debian/Ubuntu/Fedora, vulkan-radeon or "
++          "vulkan-intel on Arch) or your GPU vendor's driver.",
++          chosen.deviceName);
++      REXCVAR_SET(vulkan_software_renderer, true);
++    }
++  }
++
+   if (with_presentation) {
+     provider->ui_samplers_ = UISamplers::Create(provider->vulkan_device_.get());
+     if (!provider->ui_samplers_) {

@@ -2006,18 +2006,35 @@ UpdateToast::UpdateToast(rex::ui::ImGuiDrawer* drawer) : rex::ui::ImGuiDialog(dr
 
 UpdateToast::~UpdateToast() = default;
 
+// True when the engine found no GPU driver and Vulkan draws on the CPU (set by the SDK's
+// device selection, which also logs what to install).
+static bool SoftwareRenderer() {
+  static const bool software = rex::cvar::GetFlagByName("vulkan_software_renderer") == "true";
+  return software;
+}
+
 void UpdateToast::OnDraw(ImGuiIO& io) {
   PollUpdate();
-  constexpr double kEnter = 0.55, kHold = 8.0, kExit = 0.45;
+  constexpr double kEnter = 0.55, kExit = 0.45;
   const double now = ImGui::GetTime();
   const bool blocked = !InFrontEnd() || IsOpen() || achievement_ui::IsPanelOpen();
   if (started_ < 0.0) {
-    // Once per new version per session, only on the front end with no page open.
-    if (!g_update || g_update->version == shown_version_ || blocked) return;
-    shown_version_ = g_update->version;
+    // Only on the front end with no page open: the GPU warning once per session, then each new
+    // version once per session.
+    if (blocked) return;
+    if (SoftwareRenderer() && !gpu_warning_done_) {
+      gpu_warning_done_ = true;
+      showing_gpu_warning_ = true;
+      REXLOG_WARN("Tabletennis: software rendering popup");
+    } else {
+      if (!g_update || g_update->version == shown_version_) return;
+      showing_gpu_warning_ = false;
+      shown_version_ = g_update->version;
+      REXLOG_INFO("Tabletennis: update popup for {}", shown_version_);
+    }
     started_ = now;
-    REXLOG_INFO("Tabletennis: update popup for {}", shown_version_);
   }
+  const double kHold = showing_gpu_warning_ ? 14.0 : 8.0;
   const double t = now - started_;
   if (blocked || t > kEnter + kHold + kExit) {
     started_ = -1.0;
@@ -2050,10 +2067,31 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
                     Col(12, 28, 52, alpha), r - 4.0f * s);
   dl->AddRectFilled(ImVec2(x0 + 4.0f * s, y0 + 4.0f * s), ImVec2(x1 - 4.0f * s, (y0 + y1) * 0.5f),
                     Col(40, 74, 118, 0.35f * alpha), r - 4.0f * s, ImDrawFlags_RoundCornersTop);
-  // Badge: yellow disc with a downward arrow.
   const ImVec2 badge(x0 + r, (y0 + y1) * 0.5f);
   const float br = r - 14.0f * s;
   dl->AddCircleFilled(badge, br, Col(16, 18, 28, alpha), 32);
+  const float tx = badge.x + br + 18.0f * s;
+  const float cap_px = 18.0f * s, head_px = 34.0f * s, title_px = 19.0f * s, hint_px = 17.0f * s;
+  ImFont* heavy_small = achievement_ui::HeadlineFont(cap_px);
+  if (showing_gpu_warning_) {
+    // Badge: red disc with an exclamation mark.
+    dl->AddCircleFilled(badge, br * 0.88f, Col(220, 52, 44, alpha), 32);
+    const ImU32 mark = Col(255, 255, 255, alpha);
+    dl->AddRectFilled(ImVec2(badge.x - br * 0.11f, badge.y - br * 0.5f),
+                      ImVec2(badge.x + br * 0.11f, badge.y + br * 0.18f), mark, br * 0.08f);
+    dl->AddCircleFilled(ImVec2(badge.x, badge.y + br * 0.42f), br * 0.12f, mark, 16);
+    AddText(dl, heavy_small, cap_px, ImVec2(tx, y0 + 12.0f * s), Col(240, 128, 118, alpha),
+            "NO GPU DRIVER FOUND", kCondensed);
+    AddOutlinedText(dl, achievement_ui::HeadlineFont(head_px), head_px, ImVec2(tx, y0 + 28.0f * s),
+                    Col(255, 204, 0, alpha), Col(16, 18, 28, alpha), 2.0f * s, "SOFTWARE RENDERING",
+                    kCondensed);
+    AddText(dl, heavy_small, title_px, ImVec2(tx, y0 + 66.0f * s), Col(235, 237, 240, alpha),
+            "THE GAME WILL RUN VERY SLOWLY", kCondensed);
+    AddText(dl, heavy_small, hint_px, ImVec2(tx, y0 + 89.0f * s), Col(158, 164, 174, alpha),
+            "INSTALL YOUR MESA VULKAN DRIVER", kCondensed);
+    return;
+  }
+  // Badge: yellow disc with a downward arrow.
   dl->AddCircleFilled(badge, br * 0.88f, Col(255, 204, 0, alpha), 32);
   const ImU32 ink = Col(16, 18, 28, alpha);
   dl->AddRectFilled(ImVec2(badge.x - br * 0.14f, badge.y - br * 0.5f), ImVec2(badge.x + br * 0.14f, badge.y + br * 0.05f),
@@ -2063,10 +2101,7 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
   dl->AddRectFilled(ImVec2(badge.x - br * 0.45f, badge.y + br * 0.55f), ImVec2(badge.x + br * 0.45f, badge.y + br * 0.66f),
                     ink);
   // Text block.
-  const float tx = badge.x + br + 18.0f * s;
   const float text_w = x1 - 24.0f * s - tx;
-  const float cap_px = 18.0f * s, head_px = 34.0f * s, title_px = 19.0f * s, hint_px = 17.0f * s;
-  ImFont* heavy_small = achievement_ui::HeadlineFont(cap_px);
   AddText(dl, heavy_small, cap_px, ImVec2(tx, y0 + 12.0f * s), Col(128, 194, 238, alpha), "UPDATE AVAILABLE",
           kCondensed);
   AddOutlinedText(dl, achievement_ui::HeadlineFont(head_px), head_px, ImVec2(tx, y0 + 28.0f * s),

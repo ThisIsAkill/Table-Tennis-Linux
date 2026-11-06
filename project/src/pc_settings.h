@@ -151,6 +151,8 @@ class OnlinePrompt : public rex::ui::ImGuiDialog {
 
 // Front-end popup when the launcher reports a newer release (see the update notes in
 // pc_settings.cpp). Shown once per new version per session, never in a match or over a page.
+// It also warns once per session, before any update notice, when the engine reports that
+// Vulkan runs on a software renderer (no GPU driver), which makes the game very slow.
 class UpdateToast : public rex::ui::ImGuiDialog {
  public:
   explicit UpdateToast(rex::ui::ImGuiDrawer* drawer);
@@ -162,6 +164,8 @@ class UpdateToast : public rex::ui::ImGuiDialog {
  private:
   std::string shown_version_;
   double started_ = -1.0;
+  bool gpu_warning_done_ = false;
+  bool showing_gpu_warning_ = false;
 };
 
 }  // namespace tabletennis::pc_settings
