@@ -16,6 +16,8 @@
 #   tt-sdk-<patchset>-x86-64-v3.tar.zst      ReXGlue SDK v0.10.0 with project/sdk-patches
 #   install-table-tennis-linux-x86_64.tar.gz what players download: source snapshot with a VERSION
 #                                            file, the graphical installer and README.txt
+#   Install-Table-Tennis-x86_64.AppImage      the same package as one runnable file
+#                                            (scripts/release/make-appimage.sh)
 #   manifest.json, manifest.json.sig         file list with sizes and SHA256s, version, title and
 #                                            notes; detached Ed25519 signature
 #
@@ -88,6 +90,7 @@ toolchain_asset="tt-toolchain-$toolchain_id.tar.zst"
 sources_asset="tt-toolchain-sources-$toolchain_id.tar"
 sdk_asset="tt-sdk-$patchset-x86-64-v3.tar.zst"
 package_asset="install-table-tennis-linux-x86_64.tar.gz"
+appimage_asset="Install-Table-Tennis-x86_64.AppImage"
 tc="$work/toolchain-$toolchain_id"
 llvm_src_url="https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/llvm-project-20.1.8.src.tar.xz"
 llvm_src_sha256="6898f963c8e938981e6c4a302e83ec5beb4630147c7311183cf61069af16333d"
@@ -279,11 +282,14 @@ EOF
   tar -C "$pkgdir" --numeric-owner --owner=0 --group=0 --sort=name -czf "$out/$package_asset.part" TableTennis-Installer
   mv -f "$out/$package_asset.part" "$out/$package_asset"
   rm -rf "${work:?}/package"
+  say "AppImage $version"
+  "$here/make-appimage.sh" "$out/$package_asset" "$out/$appimage_asset"
 fi
 
 say "Manifest $version"
 python3 -I - "$out" "$version" "$patchset" "$toolchain_id" "$title" "$notes_file" \
-  "toolchain=$toolchain_asset" "sources=$sources_asset" "sdk=$sdk_asset" "package=$package_asset" <<'PY'
+  "toolchain=$toolchain_asset" "sources=$sources_asset" "sdk=$sdk_asset" "package=$package_asset" \
+  "appimage=$appimage_asset" <<'PY'
 import hashlib, json, os, sys, time
 out, version, patchset, toolchain_id, title, notes_file, *assets = sys.argv[1:]
 files = []
