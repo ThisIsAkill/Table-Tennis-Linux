@@ -111,7 +111,7 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 | Anti-aliasing | off / FXAA / FXAA extreme |
 | Sharpening | auto (FSR when the window is at least 1.4 times as tall as the rendered picture, e.g. 1080p on a 4K screen; plain scaling otherwise) / off / CAS (sharpens; good on the Steam Deck) / FSR (upscales and sharpens) / integer (each pixel a clean block when the window is a whole multiple of the picture, e.g. 1080p on a 4K screen: menus and text stay crisp, where FSR rounds them off; plain scaling at other sizes) |
 
-**GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a light tick in menus), **motion swing** (see Controls) and the achievement unlock sound.
+**GAME**: **button prompts** (see below), haptics (a pulse on every ball hit and a tick in menus; **off / light / normal** — light eases the menu ticks on controllers with two rumble motors), **motion swing** (see Controls) and the achievement unlock sound.
 
 **ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), your **ranked account** with **show link code** and **enter link code** (see Ranked matches below), **voice chat** on or off (see below), and the online server and connection status.
 

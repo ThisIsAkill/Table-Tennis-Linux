@@ -17,6 +17,9 @@ using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 
 REXCVAR_DEFINE_BOOL(haptics, true, "Input",
                     "Controller pulse on every ball hit and a light tick when navigating menus");
+REXCVAR_DEFINE_INT32(haptic_strength, 100, "Input",
+                     "Haptic strength percent (100 normal, 50 light); scales every pulse")
+    .range(0, 100);
 
 extern "C" void __imp__sub_823F9318(PPCContext& ctx, uint8_t* base);
 extern "C" void __imp__sub_82567090(PPCContext& ctx, uint8_t* base);
@@ -31,10 +34,13 @@ struct Pulse {
   uint32_t ms;
 };
 // Tunables. The Steam Deck renders mostly the low-frequency motor (the game's own rumble uses
-// only that one), so every pulse drives it. Hit: strong and short; menu: a light tick.
+// only that one), so every pulse drives it at full strength; a controller with both motors (the
+// Steam Controller, DualSense) also feels the high-frequency one, which is what makes a tick feel
+// sharp. The menu tick keeps the low-frequency motor but eases off the high-frequency one so it is
+// gentle on those controllers while unchanged on the Deck. Hit: strong and short.
 constexpr Pulse kHitPulse{0xFFFF, 0xC000, 80};
-constexpr Pulse kMenuPulse{0xFFFF, 0xFFFF, 55};
-constexpr Pulse kSelectPulse{0xFFFF, 0xFFFF, 80};
+constexpr Pulse kMenuPulse{0xFFFF, 0x3000, 55};
+constexpr Pulse kSelectPulse{0xFFFF, 0x7000, 80};
 
 std::mutex g_mutex;
 Clock::time_point g_pulse_until{};
@@ -63,10 +69,12 @@ void Play(const Pulse& pulse, const char* what) {
     REXLOG_INFO("Tabletennis: haptics {} on \"{}\"", what, pad ? SDL_GetGamepadName(pad) : "no pad");
   }
   if (!pad) return;
+  const int strength = std::clamp(REXCVAR_GET(haptic_strength), 0, 100);
+  if (strength == 0) return;
   std::lock_guard lock(g_mutex);
-  // Never weaken a stronger rumble the game is playing right now.
-  const uint16_t low = std::max(pulse.low, g_game_low);
-  const uint16_t high = std::max(pulse.high, g_game_high);
+  // Scale by the strength setting, then never weaken a stronger rumble the game is playing now.
+  const uint16_t low = std::max<uint16_t>(uint16_t(pulse.low * strength / 100), g_game_low);
+  const uint16_t high = std::max<uint16_t>(uint16_t(pulse.high * strength / 100), g_game_high);
   SDL_RumbleGamepad(pad, low, high, pulse.ms);
   g_pulse_until = Clock::now() + std::chrono::milliseconds(pulse.ms);
 }

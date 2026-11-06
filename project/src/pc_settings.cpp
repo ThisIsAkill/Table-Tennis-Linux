@@ -59,6 +59,7 @@ extern char** environ;
 
 REXCVAR_DECLARE(bool, achievement_sound);
 REXCVAR_DECLARE(bool, haptics);
+REXCVAR_DECLARE(int32_t, haptic_strength);
 REXCVAR_DECLARE(bool, show_fps);
 
 using namespace tabletennis::menu_style;
@@ -151,10 +152,11 @@ std::vector<Row> MakeRows() {
       {"show_fps", "SHOW FPS", "Frame rate counter in the top left corner (F10).", Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
        0},
-      {"haptics", "HAPTICS", "Controller pulse on every ball hit and a light tick in menus.",
-       Apply::kLive,
-       {{"false", "OFF"}, {"true", "ON"}},
-       1},
+      {"haptics", "HAPTICS", "Controller pulse on every ball hit and a tick in menus. LIGHT eases "
+       "them off (gentler menu ticks on a controller with two rumble motors, such as the Steam "
+       "Controller or a DualSense; the Steam Deck is the same either way).", Apply::kLive,
+       {{"off", "OFF"}, {"light", "LIGHT"}, {"normal", "NORMAL"}},
+       2},
       {"achievement_sound", "ACHIEVEMENT SOUND", "Play a chime when an achievement unlocks.",
        Apply::kLive,
        {{"false", "OFF"}, {"true", "ON"}},
@@ -1007,7 +1009,7 @@ void SettingsPage::Open() {
   // Live rows show the state in effect now (F10 and other paths can change it).
   g_rows[kShowFps].current = hooks_.get_show_fps && hooks_.get_show_fps() ? 1 : 0;
   g_rows[kAchievementSound].current = REXCVAR_GET(achievement_sound) ? 1 : 0;
-  g_rows[kHaptics].current = REXCVAR_GET(haptics) ? 1 : 0;
+  g_rows[kHaptics].current = !REXCVAR_GET(haptics) ? 0 : (REXCVAR_GET(haptic_strength) <= 50 ? 1 : 2);
   {
     const std::string voice = rex::cvar::GetFlagByName("voice_chat");
     g_rows[kVoiceChat].current = (voice == "true" || voice == "1") ? 1 : 0;
@@ -1108,9 +1110,12 @@ void SettingsPage::ApplyLive(int row_index) {
     case kAchievementSound:
       REXCVAR_SET(achievement_sound, on);
       break;
-    case kHaptics:
-      REXCVAR_SET(haptics, on);
+    case kHaptics: {
+      const std::string& v = g_rows[kHaptics].choices[g_rows[kHaptics].current].value;
+      REXCVAR_SET(haptics, v != "off");
+      REXCVAR_SET(haptic_strength, v == "light" ? 50 : 100);
       break;
+    }
     case kVoiceChat:
       // SDK cvar (see xam_voice / voice_chat), so set it by name like display_brightness.
       rex::cvar::SetFlagByName("voice_chat", on ? "true" : "false");

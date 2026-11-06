@@ -9,7 +9,7 @@
 #                  [--framerate=60|120|144|240|0] [--fullscreen=true|false]
 #                  [--show_fps=true|false] [--aa=none|fxaa|fxaa_extreme]
 #                  [--post=auto|fsr|cas|bilinear|integer] [--aspect=auto|letterbox|fill]
-#                  [--achievement_sound=true|false] [--haptics=true|false]
+#                  [--achievement_sound=true|false] [--haptics=off|light|normal]
 #                  [--button_prompts=auto|xbox|playstation] [--voice_chat=true|false]
 #                  [--native_res=auto|720p|900p|1080p] [--render_scale=auto|1|2|3]
 #                  [--check_updates=true|false]
@@ -62,7 +62,7 @@ aa="none"
 post="auto"
 aspect="auto"
 achievement_sound="true"
-haptics="true"
+haptics="normal"
 button_prompts="auto"
 native_res="auto"
 native_res_auto=""
@@ -203,7 +203,13 @@ if [[ "$post" == auto ]]; then
 fi
 case "$aspect" in auto|letterbox|fill) ;; *) die "unknown aspect '$aspect' (auto, letterbox, fill)" ;; esac
 case "$achievement_sound" in true|false) ;; *) die "achievement_sound must be true or false" ;; esac
-case "$haptics" in true|false) ;; *) die "haptics must be true or false" ;; esac
+case "$haptics" in true) haptics=normal ;; false) haptics=off ;; esac  # legacy on/off
+case "$haptics" in off|light|normal) ;; *) die "haptics must be off, light or normal" ;; esac
+case "$haptics" in
+  off) haptics_on=false; haptic_strength=0 ;;
+  light) haptics_on=true; haptic_strength=50 ;;
+  normal) haptics_on=true; haptic_strength=100 ;;
+esac
 case "$voice_chat" in true|false) ;; *) die "voice_chat must be true or false" ;; esac
 case "$button_prompts" in auto|xbox|playstation) ;; *) die "button_prompts must be auto, xbox or playstation" ;; esac
 case "$gamemode" in auto|off) ;; *) die "gamemode must be auto or off" ;; esac
@@ -275,7 +281,7 @@ args=(
   "--native_resolution=${native_width}x${native_height}"
   "--window_width=$width" "--window_height=$height" "--fullscreen=$fullscreen"
   "--swap_post_effect=$aa" "--present_effect=$present_effect"
-  "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound" "--haptics=$haptics" "--button_prompts=$button_prompts"
+  "--show_fps=$show_fps" "--framerate=$framerate" "--achievement_sound=$achievement_sound" "--haptics=$haptics_on" "--haptic_strength=$haptic_strength" "--button_prompts=$button_prompts"
   "--voice_chat=$voice_chat"
   --protect_zero=false --gpu_allow_invalid_fetch_constants=true
   # Letterbox other screen shapes (Steam Deck 16:10) instead of cropping up to 10% of the
