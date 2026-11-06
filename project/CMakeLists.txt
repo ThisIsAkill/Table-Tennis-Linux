@@ -24,6 +24,7 @@ set(TABLETENNIS_SOURCES
     src/pc_features.cpp
     src/frame_pacer.cpp
     src/button_prompts.cpp
+    src/chd_disc.cpp
 )
 
 if(WIN32)
@@ -33,6 +34,18 @@ else()
 endif()
 
 rexglue_setup_target(tabletennis)
+
+# CHD disc images (MAME chdman createdvd) are read through libchdr (BSD 3-Clause, vendored in
+# third_party/libchdr with its bundled LZMA, miniz and zstd), built as a static library.
+enable_language(C)
+set(TT_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+set(CHDR_WANT_TESTS OFF CACHE BOOL "" FORCE)
+set(INSTALL_STATIC_LIBS OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/libchdr EXCLUDE_FROM_ALL)
+set(BUILD_SHARED_LIBS ${TT_SAVED_BUILD_SHARED_LIBS})
+set_target_properties(chdr-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(tabletennis PRIVATE chdr-static)
 # The SDK's texture load hook (SDK patch 0017), which button_prompts.cpp uses for PlayStation icons.
 target_compile_definitions(tabletennis PRIVATE TT_TEXTURE_LOAD_HOOK=1)
 

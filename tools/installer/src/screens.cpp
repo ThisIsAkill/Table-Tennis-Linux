@@ -151,7 +151,7 @@ void App::DrawWelcome() {
     BodyText(f, c.x0 + 2.0f * s, y, left_w, notice.c_str(), Orange(a), 15.0f * s);
   } else {
     BodyText(f, c.x0 + 2.0f * s, y, left_w,
-             "You need the .iso of your own USA / Europe retail disc (Title ID 545407DF). It is only read, never changed, "
+             "You need the .iso (or .chd) of your own USA / Europe retail disc (Title ID 545407DF). It is only read, never changed, "
              "and nothing from it leaves this computer.",
              Grey(), 14.0f * s);
   }
@@ -167,7 +167,7 @@ void App::DrawWelcome() {
     const Rect none{right_x, ry, right_x + right_w, ry + 92.0f * s};
     ui.Panel(none, 0.7f);
     BodyText(f, none.x0 + 18.0f * s, none.y0 + 14.0f * s, none.w() - 36.0f * s,
-             "No disc image larger than 1 GB was found in the usual places. Drop the .iso here, or plug in the SD card or "
+             "No disc image larger than 1 GB was found in the usual places. Drop the .iso or .chd here, or plug in the SD card or "
              "drive that holds it and restart the setup.",
              Grey(), 14.5f * s);
   } else {

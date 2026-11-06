@@ -31,7 +31,7 @@ The mouse, touch screen, keyboard and controller all work in the installer.
 ### What you need
 
 - A 64-bit x86 PC with an AVX2 CPU (most PCs since 2015, and the Steam Deck) and a Vulkan GPU.
-- Your own unmodified **USA/Europe retail Xbox 360 Table Tennis ISO** (Title ID `545407DF`). It is only read, never changed, and nothing from it leaves your computer. Keep it where it is after installing: the game reads it while you play.
+- Your own unmodified **USA/Europe retail Xbox 360 Table Tennis ISO** (Title ID `545407DF`). It is only read, never changed, and nothing from it leaves your computer. Keep it where it is after installing: the game reads it while you play. A CHD made from it with `chdman createdvd` works too, in the installer and in the game, read without unpacking it (this disc only shrinks by about 10% as a CHD).
 - An internet connection for the first install, about 1 GB free in the install folder and about 3 GB of temporary space for build files.
 
 ### What the installer does
@@ -268,6 +268,6 @@ The Linux port and everything added in this repository (launcher, installer, onl
 
 Desktop icon artwork by **Gary aka POOTERMAN :)** — [visit POOTERMAN on DeviantArt](https://www.deviantart.com/pooterman). The artwork is credited separately and is not covered by this project's MIT license.
 
-Project-authored integration, installer and tools use the [MIT license](LICENSE). Adapted ReXGlue SDK headers, the ISO application adapter and SDK-derived CMake integration retain their BSD 3-Clause notices; see [ReXGlue license](licenses/ReXGlue/LICENSE.txt). [SDL's notice](licenses/SDL3/LICENSE.txt) is retained, and the Noto Sans font used by the achievements and settings pages is under the SIL Open Font License (`licenses/NotoSans/`).
+Project-authored integration, installer and tools use the [MIT license](LICENSE). Adapted ReXGlue SDK headers, the ISO application adapter and SDK-derived CMake integration retain their BSD 3-Clause notices; see [ReXGlue license](licenses/ReXGlue/LICENSE.txt). CHD images are read with [libchdr](https://github.com/rtissera/libchdr) (BSD 3-Clause, with its bundled LZMA, miniz and zstd; `licenses/libchdr/`). [SDL's notice](licenses/SDL3/LICENSE.txt) is retained, and the Noto Sans font used by the achievements and settings pages is under the SIL Open Font License (`licenses/NotoSans/`).
 
 Rockstar Games and Take-Two retain rights to their original game and material, including the game imagery in the screenshots, which are included only to document this port. This project is independent and unaffiliated. No project license grants rights to the original game. Local generation reduces what this project distributes; it is **not a guarantee of legal compliance**. You must have the necessary rights to use and process your copy.

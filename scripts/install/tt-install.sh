@@ -10,7 +10,8 @@
 # Builds the game on this machine from your own retail ISO (USA/Europe, Title ID 545407DF) and
 # installs it. Nothing from the disc is downloaded or shipped; the ISO is only read.
 #
-#   --iso PATH        your Xbox 360 Table Tennis ISO (required; kept in place, the game reads it)
+#   --iso PATH        your Xbox 360 Table Tennis disc image, .iso or .chd (chdman createdvd)
+#                     (required; kept in place, the game reads it)
 #   --prefix DIR      install folder (default ~/Games/TableTennis); any writable folder, also on
 #                     an SD card or external drive, as long as it allows running programs
 #   --cache DIR       build tools, SDK and build files, about 6 GB (default ~/.cache/tt-recomp);
@@ -661,15 +662,17 @@ stage="$prefix/.tt-staging"
 case "$iso$prefix$cache$src" in *:*) [[ "$pick" == container ]] && die "With podman/docker, paths must not contain ':'. Rename the folder or ISO and try again." ;; esac
 
 inside_env=(TT_JOBS="$jobs" TT_KIND="$kind" TT_SDK_ONLY="$sdk_only" TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
-iso_bind=(--ro-bind "$iso" /disc/game.iso); iso_ubind=(ro "$iso" /disc/game.iso); iso_vol=(-v "$iso:/disc/game.iso:ro")
+# Inside the build environment the disc keeps its kind (.iso or .chd): disc_image.py goes by it.
+disc_in="/disc/game.iso"; [[ "${iso,,}" == *.chd ]] && disc_in="/disc/game.chd"
+iso_bind=(--ro-bind "$iso" "$disc_in"); iso_ubind=(ro "$iso" "$disc_in"); iso_vol=(-v "$iso:$disc_in:ro")
 ((sdk_only)) && { iso_bind=(); iso_ubind=(); iso_vol=(); }
 case "$pick" in
   fast)
     RF_BINDS=(--ro-bind "$src" /src "${iso_bind[@]}" --bind "$build_cache" /cache --bind "$build_stage" /stage --ro-bind "$sdk_dir" /sdk)
-    RF_ENV=(--setenv TT_SRC /src --setenv TT_ISO /disc/game.iso --setenv TT_CACHE /cache --setenv TT_STAGE /stage
+    RF_ENV=(--setenv TT_SRC /src --setenv TT_ISO "$disc_in" --setenv TT_CACHE /cache --setenv TT_STAGE /stage
       --setenv TT_JOBS "$jobs" --setenv TT_KIND "$kind" --setenv TT_PREBUILT_SDK /sdk --setenv TT_GENERATED_OPT "${TT_GENERATED_OPT:-}")
     RF_UBINDS=(ro "$src" /src "${iso_ubind[@]}" rw "$build_cache" /cache rw "$build_stage" /stage ro "$sdk_dir" /sdk)
-    RF_UENV=(TT_SRC=/src TT_ISO=/disc/game.iso TT_CACHE=/cache TT_STAGE=/stage TT_JOBS="$jobs" TT_KIND="$kind" TT_PREBUILT_SDK=/sdk TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
+    RF_UENV=(TT_SRC=/src TT_ISO="$disc_in" TT_CACHE=/cache TT_STAGE=/stage TT_JOBS="$jobs" TT_KIND="$kind" TT_PREBUILT_SDK=/sdk TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
     run_filtered in_rootfs "$tc_dir" /bin/bash /src/scripts/install/build-inside.sh
     rc=$? ;;
   container)
@@ -678,15 +681,15 @@ case "$pick" in
     [[ "$(basename "${ct[0]}")" == docker ]] && user=(--user "$(id -u):$(id -g)")
     run_filtered "${ct[@]}" run --rm --name "$container_name" "${user[@]}" --security-opt label=disable \
       -v "$src:/src:ro" "${iso_vol[@]}" -v "$build_cache:/cache" -v "$build_stage:/stage" \
-      -e HOME=/tmp -e TT_SRC=/src -e TT_ISO=/disc/game.iso -e TT_CACHE=/cache -e TT_STAGE=/stage \
+      -e HOME=/tmp -e TT_SRC=/src -e TT_ISO="$disc_in" -e TT_CACHE=/cache -e TT_STAGE=/stage \
       -e "TT_JOBS=$jobs" -e "TT_KIND=$kind" -e "TT_SDK_ONLY=$sdk_only" -e "TT_GENERATED_OPT=${TT_GENERATED_OPT:-}" -w /tmp "$image" bash /src/scripts/install/build-inside.sh
     rc=$?; container_name="" ;;
   rootfs)
     RF_BINDS=(--ro-bind "$src" /src "${iso_bind[@]}" --bind "$build_cache" /cache --bind "$build_stage" /stage)
-    RF_ENV=(--setenv TT_SRC /src --setenv TT_ISO /disc/game.iso --setenv TT_CACHE /cache --setenv TT_STAGE /stage
+    RF_ENV=(--setenv TT_SRC /src --setenv TT_ISO "$disc_in" --setenv TT_CACHE /cache --setenv TT_STAGE /stage
       --setenv TT_JOBS "$jobs" --setenv TT_KIND "$kind" --setenv TT_SDK_ONLY "$sdk_only" --setenv TT_GENERATED_OPT "${TT_GENERATED_OPT:-}")
     RF_UBINDS=(ro "$src" /src "${iso_ubind[@]}" rw "$build_cache" /cache rw "$build_stage" /stage)
-    RF_UENV=(TT_SRC=/src TT_ISO=/disc/game.iso TT_CACHE=/cache TT_STAGE=/stage TT_JOBS="$jobs" TT_KIND="$kind" TT_SDK_ONLY="$sdk_only" TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
+    RF_UENV=(TT_SRC=/src TT_ISO="$disc_in" TT_CACHE=/cache TT_STAGE=/stage TT_JOBS="$jobs" TT_KIND="$kind" TT_SDK_ONLY="$sdk_only" TT_GENERATED_OPT="${TT_GENERATED_OPT:-}")
     run_filtered in_rootfs "$rootfs" /bin/bash /src/scripts/install/build-inside.sh
     rc=$? ;;
   host)

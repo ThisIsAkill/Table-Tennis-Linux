@@ -11,6 +11,8 @@
 
 #include <rex/rex_app.h>
 #include <rex/filesystem/devices/disc_image_device.h>
+
+#include "../src/chd_disc.h"
 #include <rex/filesystem/devices/null_device.h>
 #include <rex/filesystem/vfs.h>
 
@@ -288,9 +290,18 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     // Unregister NullDevice first so Partition1 precedes it in VFS resolution order
     vfs->UnregisterDevice("\\Device\\Harddisk0");
     vfs->UnregisterDevice("\\Device\\Harddisk0\\Partition1");
-    auto disc_dev = std::make_unique<rex::filesystem::DiscImageDevice>(
-        "\\Device\\Harddisk0\\Partition1", paths.game_data_root);
-    if (!disc_dev->Initialize()) {
+    // A .chd is the same disc compressed with chdman; it is decompressed on demand.
+    std::unique_ptr<rex::filesystem::Device> disc_dev;
+    bool disc_ok = false;
+    if (tabletennis::chd::IsChdPath(paths.game_data_root)) {
+      disc_dev = tabletennis::chd::CreateDevice("\\Device\\Harddisk0\\Partition1", paths.game_data_root);
+      disc_ok = disc_dev != nullptr;
+    } else {
+      disc_dev = std::make_unique<rex::filesystem::DiscImageDevice>(
+          "\\Device\\Harddisk0\\Partition1", paths.game_data_root);
+      disc_ok = disc_dev->Initialize();
+    }
+    if (!disc_ok) {
       auto msg = fmt::format("Could not read Xbox 360 disc image: {}", paths.game_data_root.string());
       REXLOG_ERROR("{}", msg);
       rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
@@ -306,7 +317,7 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
       vfs->RegisterDevice(std::move(null_device));
       vfs->RegisterSymbolicLink("cache:", "\\Device\\Harddisk0\\Cache0");
     }
-    REXLOG_INFO("Mounted ISO via DiscImageDevice as \\Device\\Harddisk0\\Partition1 (game:, d:) from: {}",
+    REXLOG_INFO("Mounted disc image as \\Device\\Harddisk0\\Partition1 (game:, d:) from: {}",
                 paths.game_data_root.string());
   } else {
     // Host directory fallback

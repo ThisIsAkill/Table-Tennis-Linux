@@ -103,3 +103,8 @@ add_custom_command(TARGET install-table-tennis POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${TT_INSTALLER_OUTPUT_DIR}"
   COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:install-table-tennis>" "${TT_INSTALLER_OUTPUT_DIR}/"
   COMMENT "Copying install-table-tennis to ${TT_INSTALLER_OUTPUT_DIR}")
+
+# --- tt-chd-read, which disc_image.py runs to read .chd disc images (shipped next to the
+# installer). libchdr is BSD 3-Clause (licenses/libchdr).
+add_subdirectory("${TT_REPO_ROOT}/tools/chd-read" "${CMAKE_BINARY_DIR}/chd-read")
+set_target_properties(tt-chd-read PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${TT_INSTALLER_OUTPUT_DIR}")

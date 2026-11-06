@@ -72,7 +72,7 @@ Result Classify(const std::string& message) {
   if (Contains(message, "No supported XGD2 filesystem")) {
     r.verdict = Verdict::NotADiscImage;
     r.headline = "This is not an Xbox 360 disc image";
-    r.detail = "The file has no Xbox 360 disc filesystem. Choose the .iso of your retail Table Tennis disc.";
+    r.detail = "The file has no Xbox 360 disc filesystem. Choose the .iso or .chd of your retail Table Tennis disc.";
   } else if (Contains(message, "is missing from the ISO")) {
     r.verdict = Verdict::WrongGame;
     r.headline = "This disc is not Table Tennis";

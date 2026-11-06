@@ -44,7 +44,7 @@ cmake -S /work/tools/installer -B /work/tools/installer/build/deck -G Ninja -DCM
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
   -DCMAKE_C_FLAGS="-march=x86-64-v3" -DCMAKE_CXX_FLAGS="-march=x86-64-v3"
 cmake --build /work/tools/installer/build/deck --parallel '"$jobs"'
-strip --strip-unneeded /work/tools/installer/bin/install-table-tennis
+strip --strip-unneeded /work/tools/installer/bin/install-table-tennis /work/tools/installer/bin/tt-chd-read
 '
 fi
 

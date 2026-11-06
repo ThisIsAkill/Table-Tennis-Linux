@@ -244,7 +244,8 @@ void IsoScanner::Run(std::vector<fs::path> dirs) {
         continue;
       }
       if (!entry.is_regular_file(ec)) continue;
-      if (Lower(p.extension().string()) != ".iso") continue;
+      const std::string extension = Lower(p.extension().string());
+      if (extension != ".iso" && extension != ".chd") continue;
       const uint64_t bytes = entry.file_size(ec);
       if (ec || bytes < kMinBytes) continue;
       const fs::path canonical = fs::weakly_canonical(p, ec);

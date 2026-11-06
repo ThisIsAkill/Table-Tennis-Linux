@@ -250,11 +250,13 @@ if want package; then
     git -C "$root" archive HEAD | tar -C "$top" -xf -
   fi
   # Nothing from the game may ship: no disc images, executables, archives or generated code.
-  bad="$(cd "$top" && find . \( -iname '*.iso' -o -iname '*.xex' -o -iname '*.rpf' -o -path '*/generated/*' \
+  bad="$(cd "$top" && find . \( -iname '*.iso' -o -iname '*.chd' -o -iname '*.xex' -o -iname '*.rpf' -o -path '*/generated/*' \
     -o -path './private_work*' -o -path './dist*' -o -path './.tools*' -o -path './logs*' \) -print | head -5)"
   [[ -z "$bad" ]] || { echo "refusing to package game-derived files:"; echo "$bad"; exit 1; } >&2
   echo "$version" > "$top/VERSION"
   install -m 755 "$gui" "$top/install-table-tennis"
+  # Reads .chd disc images for project/tools/disc_image.py; built with the installer.
+  install -m 755 "$(dirname "$gui")/tt-chd-read" "$top/tt-chd-read"
   cat > "$top/README.txt" <<EOF
 Rockstar Games presents Table Tennis - Linux and Steam Deck installer, version $version
 
@@ -262,7 +264,8 @@ Double-click install-table-tennis, or run it from a terminal:
 
     ./install-table-tennis
 
-Choose your own Xbox 360 Table Tennis ISO (USA/Europe, Title ID 545407DF) and press Install.
+Choose your own Xbox 360 Table Tennis disc image (USA/Europe, Title ID 545407DF), as an .iso
+or a .chd made with chdman createdvd, and press Install.
 The game is built on your computer from your disc; nothing from the game is downloaded.
 The first install downloads build tools (about $(( ($(stat -c %s "$out/$toolchain_asset" 2>/dev/null || echo 0) + $(stat -c %s "$out/$sdk_asset" 2>/dev/null || echo 0)) / 1048576 )) MB) once.
 Later versions are offered in the game (OPTIONS > PC SETTINGS > UPDATES) and install themselves.

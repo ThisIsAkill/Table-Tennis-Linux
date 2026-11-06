@@ -55,7 +55,18 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 25
 [[ "$jobs" =~ ^[0-9]+$ ]] && ((jobs >= 1 && jobs <= 64)) || die "--jobs must be between 1 and 64"
 [[ -n "$iso" ]] || { usage >&2; die "select your retail ISO with --iso PATH"; }
 iso="$(abspath "$iso")" || die "ISO not found"
-[[ "$(printf '%s' "$iso" | tr '[:upper:]' '[:lower:]')" == *.iso ]] || die "select a retail Xbox 360 ISO file"
+case "$(printf '%s' "$iso" | tr '[:upper:]' '[:lower:]')" in
+  *.iso) ;;
+  *.chd)
+    # disc_image.py reads CHD images through tools/chd-read (built here once, with libchdr).
+    if [[ ! -x "$root/.tools/chd-read/tt-chd-read" ]]; then
+      cmake -S "$root/tools/chd-read" -B "$root/.tools/chd-read/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        >/dev/null && cmake --build "$root/.tools/chd-read/build" >/dev/null \
+        && cp "$root/.tools/chd-read/build/tt-chd-read" "$root/.tools/chd-read/tt-chd-read" \
+        || die "could not build tools/chd-read for the CHD image"
+    fi ;;
+  *) die "select a retail Xbox 360 disc image (.iso, or .chd made with chdman createdvd)" ;;
+esac
 
 need() { command -v "$1" >/dev/null || die "missing $1. Install: python cmake ninja clang git"; }
 for tool in python3 cmake ninja clang clang++ git; do need "$tool"; done

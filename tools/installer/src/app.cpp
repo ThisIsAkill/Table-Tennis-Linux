@@ -24,7 +24,10 @@ std::string Lower(std::string text) {
   return text;
 }
 
-bool LooksLikeIso(const fs::path& path) { return Lower(path.extension().string()) == ".iso"; }
+bool LooksLikeIso(const fs::path& path) {
+  const std::string extension = Lower(path.extension().string());
+  return extension == ".iso" || extension == ".chd";  // .chd: the disc compressed with chdman
+}
 
 }  // namespace
 
@@ -84,7 +87,7 @@ void App::Notice(std::string text) {
 void App::ChooseIso(const fs::path& path) {
   std::error_code ec;
   if (fs::is_directory(path, ec)) {
-    Notice("That is a folder. Drop the .iso file of your disc.");
+    Notice("That is a folder. Drop the .iso or .chd file of your disc.");
     return;
   }
   if (!fs::is_regular_file(path, ec)) {
@@ -92,7 +95,7 @@ void App::ChooseIso(const fs::path& path) {
     return;
   }
   if (!LooksLikeIso(path)) {
-    Notice("That is not an .iso file. The installer needs the disc image of your Table Tennis disc.");
+    Notice("That is not a disc image (.iso or .chd). The installer needs the disc image of your Table Tennis disc.");
     return;
   }
   iso = path;
@@ -125,7 +128,7 @@ void App::FileDialogResult(const char* path, bool folder, bool error) {
   }
   browse_open = false;
   if (error) {
-    Notice("No file dialog is available here. Drop the .iso onto this window instead.");
+    Notice("No file dialog is available here. Drop the .iso or .chd onto this window instead.");
     return;
   }
   if (path && *path) ChooseIso(path);
@@ -134,7 +137,7 @@ void App::FileDialogResult(const char* path, bool folder, bool error) {
 void App::OpenBrowse() {
   if (browse_open) return;
   browse_open = true;
-  static const SDL_DialogFileFilter filters[] = {{"Disc images", "iso"}, {"All files", "*"}};
+  static const SDL_DialogFileFilter filters[] = {{"Disc images", "iso;chd"}, {"All files", "*"}};
   SDL_ShowOpenFileDialog(
       [](void* userdata, const char* const* filelist, int) {
         // The callback may run on another thread: hand the result to the main loop as an event.

@@ -13,6 +13,7 @@
 #include <rex/system/user_module.h>
 #include <rex/system/xex_module.h>
 #include <cstdio>
+#include "chd_disc.h"
 #include "button_prompts.h"
 #include "offline_menu_device.h"
 #include "intro_skip.h"
@@ -234,7 +235,8 @@ class TabletennisApp : public rex::ReXApp {
       for (const auto& dir : {exe_dir, root_dir}) {
         if (std::filesystem::exists(dir)) {
           for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".iso") {
+            if (entry.is_regular_file() &&
+                (entry.path().extension() == ".iso" || tabletennis::chd::IsChdPath(entry.path()))) {
               paths.game_data_root = entry.path();
               REXLOG_INFO("TabletennisApp: Auto-detected ISO: {}", paths.game_data_root.string());
               break;
@@ -261,7 +263,8 @@ class TabletennisApp : public rex::ReXApp {
     }
 
     // Validate ISO if specified
-    if (!paths.game_data_root.empty() && std::filesystem::is_regular_file(paths.game_data_root)) {
+    if (!paths.game_data_root.empty() && std::filesystem::is_regular_file(paths.game_data_root) &&
+        !tabletennis::chd::IsChdPath(paths.game_data_root)) {
       ValidateIsoSource(paths.game_data_root);
     }
   }
