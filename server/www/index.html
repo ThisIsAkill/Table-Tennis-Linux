@@ -1,0 +1,230 @@
+<!doctype html>
+<!-- Copyright (c) 2026 Akhil Moola (ThisIsAkill). MIT License, see LICENSE. -->
+<!-- Live status of the Table Tennis online server: who is waiting, recent activity, usual hours
+     and the ranked top 10. Served next to the server's /status and /api/leaderboard (Caddy). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Tennis Online</title>
+<meta name="description" content="Live status of the online server for the Linux port of Rockstar Games presents Table Tennis.">
+<style>
+  :root {
+    --bg: #0b1626;
+    --panel: #10223a;
+    --panel-edge: #2c4a73;
+    --text: #e8edf3;
+    --muted: #9aa8b8;
+    --yellow: #ffcc00;
+    --green: #5ac850;
+    --bar: #3d6aa3;
+    --bar-now: #ffcc00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.45 "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1, h2 {
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+  h1 { color: var(--yellow); font-size: 2.1rem; text-shadow: 2px 2px 0 #000; }
+  h2 { color: var(--yellow); font-size: 1.05rem; margin-bottom: 12px; }
+  .sub { color: var(--muted); margin: 4px 0 20px; }
+  .panel {
+    background: var(--panel);
+    border: 2px solid var(--panel-edge);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .headline { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; }
+  .headline.live { color: var(--green); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat .n { font-size: 2rem; font-weight: 900; color: var(--text); }
+  .stat .l { color: var(--muted); font-size: 0.9rem; text-transform: uppercase; }
+  .hours { display: flex; align-items: flex-end; gap: 3px; height: 110px; margin-top: 8px; }
+  .hours div { flex: 1; background: var(--bar); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .hours div.now { background: var(--bar-now); }
+  .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #1e3654; }
+  th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.85rem; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  code { background: #071019; padding: 1px 6px; border-radius: 4px; color: var(--yellow); }
+  a { color: var(--yellow); }
+  footer { color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Table Tennis Online</h1>
+  <p class="sub">Live from the online server for the
+    <a href="https://github.com/ThisIsAkill/Table-Tennis-Linux">Linux port</a> of Rockstar Games presents Table Tennis.
+    Updates every 15 seconds.</p>
+
+  <section class="panel">
+    <div id="headline" class="headline">Checking the server&hellip;</div>
+    <p id="hint" class="muted"></p>
+    <div class="stats">
+      <div class="stat"><div class="n" id="online">&ndash;</div><div class="l">Online now</div></div>
+      <div class="stat"><div class="n" id="public">&ndash;</div><div class="l">In the public room</div></div>
+      <div class="stat"><div class="n" id="private">&ndash;</div><div class="l">Private rooms</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Recently</h2>
+    <div class="stats">
+      <div class="stat"><div class="n" id="day">&ndash;</div><div class="l">Players, last 24 hours</div></div>
+      <div class="stat"><div class="n" id="week">&ndash;</div><div class="l">Players, last 7 days</div></div>
+      <div class="stat"><div class="n" id="last">&ndash;</div><div class="l">Last player seen</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>When people play <span class="muted" id="tz"></span></h2>
+    <div class="hours" id="hours" aria-label="Players per hour of the day over the last 14 days"></div>
+    <div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
+    <p class="muted">Players per hour of the day over the last two weeks, in your time zone. The yellow bar is now.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Ranked: top 10</h2>
+    <div id="ranked" class="muted">Loading&hellip;</div>
+  </section>
+
+  <section class="panel">
+    <h2>How to play online</h2>
+    <p>Install the game with the <a href="https://github.com/ThisIsAkill/Table-Tennis-Linux/releases/latest">latest release</a>,
+      then choose <strong>ONLINE</strong> in the main menu. <strong>Public room</strong> matches you with
+      anyone waiting; a <strong>room code</strong> plays a friend. If you see someone waiting above, join now.</p>
+  </section>
+
+  <footer>No addresses or names are kept for this page: recent activity counts players by a one-way
+    hash of their name, for 30 days.</footer>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+function ago(seconds) {
+  if (seconds == null) return "never";
+  if (seconds < 90) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return minutes + " min ago";
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) return hours + " h ago";
+  return Math.round(hours / 24) + " days ago";
+}
+
+function duration(seconds) {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes === 1 ? "1 minute" : minutes + " minutes";
+}
+
+function showStatus(s) {
+  $("online").textContent = s.players_online;
+  $("public").textContent = s.public_room_players;
+  $("private").textContent = s.private_rooms;
+  const waiting = s.public_room_waiting_seconds || [];
+  const head = $("headline");
+  if (waiting.length === 1) {
+    head.textContent = "Someone is waiting for a match";
+    head.className = "headline live";
+    $("hint").textContent = "Waiting in the public room for " + duration(waiting[0]) + ". Start the game and choose ONLINE > Public room.";
+  } else if (waiting.length > 1) {
+    head.textContent = waiting.length + " players in the public room";
+    head.className = "headline live";
+    $("hint").textContent = "Join them: start the game and choose ONLINE > Public room.";
+  } else if (s.players_online > 0) {
+    head.textContent = s.players_online === 1 ? "1 player online in a private room" : s.players_online + " players online in private rooms";
+    head.className = "headline";
+    $("hint").textContent = "Private rooms need the room code from a friend.";
+  } else {
+    head.textContent = "Nobody online right now";
+    head.className = "headline";
+    $("hint").textContent = "Check the usual hours below, or wait in the public room: the next player will find you.";
+  }
+  const a = s.activity;
+  if (a) {
+    $("day").textContent = a.players_last_24h;
+    $("week").textContent = a.players_last_7d;
+    $("last").textContent = s.players_online > 0 ? "now" : ago(a.last_visit_seconds_ago);
+    showHours(a.players_by_utc_hour_last_14d || []);
+  }
+}
+
+function showHours(utcHours) {
+  const offset = -new Date().getTimezoneOffset() / 60;  // hours east of UTC
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+  $("tz").textContent = "(" + tz + ")";
+  const local = new Array(24).fill(0);
+  utcHours.forEach((n, h) => { local[((Math.round(h + offset) % 24) + 24) % 24] += n; });
+  const max = Math.max(1, ...local);
+  const nowHour = new Date().getHours();
+  const box = $("hours");
+  box.textContent = "";
+  local.forEach((n, h) => {
+    const bar = document.createElement("div");
+    bar.style.height = (100 * n / max) + "%";
+    bar.title = String(h).padStart(2, "0") + ":00 - " + n + (n === 1 ? " player" : " players");
+    if (h === nowHour) bar.className = "now";
+    box.appendChild(bar);
+  });
+}
+
+function showRanked(data) {
+  const box = $("ranked");
+  const rows = (data && data.rows) || [];
+  if (!rows.length) {
+    box.textContent = "No ranked matches yet. Play one from ONLINE > Ranked Match to be first on the board.";
+    return;
+  }
+  const table = document.createElement("table");
+  table.innerHTML = "<thead><tr><th>#</th><th>Player</th><th class=num>Skill</th><th class=num>Games</th></tr></thead>";
+  const body = document.createElement("tbody");
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    const games = r.columns ? (r.columns["62"] ?? r.columns[62] ?? "") : "";
+    [r.rank, r.gamertag, r.skill, games].forEach((value, i) => {
+      const td = document.createElement("td");
+      td.textContent = value;  // names are player-chosen text: never inserted as HTML
+      if (i !== 1) td.className = "num";
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+  box.textContent = "";
+  box.appendChild(table);
+}
+
+async function refresh() {
+  try {
+    const response = await fetch("status", { cache: "no-store" });
+    if (!response.ok) throw new Error(response.status);
+    showStatus(await response.json());
+  } catch (error) {
+    $("headline").textContent = "The server is not answering";
+    $("headline").className = "headline";
+    $("hint").textContent = "It may be restarting. This page tries again every 15 seconds.";
+  }
+  try {
+    const response = await fetch("api/leaderboard?view=4294901760&count=10", { cache: "no-store" });
+    if (response.ok) showRanked(await response.json());
+  } catch (error) { /* the ranked panel keeps its last state */ }
+}
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

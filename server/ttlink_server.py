@@ -179,7 +179,8 @@ def ip_to_int(ip):
 
 
 class Server(asyncio.DatagramProtocol):
-    def __init__(self):
+    def __init__(self, activity=None):
+        self.activity = activity  # activity.Activity for the status page, or None
         self.transport = None
         self.clients = {}       # id -> Client
         self.by_addr = {}       # (ip, port) -> Client
@@ -307,6 +308,11 @@ class Server(asyncio.DatagramProtocol):
         logging.info("%s joined %s as %s (%d in room, %d online)", name,
                      "the public room" if room == PUBLIC_ROOM else "a private room",
                      ipaddress.IPv4Address(vip), len(members), len(self.clients))
+        if self.activity is not None:
+            try:
+                self.activity.record(name, room == PUBLIC_ROOM)
+            except Exception as error:  # the status page must never stop anyone from playing
+                logging.warning("activity not recorded: %s", error)
         self.welcome(client)
         self.send_members(key)
 
@@ -424,7 +430,7 @@ class Server(asyncio.DatagramProtocol):
     def status(self):
         public = sum(1 for _ in self.public_players())
         private_rooms = [m for key, m in self.rooms.items() if key.rpartition("/")[2] != PUBLIC_ROOM]
-        return {
+        result = {
             "players_online": len(self.clients),
             "public_room_players": public,
             "private_rooms": len(private_rooms),
@@ -433,7 +439,17 @@ class Server(asyncio.DatagramProtocol):
             "uptime_seconds": int(time.time() - self.started),
             # Public room players by UTC offset (hours) and round trip to this server (ms).
             "public_room_by_utc_offset": self.by_offset(),
+            # How long each player in the public room has been there (longest first), so the
+            # status page can say someone is waiting.
+            "public_room_waiting_seconds": sorted(
+                (int(time.time() - m.joined) for m in self.public_players()), reverse=True),
         }
+        if self.activity is not None:
+            try:
+                result["activity"] = self.activity.summary()
+            except Exception as error:
+                logging.warning("activity summary failed: %s", error)
+        return result
 
 
 async def http_status(server, reader, writer, api=None):
@@ -491,12 +507,13 @@ async def main():
                         format="%(asctime)s %(message)s")
 
     loop = asyncio.get_running_loop()
-    server = Server()
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # ranked_api.py et al. ship alongside
+    from activity import Activity
+    server = Server(Activity(args.stats_db))
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
     sock.bind((args.bind, args.port))
     await loop.create_datagram_endpoint(lambda: server, sock=sock)
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # ranked_api.py et al. ship alongside
     from ranked_api import RankedApi
     api = RankedApi(args.stats_db)
     http = await asyncio.start_server(lambda r, w: http_status(server, r, w, api), args.bind, args.port)
