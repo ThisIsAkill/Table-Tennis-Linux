@@ -138,7 +138,8 @@ std::vector<Row> MakeRows() {
       {"post", "SHARPENING", "The game renders at GAME RESOLUTION (times RENDER SCALE). AUTO "
        "upscales it with FSR to windows at least 1.4 times as tall. CAS sharpens (good on the Steam "
        "Deck); FSR upscales and sharpens. INTEGER keeps menus and text crisp when the window is a "
-       "whole multiple of the picture (1080P on a 4K screen: each pixel a clean 2 X 2 block).",
+       "whole multiple of the picture (1080P on a 4K screen: each pixel a clean 2 X 2 block); use it "
+       "with RENDER SCALE 1X, since at 2X a 1080P game already fills a 4K screen.",
        Apply::kLive,
        {{"auto", "AUTO"}, {"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}, {"integer", "INTEGER"}},
        0},

@@ -1,0 +1,32 @@
+diff --git a/src/ui/presenter.cpp b/src/ui/presenter.cpp
+index ee36cb9..bc936a3 100644
+--- a/src/ui/presenter.cpp
++++ b/src/ui/presenter.cpp
+@@ -1189,6 +1189,27 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
+             output_height / properties.frontbuffer_height;
+     flow.effects[flow.effect_count++] =
+         whole_factor ? GuestOutputPaintEffect::kPoint : GuestOutputPaintEffect::kBilinear;
++    // Say once per change what integer scaling does, so a log shows why it may look like OFF
++    // (a render scale that already fills the screen, or a size that is not a whole multiple).
++    if (config.GetEffect() == GuestOutputPaintConfig::Effect::kInteger && flow.effect_count == 1) {
++      static std::atomic<uint64_t> last_state{0};
++      const uint64_t state = (uint64_t(properties.frontbuffer_width) << 48) ^
++                             (uint64_t(properties.frontbuffer_height) << 32) ^
++                             (uint64_t(output_width) << 16) ^ uint64_t(output_height);
++      if (last_state.exchange(state) != state) {
++        if (whole_factor) {
++          REXLOG_INFO("Presenter: integer scaling {}x{} -> {}x{} (x{}{})",
++                      properties.frontbuffer_width, properties.frontbuffer_height, output_width,
++                      output_height, output_width / properties.frontbuffer_width,
++                      output_width == properties.frontbuffer_width ? ", 1:1, nothing to scale" : "");
++        } else {
++          REXLOG_INFO("Presenter: integer scaling off: {}x{} -> {}x{} is not a whole multiple, "
++                      "using bilinear",
++                      properties.frontbuffer_width, properties.frontbuffer_height, output_width,
++                      output_height);
++        }
++      }
++    }
+   }
+ 
+   assert_not_zero(flow.effect_count);
