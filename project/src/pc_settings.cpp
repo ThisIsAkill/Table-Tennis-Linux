@@ -619,9 +619,11 @@ std::string SharpeningEffect() {
 // (never above what the window shows); a level that drops frames goes back down and is not tried
 // again. The ini remembers render_scale_auto= (the level the launcher uses) and
 // render_scale_auto_failed= (the lowest level that could not hold 60 FPS). GPU time per frame is
-// logged alongside, but it does not decide: GPUs lower their clocks under light load, so the
-// time at one level does not predict the next. The frame rate is the presented one: the game's
-// own frame rate stays at 60 when the GPU falls behind and the presenter shows every other frame.
+// logged alongside but does not predict the next level (GPUs lower their clocks under light
+// load). The frame rate counted is the slower of the presented one and the game's own: a GPU that
+// falls behind first drops presented frames and, further behind, slows the game too. GPU time
+// only tells a GPU limit (busy GPU) from loading or a CPU stall (idle GPU), whose samples are
+// skipped; skipping all slow game frames kept an overloaded 2X from ever being given up.
 // GAME RESOLUTION AUTO is measured the same way: when it chose 1080p and that cannot hold 60 FPS at
 // 1X, native_res_auto=720p makes the launcher use 720p from the next start (choosing GAME
 // RESOLUTION again clears it).
@@ -694,13 +696,17 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
   a.next_sample = now + 1.0;
   if (haptics::MatchInPlay()) a.match_seen = true;
   if (!a.match_seen || page_open || tabletennis::photo::Active()) return;
-  const float fps = presented_fps;
-  if (fps <= 0.0f) return;
-  // Only GPU limits count: when loading or the CPU stalls, the game's own frame rate drops too,
-  // while a GPU that falls behind leaves the game at 60 and drops presented frames.
-  if (tabletennis::pacing::GetStats().fps < 55.0f) return;
+  if (presented_fps <= 0.0f) return;
+  // Only GPU limits count. A GPU that falls behind drops presented frames, and when it is far
+  // behind the game's own frame rate falls too (the CPU waits for it), so the slower of the two is
+  // what the player sees. A slow game with an idle GPU is loading or a CPU stall: skip that sample.
+  const float game_fps = tabletennis::pacing::GetStats().fps;
+  const double gpu_ms = rex::system::gpu_frame_time::LastMs();
+  const bool gpu_busy = gpu_ms >= 13.0;  // most of a 16.7 ms frame
+  if (game_fps < 55.0f && !gpu_busy) return;
+  const float fps = std::min(presented_fps, game_fps > 0.0f ? game_fps : presented_fps);
   a.fps.push_back(fps);
-  a.gpu_ms.push_back(rex::system::gpu_frame_time::LastMs());
+  a.gpu_ms.push_back(gpu_ms);
   // A level that clearly fails is given up after 15 seconds instead of a minute.
   bool clearly_failing = false;
   if ((a.level > 1 || a.native_trial) && a.fps.size() >= 15) {
