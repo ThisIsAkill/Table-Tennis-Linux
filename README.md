@@ -160,6 +160,7 @@ Then one player chooses **PLAYER MATCH > CREATE MATCH**, sets up the match and w
 
 **Voice chat:** with a microphone or headset plugged in, players in a match hear each other, over both ONLINE and SYSTEM LINK. It is on by default; turn it off at **OPTIONS > PC SETTINGS > ONLINE > VOICE CHAT**, or with `voice_chat=false` in `tt-recomp.ini` (`--voice_chat=false` on the launcher). Your microphone only sends while you are speaking, and the audio is compressed so it fits alongside the match traffic over the internet. To check your microphone and speakers without a match, launch with `--voice_monitor=true` and you will hear yourself played back (use headphones to avoid an echo).
 
+- **Who is online:** [rockstartt.duckdns.org](https://rockstartt.duckdns.org) shows live whether someone is waiting in the public room, how many players came by recently, the hours people usually play and the ranked top 10.
 - The game was made for local networks: every action waits for the other machine, so online matches play best between players in the same region. Outside matches, a small box in the bottom right corner shows the connection: bars, the round trip in milliseconds, packet loss, and whether it runs directly or through the server. In the public room the server pairs players who are close to each other first; the ONLINE prompt shows how many players are near you.
 - A short connection drop (Wi-Fi hiccup, switching networks) no longer ends a match: the game waits up to about 15 seconds for the other player to come back, where it gave up after 3. A player who really leaves is noticed after those 15 seconds.
 - On lossy connections the game sends every match packet twice (`online_redundancy=` in `tt-recomp.ini`: `auto`, the default, only while packets get lost; `on`; `off`).
@@ -192,6 +193,8 @@ The game can show replacement textures, for example higher-resolution versions m
 
 - Keep the frame rate at 60. The game advances its simulation once per frame and was built for 60 frames per second: higher settings only repeat frames, and uncapped presentation slows gameplay down.
 - With a 1080p or larger window the game renders at native 1080p (GAME RESOLUTION AUTO). If the GPU cannot hold 60 FPS there, AUTO notices in the first match and switches to 720p with FSR from the next start; `native_res=720p` in `tt-recomp.ini` sets it directly. On a 4K screen with a fast GPU, RENDER SCALE 2X on top of 1080p renders the 3D view at 3840x2160. Render scale does not hold 60 FPS on the Steam Deck.
+- **Portable install:** `portable=on` in `tt-recomp.ini` keeps the saves (`user_data/`) and the shader cache (`cache/`) in the game folder instead of `~/.local/share/tabletennis`, so the whole folder can be copied or moved to another PC or drive along with the disc image. The first start copies your existing saves into it (the originals stay where they were), and updates keep both folders.
+- **After installing**, the build cache (`~/.cache/tt-recomp`, about 6 GB of build tools and intermediate files) and the downloaded installer can be deleted; the next update downloads what it needs again. Keep the game folder and the disc image: the game reads the disc while you play. A trimmed image (for example from XISO Studio) works too, as an `.iso` or converted to `.chd`.
 
 ### Reporting problems
 
@@ -241,7 +244,7 @@ Building from a checkout needs `python3`, `git`, `cmake`, `ninja` and `clang` 19
 
 `build.sh` verifies and extracts the ISO read-only, builds ReXGlue SDK v0.10.0 from source into `.tools/rexglue-sdk` (`--sdk PATH` uses an existing one) with the patches in `project/sdk-patches/`, runs code generation, applies the verified native edits and compiles the game into `dist/`. A development build has no version file, shows DEV BUILD in PC SETTINGS and never offers updates.
 
-`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `voice_chat`, `native_res`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `motion_swing`, `subtitles`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
+`dist/tt-recomp.sh` is the launcher. It reads `tt-recomp.ini` next to it (keys: `iso_path`, `resolution`, `framerate`, `fullscreen`, `show_fps`, `aa`, `post`, `aspect`, `vsync`, `brightness`, `button_prompts`, `achievement_sound`, `haptics`, `voice_chat`, `native_res`, `render_scale`, `check_updates`, `auto_update`, `gamemode`, `player_name`, `lan_peers`, `server`, `online_redundancy`, `system_link`, `keyboard`, `motion_swing`, `subtitles`, `portable`, `engine_flags`). Command-line flags override it, for example `./dist/tt-recomp.sh --resolution=1440p --fullscreen=true`; `--save` writes them back, and anything after `--` goes straight to the engine.
 
 | Path | What it is |
 |---|---|

@@ -19,7 +19,8 @@
 #                  [--online_redundancy=auto|on|off] [--keyboard=on|off]
 #                  [--vsync=auto|on|off] [--brightness=0.8..2.0]
 #                  [--texture_filtering=off|2x|4x|8x|16x]
-#                  [--motion_swing=off|strong|normal|light] [--subtitles=off|announcer|all] [--save]
+#                  [--motion_swing=off|strong|normal|light] [--subtitles=off|announcer|all]
+#                  [--portable=on|off] [--save]
 #                  [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
@@ -86,6 +87,7 @@ brightness="1.0"
 texture_filtering="16x"
 motion_swing="off"
 subtitles="off"
+portable="off"
 save=0
 extra=()
 orig_args=("$@")  # for restarting after an update
@@ -127,6 +129,7 @@ set_option() {
     texture_filtering) texture_filtering="$value" ;;
     motion_swing) motion_swing="$value" ;;
     subtitles) subtitles="$value" ;;
+    portable) portable="$value" ;;
     *) return 1 ;;
   esac
 }
@@ -236,6 +239,7 @@ case "$motion_swing" in
   *) die "motion_swing must be off, strong, normal or light" ;;
 esac
 case "$subtitles" in off|announcer|all) ;; *) die "subtitles must be off, announcer or all" ;; esac
+case "$portable" in on|true) portable=on ;; off|false) portable=off ;; *) die "portable must be on or off" ;; esac
 [[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
 [[ "$server" =~ ^[A-Za-z0-9.:_-]*$ ]] || die "server must be a host name or address, optionally with :port"
 [[ "$lan_peers" =~ ^[0-9.,\ ]*$ ]] || die "lan_peers must be IPv4 addresses separated by commas"
@@ -276,6 +280,7 @@ brightness=$brightness
 texture_filtering=$texture_filtering
 motion_swing=$motion_swing
 subtitles=$subtitles
+portable=$portable
 EOF
   mv -f "$config.tmp" "$config"
 fi
@@ -298,6 +303,29 @@ args=(
   "${motion_args[@]}"
   "--subtitles=$subtitles"
 )
+# portable=on keeps saves (user_data) and the shader cache (cache) in this folder instead of
+# ~/.local/share/tabletennis, so the whole install can be copied or moved. The first time, the
+# existing saves and cache are copied here (the originals stay where they were). Updates keep both.
+if [[ "$portable" == on ]]; then
+  if [[ ! -d "$here/user_data" ]]; then
+    old_data="${XDG_DATA_HOME:-$HOME/.local/share}/tabletennis"
+    mkdir -p "$here/.user_data.tmp"
+    if [[ -d "$old_data" ]]; then
+      for entry in "$old_data"/* "$old_data"/.[!.]*; do
+        [[ -e "$entry" ]] || continue
+        if [[ "$(basename "$entry")" == cache ]]; then
+          [[ -d "$here/cache" ]] || cp -a "$entry" "$here/cache"
+        else
+          cp -a "$entry" "$here/.user_data.tmp/"
+        fi
+      done
+      echo "tt-recomp: portable: copied saves from $old_data (the originals are kept there)" >&2
+    fi
+    mv "$here/.user_data.tmp" "$here/user_data"
+  fi
+  mkdir -p "$here/cache"
+  args+=("--user_data_root=$here/user_data" "--cache_root=$here/cache")
+fi
 # vsync=on presents in step with the display (no tearing; mailbox or FIFO), off presents at once
 # (lowest latency). auto is on for macOS, where MoltenVK's immediate mode tears visibly, and off
 # elsewhere; the game paces itself to the framerate setting either way.
