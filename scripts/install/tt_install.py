@@ -8,15 +8,18 @@
     tt_install.py artwork ICO OUT_DIR
     tt_install.py steam-shortcut --name N --exe PATH --start-dir DIR --icon PNG [--art-dir DIR]
     tt_install.py steam-find --exe PATH --art-dir DIR
+    tt_install.py steamgriddb ART_DIR    (key in TT_STEAMGRIDDB_KEY; downloads cover, hero, logo)
     tt_install.py quote TEXT
     tt_install.py verify-sig MANIFEST SIGNATURE PUBLIC_KEY    (Ed25519; exit 0 valid)
     tt_install.py manifest-get MANIFEST                       (shell-quoted fields)
 
-The ISO is only ever opened for reading. Nothing here downloads anything.
+The ISO is only ever opened for reading. Only steamgriddb downloads anything, and only when the
+player gives their own SteamGridDB API key.
 """
 import argparse
 import binascii
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -237,7 +240,18 @@ def cmd_artwork(args):
     for name, w, h, scale in (('capsule.png', 600, 900, 2), ('wide.png', 920, 430, 1),
                               ('hero.png', 1920, 620, 2)):
         (art / name).write_bytes(_png_encode(w, h, _canvas(w, h, icon, scale)))
-    print('Icon and Steam artwork created from the project icon.')
+    # Library images shipped with the project (project/assets/steam, credited in
+    # licenses/SteamGridDB) replace the generated cards.
+    bundled = Path(args.ico).parent / 'steam'
+    used = [name for name in ('capsule.png', 'wide.png', 'hero.png', 'logo.png')
+            if (bundled / name).is_file()]
+    for name in used:
+        shutil.copyfile(bundled / name, art / name)
+    if used:
+        (art / '.source').write_text('bundled\n')
+        print(f'Steam artwork: {len(used)} bundled images, the rest generated from the project icon.')
+    else:
+        print('Icon and Steam artwork created from the project icon.')
 
 
 # --- Steam shortcuts.vdf (binary KeyValues) --------------------------------------------------
@@ -317,13 +331,93 @@ def _shortcut_appid(exe, name):
     return binascii.crc32((exe + name).encode()) | 0x80000000
 
 
+ART_FILES = (('capsule.png', '{}p.png'), ('wide.png', '{}.png'), ('hero.png', '{}_hero.png'),
+             ('logo.png', '{}_logo.png'))
+
+
+def _file_hash(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _copy_art(art_dir, grid, appid):
+    """Put the library images in Steam's grid folder without undoing anyone's choice: an image
+    the player set in Steam (it differs from what was written here last time) is left alone, and
+    real artwork (bundled or from SteamGridDB) is not replaced by a plain generated card.
+    grid/.tt-recomp-art-<appid>.json remembers what was written and where it came from."""
     if not art_dir or not (Path(art_dir) / 'capsule.png').is_file():
         return
+    art = Path(art_dir)
+    source = (art / '.source').read_text().strip() if (art / '.source').is_file() else 'generated'
     grid.mkdir(parents=True, exist_ok=True)
-    for src, dst in (('capsule.png', f'{appid}p.png'), ('wide.png', f'{appid}.png'),
-                     ('hero.png', f'{appid}_hero.png'), ('logo.png', f'{appid}_logo.png')):
-        shutil.copyfile(Path(art_dir) / src, grid / dst)
+    record_path = grid / f'.tt-recomp-art-{appid}.json'
+    try:
+        record = json.loads(record_path.read_text())
+    except (OSError, ValueError):
+        record = {}
+    for src, pattern in ART_FILES:
+        if not (art / src).is_file():
+            continue
+        dst = grid / pattern.format(appid)
+        previous = record.get(dst.name)
+        if dst.exists():
+            if not previous or _file_hash(dst) != previous.get('sha256'):
+                continue  # chosen in Steam, or not written by this installer
+            if previous.get('source', 'generated') != 'generated' and source == 'generated':
+                continue  # keep artwork (bundled or downloaded) over the plain generated card
+        shutil.copyfile(art / src, dst)
+        record[dst.name] = {'sha256': _file_hash(dst), 'source': source}
+    record_path.write_text(json.dumps(record, indent=1))
+
+
+STEAMGRIDDB_GAME = 38693  # Rockstar Games presents Table Tennis on steamgriddb.com
+STEAMGRIDDB_FILES = (('grids', {'dimensions': '600x900'}, 'capsule.png'),
+                     ('grids', {'dimensions': '920x430,460x215'}, 'wide.png'),
+                     ('heroes', {}, 'hero.png'),
+                     ('logos', {}, 'logo.png'))
+
+
+def cmd_steamgriddb(args):
+    """Replace the generated library images with the best-rated PNGs from SteamGridDB, using the
+    player's own API key (TT_STEAMGRIDDB_KEY; steamgriddb.com > Preferences > API). Images that
+    cannot be fetched keep the generated version; a missing key changes nothing."""
+    import urllib.parse
+    import urllib.request
+    key = os.environ.get('TT_STEAMGRIDDB_KEY', '').strip()
+    if not key:
+        print('No SteamGridDB key given; keeping the generated Steam artwork.')
+        return 0
+    api = os.environ.get('TT_STEAMGRIDDB_API', 'https://www.steamgriddb.com/api/v2').rstrip('/')
+    art = Path(args.art_dir)
+    art.mkdir(parents=True, exist_ok=True)
+    fetched = 0
+    for kind, query, name in STEAMGRIDDB_FILES:
+        params = dict(query, mimes='image/png', nsfw='false', humor='false')
+        url = f'{api}/{kind}/game/{STEAMGRIDDB_GAME}?' + urllib.parse.urlencode(params)
+        try:
+            request = urllib.request.Request(url, headers={'Authorization': f'Bearer {key}',
+                                                           'User-Agent': 'tt-recomp-installer'})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                listing = json.loads(response.read(1 << 20))
+            items = [i for i in listing.get('data') or [] if str(i.get('url', '')).startswith('https://')]
+            if not items:
+                print(f'SteamGridDB has no PNG {kind} for this game; keeping the generated {name}.')
+                continue
+            with urllib.request.urlopen(urllib.request.Request(
+                    items[0]['url'], headers={'User-Agent': 'tt-recomp-installer'}), timeout=30) as response:
+                data = response.read(16 << 20)
+            if not data.startswith(b'\x89PNG'):
+                print(f'SteamGridDB {kind} is not a PNG; keeping the generated {name}.')
+                continue
+            temp = art / (name + '.part')
+            temp.write_bytes(data)
+            temp.replace(art / name)
+            fetched += 1
+        except Exception as error:  # network, HTTP 401 for a wrong key, bad JSON
+            print(f'SteamGridDB {kind} not fetched ({error.__class__.__name__}: {error}); keeping the generated {name}.')
+    if fetched:
+        (art / '.source').write_text('steamgriddb\n')
+    print(f'Steam artwork: {fetched} of {len(STEAMGRIDDB_FILES)} images from SteamGridDB.')
+    return 0
 
 
 def cmd_steam_shortcut(args):
@@ -565,6 +659,7 @@ def main():
         s.add_argument(a, required=True)
     s.add_argument('--art-dir')
     s = sub.add_parser('steam-find'); s.add_argument('--exe', required=True); s.add_argument('--art-dir')
+    s = sub.add_parser('steamgriddb'); s.add_argument('art_dir')
     s = sub.add_parser('quote'); s.add_argument('text')
     s = sub.add_parser('verify-sig'); s.add_argument('manifest'); s.add_argument('sig'); s.add_argument('key')
     s = sub.add_parser('manifest-get'); s.add_argument('manifest')
