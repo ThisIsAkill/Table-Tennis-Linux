@@ -59,6 +59,10 @@ xpid=$!
 trap 'kill $xpid 2>/dev/null' EXIT
 sleep 2
 export DISPLAY="$display"
+# The run belongs on the virtual display even when started from a Wayland session (SDL would
+# pick the Wayland desktop otherwise).
+unset WAYLAND_DISPLAY
+export SDL_VIDEODRIVER=x11
 rm -f "$dist"/logs/*.log 2>/dev/null
 # The engine backs guest memory with a 4.5 GB file in /dev/shm and leaves it behind when it
 # is killed, so remember what exists now and delete whatever this run adds.
