@@ -20,7 +20,7 @@ struct SDL_Window;
 
 namespace tt {
 
-enum class Screen { Welcome, Check, Options, Install, Done, Error };
+enum class Screen { Installed, Welcome, Check, Options, Install, Done, Error };
 
 struct Config {
   std::filesystem::path backend;    // scripts/install/tt-install.sh or the --backend override
@@ -29,8 +29,23 @@ struct Config {
   std::vector<std::filesystem::path> extra_scan_dirs;  // --scan-dir, for testing
   std::optional<std::filesystem::path> iso;            // --iso skips the welcome screen
   std::optional<std::filesystem::path> update_dir;     // --update: update this install
+  std::optional<std::filesystem::path> dir;            // --dir: install here / look here first
+  bool play = false;                                   // --play: start an installed game
+  bool reinstall = false;                              // --reinstall: skip the PLAY screen
   int width = 1280, height = 800;
 };
+
+// A game this installer (or an earlier one) built: the folder holds tt-recomp.sh and the game.
+struct Installed {
+  std::filesystem::path dir;
+  std::string version;  // from .tt-version; empty for a development build
+  bool portable = false;  // tt-recomp.ini has portable=on: saves live in the folder too
+};
+// Looks for an installed game: --dir first, then the folder the application-menu entry points
+// at, then ~/Games/TableTennis and Games/TableTennis on mounted drives.
+std::optional<Installed> FindInstalled(const Config& config);
+// Starts the installed game's launcher detached; false when it could not be started.
+bool LaunchInstalled(const Installed& installed);
 
 // A place the game can be installed.
 struct Location {
@@ -97,10 +112,12 @@ struct App {
   // 10 start the current version, 1 do not start the game.
   int exit_code = 0;
   bool UpdateMode() const { return config.update_dir.has_value(); }
-  void FinishUpdate(int code) {
-    exit_code = code;
-    quit = true;
-  }
+  // Update mode ends here: back to the launcher, or to the PLAY screen when the update was
+  // started from it.
+  void FinishUpdate(int code);
+  std::optional<Installed> installed;  // the PLAY screen's game
+  bool update_from_play = false;       // UPDATE on the PLAY screen started update mode
+  void StartUpdateFromPlay();
   std::optional<Modal> modal;
 
   // Welcome.
@@ -123,7 +140,6 @@ struct App {
   int location = 0;
   bool steam = true;
   bool desktop = true;
-  bool cache_on_target = false;   // keep build files on the install drive
   bool is_steamos = false;
   uint64_t home_device = 0;
   uint64_t home_free = 0;
@@ -136,6 +152,7 @@ struct App {
   InstallState inst;
   std::vector<std::string> notes;       // warnings carried to the done screen
   std::string steam_result;             // backend's "@@result steam": added, requested or none
+  bool update_none = false;             // tt-update.sh found nothing newer ("@@result update none")
   bool show_error_details = false;
 
   // --- flow ---
@@ -168,6 +185,7 @@ struct App {
   void UseCustomFolder(std::filesystem::path chosen);
 
   // --- drawing (screens.cpp) ---
+  void DrawInstalled();
   void DrawWelcome();
   void DrawCheck();
   void DrawOptions();

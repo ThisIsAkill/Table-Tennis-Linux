@@ -7,6 +7,7 @@
 #include <pwd.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <sys/statvfs.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -72,6 +73,21 @@ uint64_t DeviceOf(const fs::path& path) {
   struct stat st {};
   if (probe.empty() || stat(probe.c_str(), &st) != 0) return 0;
   return uint64_t(st.st_dev);
+}
+
+bool IsLinuxFilesystem(const fs::path& path) {
+  const fs::path probe = NearestExisting(path);
+  struct statfs st {};
+  if (probe.empty() || statfs(probe.c_str(), &st) != 0) return true;
+  switch (uint64_t(st.f_type)) {
+    case 0x4d44:      // MSDOS_SUPER_MAGIC (FAT, vfat)
+    case 0x2011BAB0:  // exFAT
+    case 0x5346544e:  // NTFS (ntfs3)
+    case 0x65735546:  // FUSE (fuseblk: ntfs-3g, exfat-fuse)
+      return false;
+    default:
+      return true;
+  }
 }
 
 std::vector<Mount> UserMounts() {

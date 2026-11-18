@@ -14,8 +14,9 @@
 #                     (required; kept in place, the game reads it)
 #   --prefix DIR      install folder (default ~/Games/TableTennis); any writable folder, also on
 #                     an SD card or external drive, as long as it allows running programs
-#   --cache DIR       build tools, SDK and build files, about 6 GB (default ~/.cache/tt-recomp);
-#                     must be a Linux filesystem (ext4, btrfs, xfs...), not exFAT/FAT
+#   --cache DIR       build tools, SDK and build files, about 6 GB (default: .build inside the
+#                     install folder, or ~/.cache/tt-recomp when that is on a FAT/exFAT/NTFS
+#                     drive); must be a Linux filesystem (ext4, btrfs, xfs...), not exFAT/FAT
 #   --jobs N          parallel compile jobs (default: CPU threads, limited by memory)
 #   --steam yes|no    add "Table Tennis" to Steam as a non-Steam game (default no)
 #   --desktop yes|no  add an application menu entry (default yes)
@@ -80,6 +81,7 @@ src="$(cd "$here/../.." && pwd)"
 iso=""
 prefix="$HOME/Games/TableTennis"
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/tt-recomp"
+cache_given=0
 jobs=""
 steam="no"
 desktop="yes"
@@ -108,8 +110,8 @@ while (($#)); do
     --iso=*) iso="${1#*=}" ;;
     --prefix) prefix="${2:-}"; shift ;;
     --prefix=*) prefix="${1#*=}" ;;
-    --cache) cache="${2:-}"; shift ;;
-    --cache=*) cache="${1#*=}" ;;
+    --cache) cache="${2:-}"; cache_given=1; shift ;;
+    --cache=*) cache="${1#*=}"; cache_given=1 ;;
     --jobs|-j) jobs="${2:-}"; shift ;;
     --jobs=*) jobs="${1#*=}" ;;
     --steam) steam="${2:-}"; shift ;;
@@ -222,6 +224,18 @@ cleanup_exit() { [[ -n "$fifo" ]] && rm -f "$fifo"; }
 trap cleanup_exit EXIT
 
 # ---- 1. check -----------------------------------------------------------------------------
+# Everything in one folder: unless --cache is given, the build cache (build tools, engine, build
+# files, logs) lives in the game folder as .build, so deleting the game folder removes it all. A
+# FAT/exFAT/NTFS drive cannot hold it (no symbolic links or permissions): then the cache stays in
+# ~/.cache/tt-recomp. Updates keep whatever an install used (tools/tt-update.sh passes --cache).
+if ((!cache_given && !sdk_only)); then
+  probe_dir="$(realpath -m -- "$prefix")"
+  while [[ ! -d "$probe_dir" && "$probe_dir" != / ]]; do probe_dir="$(dirname -- "$probe_dir")"; done
+  case "$(stat -f -c %T -- "$probe_dir" 2>/dev/null)" in
+    exfat|msdos|vfat|fuseblk|ntfs*) ;;
+    *) cache="$prefix/.build" ;;
+  esac
+fi
 mkdir -p "$cache/logs" 2>/dev/null || { echo "@@error Cannot create the build cache folder $cache. Choose another one with --cache."; exit 1; }
 logfile="$cache/logs/install-$(date +%Y%m%d-%H%M%S).log"
 : > "$logfile" || { echo "@@error Cannot write to the build cache folder $cache."; exit 1; }
@@ -751,6 +765,9 @@ ini="$prefix/tt-recomp.ini"
 if ((is_deck)); then res=800p; fs=true; else res=1080p; fs=false; fi
 defaults=("resolution=$res" "framerate=60" "fullscreen=$fs" "show_fps=false" "aa=none" "post=auto"
   "aspect=letterbox" "achievement_sound=true" "haptics=normal" "render_scale=auto" "gamemode=auto")
+# New installs keep saves and the shader cache in the game folder too (portable=on); an existing
+# install keeps where its saves are.
+[[ -f "$ini" ]] || defaults+=("portable=on")
 {
   echo "iso_path=$iso"
   if [[ -f "$ini" ]]; then grep -v '^[[:space:]]*iso_path[[:space:]]*=' "$ini"; fi

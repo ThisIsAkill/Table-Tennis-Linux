@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 
 namespace tt {
 namespace fs = std::filesystem;
@@ -43,11 +45,107 @@ App::App(Config c) : config(std::move(c)) {
     return;
   }
   scanner.Start(config.extra_scan_dirs);
+  if (!config.iso && !config.reinstall) installed = FindInstalled(config);
   if (config.iso) {
     ChooseIso(*config.iso);
+  } else if (installed) {
+    Enter(Screen::Installed);
   } else {
     Enter(Screen::Welcome);
   }
+}
+
+namespace {
+
+bool IsInstall(const fs::path& dir) {
+  std::error_code ec;
+  return sys::IsExecutableFile(dir / "tt-recomp.sh") && fs::is_regular_file(dir / "tabletennis", ec);
+}
+
+// The Path= line of the application-menu entry the setup wrote (Desktop Entry string escaping:
+// only backslashes are doubled).
+std::optional<fs::path> MenuEntryDir() {
+  const char* data = std::getenv("XDG_DATA_HOME");
+  const fs::path apps = (data && *data ? fs::path(data) : sys::HomeDir() / ".local" / "share") / "applications";
+  std::ifstream in(apps / "tt-recomp.desktop");
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.rfind("Path=", 0) != 0) continue;
+    std::string value;
+    for (size_t i = 5; i < line.size(); ++i) {
+      if (line[i] == '\\' && i + 1 < line.size()) ++i;
+      value += line[i];
+    }
+    return fs::path(value);
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<Installed> FindInstalled(const Config& config) {
+  std::vector<fs::path> candidates;
+  if (config.dir) candidates.push_back(*config.dir);
+  if (auto menu = MenuEntryDir()) candidates.push_back(*menu);
+  candidates.push_back(sys::HomeDir() / "Games" / "TableTennis");
+  for (const sys::Mount& m : sys::UserMounts()) candidates.push_back(m.mountpoint / "Games" / "TableTennis");
+  for (const fs::path& dir : candidates) {
+    if (!IsInstall(dir)) continue;
+    Installed found;
+    found.dir = dir;
+    std::ifstream version(dir / ".tt-version");
+    std::getline(version, found.version);
+    std::ifstream ini(dir / "tt-recomp.ini");
+    std::string line;
+    while (std::getline(ini, line)) {
+      std::string key, value;
+      bool in_value = false;
+      for (char ch : line) {
+        if (ch == ' ' || ch == '\t' || ch == '\r') continue;
+        if (ch == '=' && !in_value) { in_value = true; continue; }
+        (in_value ? value : key) += ch;
+      }
+      if (key == "portable") found.portable = value == "on" || value == "true";
+    }
+    return found;
+  }
+  return std::nullopt;
+}
+
+bool LaunchInstalled(const Installed& installed) {
+  return sys::LaunchDetached({(installed.dir / "tt-recomp.sh").string()}, installed.dir);
+}
+
+void App::FinishUpdate(int code) {
+  if (!update_from_play) {
+    exit_code = code;
+    quit = true;
+    return;
+  }
+  update_from_play = false;
+  const fs::path dir = *config.update_dir;
+  config.update_dir.reset();
+  exit_code = 0;
+  Config probe = config;
+  probe.dir = dir;
+  installed = FindInstalled(probe);
+  Enter(installed ? Screen::Installed : Screen::Welcome);
+  Notice(code != 0      ? "The update stopped. The installed version was not changed."
+         : update_none ? "You have the latest version."
+                       : "Updated to version " + (installed ? installed->version : std::string()) + ".");
+}
+
+void App::StartUpdateFromPlay() {
+  if (!installed) return;
+  if (!sys::IsExecutableFile(installed->dir / "tools" / "tt-update.sh")) {
+    Notice("This install has no updater (a development build). Run the setup again from a newer download.");
+    return;
+  }
+  update_from_play = true;
+  config.update_dir = installed->dir;
+  config.backend = installed->dir / "tools" / "tt-update.sh";
+  config.backend_overridden = true;
+  StartInstall();
 }
 
 App::~App() { delete process; }
@@ -58,6 +156,9 @@ void App::Enter(Screen next) {
   ui.focus.Reset();
   modal.reset();
   switch (next) {
+    case Screen::Installed:
+      ui.focus.Set("play");
+      break;
     case Screen::Welcome:
       ui.focus.Set("browse");
       break;
@@ -197,6 +298,18 @@ void App::BuildLocations() {
   }
   locations.clear();
 
+  if (config.dir) {
+    Location chosen;
+    chosen.id = "loc-dir";
+    chosen.prefix = *config.dir;
+    chosen.title = "THE FOLDER YOU CHOSE";
+    chosen.note = "Given with --dir.";
+    chosen.free_bytes = sys::FreeBytes(chosen.prefix);
+    chosen.device = sys::DeviceOf(chosen.prefix);
+    chosen.recommended = true;
+    locations.push_back(chosen);
+  }
+
   Location internal;
   internal.id = "loc-internal";
   internal.prefix = home / "Games" / "TableTennis";
@@ -204,7 +317,7 @@ void App::BuildLocations() {
   internal.note = "Fastest. The game reads your disc image while playing.";
   internal.free_bytes = sys::FreeBytes(internal.prefix);
   internal.device = sys::DeviceOf(internal.prefix);
-  internal.recommended = true;
+  internal.recommended = !config.dir;
   locations.push_back(internal);
 
   int n = 0;
@@ -242,7 +355,7 @@ void App::BuildLocations() {
   // Grey out drives that cannot hold what the setup needs there.
   for (Location& loc : locations) {
     if (loc.custom || !loc.enabled) continue;
-    const bool holds_cache = loc.device == home_device;
+    const bool holds_cache = sys::IsLinuxFilesystem(loc.prefix) || loc.device == home_device;
     const uint64_t needed = holds_cache ? kGameBytes + kSetupBytes : kGameBytes;
     if (loc.free_bytes < needed) {
       loc.enabled = false;
@@ -258,14 +371,15 @@ void App::BuildLocations() {
       }
     }
   }
-  // When the home drive is short on space and another drive is chosen, keep the build files
-  // there automatically.
-  cache_on_target = home_free < kSetupBytes && CurrentLocation().device != home_device;
 }
 
+// Everything in one folder: the build files go in the game folder (.build), so deleting the
+// folder removes the game completely. FAT/exFAT/NTFS drives cannot hold them (no symbolic links
+// or permissions); then they stay in ~/.cache/tt-recomp. Same rule as tt-install.sh.
 std::optional<fs::path> App::CacheDir() const {
-  if (!cache_on_target || CurrentLocation().device == home_device) return std::nullopt;
-  return Prefix() / ".build-cache";
+  if (Prefix().empty()) return std::nullopt;
+  if (sys::IsLinuxFilesystem(Prefix())) return Prefix() / ".build";
+  return sys::HomeDir() / ".cache" / "tt-recomp";
 }
 
 bool App::EnoughSpace(std::string* why) const {
@@ -274,14 +388,14 @@ bool App::EnoughSpace(std::string* why) const {
     if (why) *why = "Choose a folder first.";
     return false;
   }
-  const bool cache_here = CacheDir().has_value() || loc.device == home_device;
+  const bool cache_here = sys::IsLinuxFilesystem(loc.prefix) || loc.device == home_device;
   const uint64_t needed_here = cache_here ? kGameBytes + kSetupBytes : kGameBytes;
   if (loc.free_bytes < needed_here) {
     if (why) *why = "Only " + sys::FormatBytes(loc.free_bytes) + " free here; the setup needs " + sys::FormatBytes(needed_here) + ".";
     return false;
   }
   if (!cache_here && home_free < kSetupBytes) {
-    if (why) *why = "Your home drive has " + sys::FormatBytes(home_free) + " free; the build files need " + sys::FormatBytes(kSetupBytes) + ". Keep them on the install drive or free some space.";
+    if (why) *why = "Your home drive has " + sys::FormatBytes(home_free) + " free; the build files need " + sys::FormatBytes(kSetupBytes) + ". Free some space, or install to a drive formatted ext4 so they can go next to the game.";
     return false;
   }
   return true;
@@ -294,6 +408,7 @@ void App::StartInstall() {
   inst.started = Clock::now();
   notes.clear();
   steam_result.clear();
+  update_none = false;
   show_error_details = false;
   for (const auto& known : backend::KnownSteps()) {
     InstallStep step;
@@ -381,6 +496,7 @@ void App::PumpBackend(float dt) {
         break;
       case backend::LineKind::Result:
         if (line.a == "steam") steam_result = line.b;
+        if (line.a == "update" && line.b == "none") update_none = true;
         inst.log.push_back("Result: " + line.a + " " + line.b);
         break;
       case backend::LineKind::Done:
@@ -472,6 +588,14 @@ void App::CancelInstall() {
 }
 
 void App::Play() {
+  if (screen == Screen::Installed && installed) {
+    if (LaunchInstalled(*installed)) {
+      quit = true;
+    } else {
+      Notice("The launcher " + (installed->dir / "tt-recomp.sh").string() + " could not be started.");
+    }
+    return;
+  }
   if (UpdateMode()) {
     FinishUpdate(0);  // the launcher starts the new version
     return;
@@ -521,6 +645,9 @@ void App::Frame() {
       modal.reset();
     } else {
       switch (screen) {
+        case Screen::Installed:
+          quit = true;
+          break;
         case Screen::Welcome:
           Ask({"Quit setup?", "Nothing has been installed yet. You can start again any time.", "Quit",
                "Stay", false, [this] { quit = true; }});
@@ -560,6 +687,7 @@ void App::Frame() {
   ui.Background();
   ui.inert = modal.has_value() || custom_path_editing;
   switch (screen) {
+    case Screen::Installed: DrawInstalled(); break;
     case Screen::Welcome: DrawWelcome(); break;
     case Screen::Check: DrawCheck(); break;
     case Screen::Options: DrawOptions(); break;

@@ -22,6 +22,8 @@ A native Linux port of the Xbox 360 classic, built on [davidptrssvea's Windows r
 4. Choose where to install (internal storage is recommended; SD cards and other folders work too), whether to **add the game to Steam** (so it shows up in your library and in Game Mode on a Steam Deck) and whether to add a desktop shortcut, then press **INSTALL**.
 5. When it says **Ready to play**, press **PLAY**. On a Steam Deck you can go back to Game Mode and start it from Library > Non-Steam.
 
+Running the installer or the AppImage again later finds the installed game and offers **PLAY**, **CHECK FOR UPDATES** and **INSTALL AGAIN OR ELSEWHERE**, so it can double as the game's own shortcut.
+
 The mouse, touch screen, keyboard and controller all work in the installer.
 
 <p align="center">
@@ -33,7 +35,7 @@ The mouse, touch screen, keyboard and controller all work in the installer.
 
 - A 64-bit x86 PC with an AVX2 CPU (most PCs since 2015, and the Steam Deck) and a Vulkan GPU.
 - Your own unmodified **USA/Europe retail Xbox 360 Table Tennis ISO** (Title ID `545407DF`). It is only read, never changed, and nothing from it leaves your computer. Keep it where it is after installing: the game reads it while you play. A CHD made from it with `chdman createdvd` works too, in the installer and in the game, read without unpacking it (this disc only shrinks by about 10% as a CHD).
-- An internet connection for the first install, about 1 GB free in the install folder and about 3 GB of temporary space for build files.
+- An internet connection for the first install, and about 4 GB free in the install folder (the game plus its build files).
 
 ### What the installer does
 
@@ -41,16 +43,83 @@ The game cannot be downloaded ready-made, because it is built from the code on y
 
 If the prebuilt files cannot be downloaded, it builds the engine too and fetches whatever tools are missing: podman or docker when available, otherwise your system's compilers, otherwise an official Ubuntu base system unpacked into your cache folder, without admin rights. That takes a few more minutes the first time.
 
+Everything lives in the install folder (default `~/Games/TableTennis`):
+
 | What | Where |
 |---|---|
-| The game | the install folder (default `~/Games/TableTennis`) |
-| Settings | `tt-recomp.ini` in the install folder |
-| Saves, achievements, shader cache | `~/.local/share/tabletennis` (kept when you reinstall or move the game) |
-| Build tools and caches | `~/.cache/tt-recomp` (can be deleted after installing; updates are then slower once) |
+| The game | the install folder |
+| Settings | `tt-recomp.ini` |
+| Saves, achievements | `user_data/` |
+| Shader cache | `cache/` |
+| Build tools and caches | `.build/` (can be deleted after installing; updates are then slower once) |
 
-To uninstall, delete the install folder (and the cache folder), remove the shortcut from Steam, and delete `~/.local/share/tabletennis` if you also want to remove your saves.
+To uninstall, delete the install folder and remove the shortcut from Steam. The only things outside it are the application menu entry and the Steam shortcut.
+
+Two exceptions: build files cannot go on a FAT, exFAT or NTFS drive (no symbolic links or Unix permissions), so an install on such a drive keeps them in `~/.cache/tt-recomp`. And installs made before version 1.7.0 keep their saves in `~/.local/share/tabletennis` and their build files in `~/.cache/tt-recomp`; set `portable=on` in `tt-recomp.ini` to move the saves into the game folder (they are copied, the originals stay).
 
 The same install runs without a window with `scripts/install/tt-install.sh --iso /path/to/TableTennis.iso` from the unpacked folder; see [scripts/install/README.md](scripts/install/README.md).
+
+## Command line and game launchers
+
+Everything the installer window does also works from the command line, so a launcher (or a script) can install, start and update the game.
+
+**Installer** (`install-table-tennis`, or the AppImage, which passes everything through):
+
+| Option | What it does |
+|---|---|
+| `--play` | Start the installed game without opening setup. Opens setup when no game is found. |
+| `--dir DIR` | Install to `DIR` (offered first) and look for an installed game there first. The AppImage also keeps its unpacked copy in `DIR/.setup` instead of `~/.cache`. The `TT_DIR` environment variable does the same. |
+| `--iso PATH` | Start with this disc image (`.iso` or `.chd`), skipping the welcome screen. |
+| `--reinstall` | Skip the PLAY screen and set up again. |
+| `--update DIR` | Update the install in `DIR` with its stored choices. Exit code 0 updated, 10 play the current version. |
+| `--scan-dir DIR` | Also look for disc images in `DIR` (repeatable). |
+| `--size WxH` | Window size (default 1280x800). |
+
+Without a game, the installer looks in `--dir`, then where the application menu entry points, then `~/Games/TableTennis`, then `Games/TableTennis` on SD cards and external drives.
+
+**Install without a window** (`scripts/install/tt-install.sh` in the unpacked folder):
+
+| Option | What it does |
+|---|---|
+| `--iso PATH` | Your disc image (required). |
+| `--prefix DIR` | Install folder (default `~/Games/TableTennis`). |
+| `--cache DIR` | Build files, about 6 GB (default `DIR/.build`, or `~/.cache/tt-recomp` on FAT/exFAT/NTFS). |
+| `--steam yes\|no`, `--desktop yes\|no` | Add a Steam shortcut (default no) and an application menu entry (default yes). |
+| `--jobs N` | Parallel compile jobs. |
+| `--offline`, `--no-prebuilt`, `--release-url URL` | Use only what is cached; build the engine locally; take release files from elsewhere (`file://` works). |
+| `--toolchain auto\|podman\|docker\|host\|rootfs`, `--install-podman`, `--keep-build` | Build tool choices, see [scripts/install/README.md](scripts/install/README.md). |
+
+It prints `@@step`, `@@progress`, `@@error` and `@@done` lines for a front end to read.
+
+**Game** (`tt-recomp.sh` in the install folder): every `tt-recomp.ini` key is also a flag, for example `./tt-recomp.sh --fullscreen=true --resolution=1440p`. `--save` writes the flags back to the ini, and anything after `--` goes to the engine. The keys:
+
+| Flag | Values |
+|---|---|
+| `--iso` | path to the disc image |
+| `--resolution` | `720p` `800p` `1080p` `1440p` `4k` |
+| `--native_res` | `auto` `720p` `900p` `1080p` (the game's own render size) |
+| `--render_scale` | `auto` `1` `2` `3` |
+| `--framerate` | `60` `120` `144` `240` `0` (uncapped) |
+| `--fullscreen`, `--show_fps` | `true` `false` |
+| `--vsync` | `auto` `on` `off` |
+| `--aa` | `none` `fxaa` `fxaa_extreme` |
+| `--post` | `auto` `fsr` `cas` `bilinear` `integer` |
+| `--aspect` | `auto` `letterbox` `fill` |
+| `--brightness` | `0.8` to `2.0` |
+| `--texture_filtering` | `off` `2x` `4x` `8x` `16x` |
+| `--button_prompts` | `auto` `xbox` `playstation` |
+| `--haptics` | `off` `light` `normal` |
+| `--motion_swing` | `off` `light` `normal` `strong` |
+| `--subtitles` | `off` `announcer` `all` |
+| `--achievement_sound`, `--voice_chat`, `--system_link` | `true` `false` |
+| `--keyboard` | `on` `off` |
+| `--gamemode` | `auto` `off` (Feral GameMode when installed) |
+| `--portable` | `on` `off` (saves and shader cache in the game folder) |
+| `--player_name` | your name online and on System Link |
+| `--server` | `HOST[:PORT]` of the online server |
+| `--lan_peers` | `IP,IP` for networks without broadcasts |
+| `--online_redundancy` | `auto` `on` `off` |
+| `--check_updates`, `--auto_update` | `true` `false` |
 
 ## Updates
 

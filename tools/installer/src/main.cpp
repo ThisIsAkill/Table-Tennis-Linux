@@ -51,6 +51,11 @@ void Usage() {
       "Table Tennis setup for Linux and the Steam Deck\n\n"
       "  install-table-tennis [options]\n\n"
       "  --iso PATH        start with this disc image (skips the welcome screen)\n"
+      "  --dir DIR         install to DIR (offered first) and look for an installed game there;\n"
+      "                    also TT_DIR. The AppImage keeps its own files there too.\n"
+      "  --play            start the installed game without opening setup, if one is found\n"
+      "                    (--dir, the menu entry, ~/Games/TableTennis); else open setup\n"
+      "  --reinstall       skip the PLAY screen and set up again\n"
       "  --backend SCRIPT  use this setup script instead of scripts/install/tt-install.sh\n"
       "  --scan-dir DIR    also look for disc images here (may be repeated)\n"
       "  --size WxH        initial window size (default 1280x800)\n"
@@ -182,6 +187,14 @@ int main(int argc, char** argv) {
       return VerifyManifest(argv[i + 1], argv[i + 2], argv[i + 3]);
     } else if (arg == "--update") {
       config.update_dir = std::filesystem::absolute(value());
+    } else if (arg == "--dir") {
+      config.dir = std::filesystem::absolute(value());
+    } else if (arg.rfind("--dir=", 0) == 0) {
+      config.dir = std::filesystem::absolute(arg.substr(6));
+    } else if (arg == "--play") {
+      config.play = true;
+    } else if (arg == "--reinstall") {
+      config.reinstall = true;
     } else if (arg == "--iso") {
       config.iso = value();
     } else if (arg == "--backend") {
@@ -198,6 +211,18 @@ int main(int argc, char** argv) {
       Usage();
       return 2;
     }
+  }
+
+  if (!config.dir) {
+    if (const char* env = std::getenv("TT_DIR"); env && *env) config.dir = std::filesystem::absolute(env);
+  }
+  if (config.play && !config.update_dir) {
+    if (auto installed = tt::FindInstalled(config)) {
+      if (tt::LaunchInstalled(*installed)) return 0;
+      std::fprintf(stderr, "Could not start %s\n", (installed->dir / "tt-recomp.sh").c_str());
+      return 1;
+    }
+    std::fprintf(stderr, "No installed game found; opening setup.\n");
   }
 
   const std::filesystem::path exe_dir = tt::sys::ExecutableDir();

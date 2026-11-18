@@ -6,7 +6,8 @@
 #
 # PACKAGE is install-table-tennis-linux-x86_64.tar.gz from make-release.sh (the installer window,
 # tt-chd-read and the source snapshot, nothing from the game). The AppImage holds that tree
-# unchanged; its AppRun copies it to ~/.cache/tt-recomp/installer-<version> on first start and
+# unchanged; its AppRun copies it to ~/.cache/tt-recomp/installer-<version> (or DIR/.setup with
+# --dir DIR / TT_DIR) on first start and
 # runs the installer from there, because container builds (podman, docker) cannot bind-mount
 # the AppImage's own read-only FUSE mount.
 #
@@ -75,11 +76,28 @@ EOF
 
 cat > "$appdir/AppRun" <<'EOF'
 #!/usr/bin/env bash
-# Copies the installer to the user's cache once per version, then runs it from there.
+# Copies the installer out of the AppImage once per version, then runs it from there. With
+# --dir DIR (or TT_DIR) the copy goes in DIR/.setup and DIR is the install folder, so the game,
+# its build files and this copy all live in one folder; else it goes in ~/.cache/tt-recomp.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 version="$(head -n 1 "$here/TableTennis-Installer/VERSION" | tr -d '[:space:]')"
-base="${XDG_CACHE_HOME:-$HOME/.cache}/tt-recomp"
+dir="${TT_DIR:-}"
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case "${args[i]}" in
+    --dir) dir="${args[i + 1]:-}" ;;
+    --dir=*) dir="${args[i]#--dir=}" ;;
+  esac
+done
+if [[ -n "$dir" ]]; then
+  mkdir -p -- "$dir"
+  dir="$(cd -- "$dir" && pwd)"
+  export TT_DIR="$dir"
+  base="$dir/.setup"
+else
+  base="${XDG_CACHE_HOME:-$HOME/.cache}/tt-recomp"
+fi
 dest="$base/installer-$version"
 if [[ ! -f "$dest/.complete" ]]; then
   mkdir -p "$base"
@@ -88,6 +106,10 @@ if [[ ! -f "$dest/.complete" ]]; then
   touch "$tmp/.complete"
   rm -rf "${dest:?}"
   mv "$tmp" "$dest"
+  # Older versions' copies are no longer needed once this one is in place.
+  for old in "$base"/installer-*; do
+    [[ "$old" != "$dest" && -f "$old/.complete" ]] && rm -rf "${old:?}"
+  done
 fi
 exec "$dest/install-table-tennis" "$@"
 EOF

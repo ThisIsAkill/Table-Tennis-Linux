@@ -36,6 +36,9 @@ struct Mount {
 std::vector<Mount> UserMounts();
 
 bool IsSteamOS();
+// False for FAT, exFAT and NTFS (and other FUSE block filesystems): drives without symbolic links
+// or Unix permissions, which cannot hold the build files. Checks the nearest existing ancestor.
+bool IsLinuxFilesystem(const std::filesystem::path& path);
 bool IsExecutableFile(const std::filesystem::path& path);
 std::string FormatBytes(uint64_t bytes);  // "7.3 GB"
 

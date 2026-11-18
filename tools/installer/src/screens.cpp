@@ -76,6 +76,53 @@ float BodyTextCentered(ui::Frame& f, float cx, float y, float w, const char* tex
 }  // namespace
 
 // ==============================================================================================
+// 0. Installed: the game is already built; play it, update it, or set up again
+// ==============================================================================================
+
+void App::DrawInstalled() {
+  ui::Frame& f = ui.f;
+  const float s = f.s;
+  ui.Header("Table Tennis", "Installed", 0, 0);
+  const Rect c = ui.Content();
+  const float t = SinceEnter();
+  const float in = EaseOutCubic(Stage(t, 0.0f, 0.3f));
+  const float rise = (1.0f - in) * 14.0f * s;
+  const float panel_w = std::min(720.0f * s, c.w());
+  const float panel_h = std::min(440.0f * s, c.h());
+  const float top = c.y0 + (c.h() - panel_h) * 0.35f + rise;
+  const Rect p{(f.W - panel_w) * 0.5f, top, (f.W + panel_w) * 0.5f, top + panel_h};
+  ui.Panel(p);
+  const float cx = (p.x0 + p.x1) * 0.5f;
+
+  HeadlineCentered(f, cx, p.y0 + 34.0f * s, 46.0f * s, "Ready to play");
+  const std::string version = installed->version.empty() ? "Development build" : "Version " + installed->version;
+  const std::string where = version + "  \xc2\xb7  " + FitPath(Body(), 14.5f * s, p.w() - 140.0f * s, installed->dir.string());
+  BodyTextCentered(f, cx, p.y0 + 98.0f * s, p.w() - 80.0f * s, where.c_str(), Grey(), 14.5f * s);
+
+  const float pw = 300.0f * s, ph = 64.0f * s;
+  const Rect play{cx - pw * 0.5f, p.y0 + 140.0f * s, cx + pw * 0.5f, p.y0 + 140.0f * s + ph};
+  if (ui.Button("play", play, "Play", Style::Primary, true, "A")) Play();
+  const float sw = 240.0f * s, sh = 46.0f * s, gap = 12.0f * s;
+  float y = play.y1 + 18.0f * s;
+  const Rect update{cx - sw - gap * 0.5f, y, cx - gap * 0.5f, y + sh};
+  if (ui.Button("update", update, "Check for updates", Style::Secondary)) StartUpdateFromPlay();
+  const Rect open{cx + gap * 0.5f, y, cx + sw + gap * 0.5f, y + sh};
+  if (ui.Button("open", open, "Open game folder", Style::Secondary)) sys::OpenInFileManager(installed->dir);
+  y = update.y1 + gap;
+  const Rect again{cx - sw * 0.5f, y, cx + sw * 0.5f, y + sh};
+  if (ui.Button("again", again, "Install again or elsewhere", Style::Secondary)) Enter(Screen::Welcome);
+
+  BodyTextCentered(f, cx, again.y1 + 22.0f * s, p.w() - 80.0f * s,
+                   installed->portable
+                       ? "Everything the game keeps is inside its folder: saves, settings and build files. Delete the folder to remove it."
+                       : "Saves are in ~/.local/share/tabletennis. To keep them in the game folder instead, set portable=on in tt-recomp.ini.",
+                   Grey(), 13.5f * s);
+  if (f.t < notice_until && !notice.empty()) {
+    BodyTextCentered(f, cx, p.y1 - 30.0f * s, p.w() - 80.0f * s, notice.c_str(), Orange(), 14.0f * s);
+  }
+}
+
+// ==============================================================================================
 // 1. Welcome: drop zone, browse, discs found on this computer
 // ==============================================================================================
 void App::DrawWelcome() {
@@ -375,7 +422,6 @@ void App::DrawOptions() {
         OpenFolderDialog();
       } else {
         location = int(i);
-        cache_on_target = home_free < kSetupBytes && CurrentLocation().device != home_device;
       }
     }
     y += card_h + 8.0f * s;
@@ -399,15 +445,6 @@ void App::DrawOptions() {
   ui.Toggle("desktop", {right_x, ry, right_x + right_w, ry + toggle_h}, "Desktop shortcut",
             "A Table Tennis entry in your applications menu and on the desktop.", desktop);
   ry += toggle_h + 8.0f * s;
-  const bool other_drive = CurrentLocation().device != 0 && CurrentLocation().device != home_device;
-  if (other_drive) {
-    const std::string sub = "Put the ~10 GB of build files next to the game instead of in your home folder (" +
-                            sys::FormatBytes(home_free) + " free). Needs a Linux filesystem such as ext4, not exFAT.";
-    const float cache_h = 76.0f * s;
-    ui.Toggle("cache", {right_x, ry, right_x + right_w, ry + cache_h}, "Keep build files on the same drive", sub.c_str(),
-              cache_on_target);
-    ry += cache_h + 8.0f * s;
-  }
 
   // What to expect.
   ry += 8.0f * s;
@@ -418,9 +455,9 @@ void App::DrawOptions() {
   ui.Panel(info, 0.8f);
   {
     const fs::path cache_dir = CacheDir().value_or(sys::HomeDir() / ".cache" / "tt-recomp");
-    const std::string space_line = "About 10 GB of space while setting up, for build tools and caches (in " +
+    const std::string space_line = "About 10 GB for build tools and caches, kept in " +
                                    FitPath(Body(), 14.0f * s, right_w * 0.5f, cache_dir.string()) +
-                                   "). The installed game itself is small.";
+                                   " so updates are quick. Delete the game folder to remove everything.";
     const char* lines[4] = {"20 to 40 minutes the first time; the game is compiled on this computer.", space_line.c_str(),
                             "Missing build tools are downloaded automatically, one time.",
                             "Nothing from the disc is uploaded. You can keep using the computer meanwhile."};
@@ -658,7 +695,7 @@ void App::DrawDone() {
   dl->AddCircle(badge, br, White(0.4f), 48, 2.0f * s);
   Tick(dl, badge, br * 1.2f, White(), 6.0f * s * std::max(pop, 0.1f));
 
-  HeadlineCentered(f, cx, p.y0 + 136.0f * s, 46.0f * s, UpdateMode() ? "Update installed" : "Ready to play");
+  HeadlineCentered(f, cx, p.y0 + 136.0f * s, 46.0f * s, !UpdateMode() ? "Ready to play" : update_none ? "Up to date" : "Update installed");
   const fs::path dir = inst.done_dir.empty() ? Prefix() : fs::path(inst.done_dir);
   const std::string where = "Installed to " + dir.string();
   BodyTextCentered(f, cx, p.y0 + 200.0f * s, p.w() - 80.0f * s, where.c_str(), Grey(), 14.5f * s);
@@ -675,7 +712,8 @@ void App::DrawDone() {
   const float col_w = p.w() - 80.0f * s;
   const float x = cx - col_w * 0.5f;
   // Show the Steam card only for what the backend reports (older backends report nothing).
-  const bool steam_added = steam_result.empty() ? steam : steam_result == "added";
+  // An update keeps the install's shortcuts as they were; only a fresh install reports them.
+  const bool steam_added = UpdateMode() ? false : steam_result.empty() ? steam : steam_result == "added";
   const bool steam_requested = steam_result == "requested";
   if (steam_added || steam_requested) {
     const Rect card{x, y, x + col_w, y + 66.0f * s};
@@ -689,7 +727,7 @@ void App::DrawDone() {
              White(0.85f), 14.0f * s);
     y = card.y1 + 10.0f * s;
   }
-  if (desktop) {
+  if (desktop && !UpdateMode()) {
     BodyText(f, x + 2.0f * s, y, col_w, "A Table Tennis shortcut was added to your applications menu and desktop.", Grey(), 13.5f * s);
     y += 24.0f * s;
   }
