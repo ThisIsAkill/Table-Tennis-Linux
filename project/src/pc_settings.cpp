@@ -16,6 +16,7 @@ using tabletennis::NowNs;  // tabletennis::NowNs(), unqualified in this file
 #include "photo_mode.h"
 #include "intro_skip.h"
 #include "system_link.h"
+#include "l10n.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -92,7 +93,7 @@ struct Row {
 enum RowId {
   kResolution, kFullscreen, kPicture, kAntiAliasing, kSharpening, kVsync, kBrightness, kShowFps, kHaptics,
   kAchievementSound, kButtonPrompts, kNativeRes, kRenderScale, kTextureFiltering, kMotionSwing,
-  kSubtitles,
+  kSubtitles, kLanguage,
   // ONLINE section
   kPlayerName, kOnlineServer, kOnlineStatus, kVoiceChat, kAccount, kShowLinkCode, kEnterLinkCode,
   // UPDATES section
@@ -101,13 +102,13 @@ enum RowId {
 
 // Tabs (LB / RB), each with its own rows in this order.
 enum Tab { kTabDisplay, kTabGraphics, kTabGame, kTabOnline, kTabUpdates, kTabCount };
-constexpr const char* kTabNames[kTabCount] = {"DISPLAY", "GRAPHICS", "GAME", "ONLINE", "UPDATES"};
+constexpr const char* kTabNames[kTabCount] = {N("DISPLAY"), N("GRAPHICS"), N("GAME"), N("ONLINE"), N("UPDATES")};
 
 const std::vector<int>& TabRows(int tab) {
   static const std::vector<int> rows[kTabCount] = {
       {kResolution, kFullscreen, kPicture, kVsync, kBrightness, kShowFps},
       {kNativeRes, kRenderScale, kTextureFiltering, kAntiAliasing, kSharpening},
-      {kButtonPrompts, kHaptics, kMotionSwing, kSubtitles, kAchievementSound},
+      {kButtonPrompts, kHaptics, kMotionSwing, kSubtitles, kLanguage, kAchievementSound},
       {kPlayerName, kAccount, kShowLinkCode, kEnterLinkCode, kOnlineServer, kOnlineStatus, kVoiceChat},
       {kCheckNow, kCheckUpdates, kAutoUpdate, kVersion}};
   return rows[tab];
@@ -117,112 +118,117 @@ int g_tab = kTabDisplay;  // UI thread; the page reopens on the last tab used
 
 std::vector<Row> MakeRows() {
   return {
-      {"resolution", "RESOLUTION", "Window size. The game renders at GRAPHICS > GAME RESOLUTION "
+      {"resolution", N("RESOLUTION"), N("Window size. The game renders at GRAPHICS > GAME RESOLUTION "
        "and is scaled to the window; for a sharper picture on large screens use SHARPENING (FSR) "
-       "or, on a fast graphics card, GRAPHICS > RENDER SCALE.", Apply::kLive,
+       "or, on a fast graphics card, GRAPHICS > RENDER SCALE."), Apply::kLive,
        {{"720p", "1280 X 720"}, {"800p", "1280 X 800"}, {"1080p", "1920 X 1080"},
         {"1440p", "2560 X 1440"}, {"4k", "3840 X 2160"}},
        2},
-      {"fullscreen", "FULLSCREEN", "Fill the whole display instead of a window.", Apply::kLive,
-       {{"false", "OFF"}, {"true", "ON"}},
+      {"fullscreen", N("FULLSCREEN"), N("Fill the whole display instead of a window."), Apply::kLive,
+       {{"false", N("OFF")}, {"true", N("ON")}},
        0},
-      {"aspect", "PICTURE", "Screens that are not 16:9. FILL widens the 3D view on wider screens "
+      {"aspect", N("PICTURE"), N("Screens that are not 16:9. FILL widens the 3D view on wider screens "
        "(menus stay 16:9) and shows more at the top and bottom on narrower ones such as the Steam "
        "Deck (menus stretch slightly). LETTERBOX keeps the original picture with bars. AUTO fills "
-       "wider screens and letterboxes narrower ones.", Apply::kLive,
-       {{"auto", "AUTO"}, {"letterbox", "LETTERBOX"}, {"fill", "FILL SCREEN"}},
+       "wider screens and letterboxes narrower ones."), Apply::kLive,
+       {{"auto", "AUTO"}, {"letterbox", N("LETTERBOX")}, {"fill", N("FILL SCREEN")}},
        0},
-      {"aa", "ANTI-ALIASING", "Smooths jagged edges with FXAA after each frame.", Apply::kLive,
-       {{"none", "OFF"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
+      {"aa", N("ANTI-ALIASING"), N("Smooths jagged edges with FXAA after each frame."), Apply::kLive,
+       {{"none", N("OFF")}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA EXTREME"}},
        0},
-      {"post", "SHARPENING", "The game renders at GAME RESOLUTION (times RENDER SCALE). AUTO "
+      {"post", N("SHARPENING"), N("The game renders at GAME RESOLUTION (times RENDER SCALE). AUTO "
        "upscales it with FSR to windows at least 1.4 times as tall. CAS sharpens (good on the Steam "
        "Deck); FSR upscales and sharpens. INTEGER keeps menus and text crisp when the window is a "
        "whole multiple of the picture (1080P on a 4K screen: each pixel a clean 2 X 2 block); use it "
-       "with RENDER SCALE 1X, since at 2X a 1080P game already fills a 4K screen.",
+       "with RENDER SCALE 1X, since at 2X a 1080P game already fills a 4K screen."),
        Apply::kLive,
-       {{"auto", "AUTO"}, {"bilinear", "OFF"}, {"cas", "CAS"}, {"fsr", "FSR"}, {"integer", "INTEGER"}},
+       {{"auto", "AUTO"}, {"bilinear", N("OFF")}, {"cas", "CAS"}, {"fsr", "FSR"}, {"integer", N("INTEGER")}},
        0},
-      {"vsync", "VSYNC", "Waits for the display before showing each frame, so the picture does not "
-       "tear. AUTO is on for macOS and off elsewhere (lowest latency).", Apply::kLive,
-       {{"auto", "AUTO"}, {"on", "ON"}, {"off", "OFF"}},
+      {"vsync", N("VSYNC"), N("Waits for the display before showing each frame, so the picture does not "
+       "tear. AUTO is on for macOS and off elsewhere (lowest latency)."), Apply::kLive,
+       {{"auto", "AUTO"}, {"on", N("ON")}, {"off", N("OFF")}},
        0},
-      {"brightness", "BRIGHTNESS", "Lightens dark and middle tones; white stays white. NORMAL is the "
-       "picture as the game draws it.", Apply::kLive,
-       {{"0.8", "-2"}, {"0.9", "-1"}, {"1.0", "NORMAL"}, {"1.15", "+1"}, {"1.3", "+2"}, {"1.5", "+3"},
+      {"brightness", N("BRIGHTNESS"), N("Lightens dark and middle tones; white stays white. NORMAL is the "
+       "picture as the game draws it."), Apply::kLive,
+       {{"0.8", "-2"}, {"0.9", "-1"}, {"1.0", N("NORMAL")}, {"1.15", "+1"}, {"1.3", "+2"}, {"1.5", "+3"},
         {"1.75", "+4"}, {"2.0", "+5"}},
        2},
-      {"show_fps", "SHOW FPS", "Frame rate counter in the top left corner (F10).", Apply::kLive,
-       {{"false", "OFF"}, {"true", "ON"}},
+      {"show_fps", N("SHOW FPS"), N("Frame rate counter in the top left corner (F10)."), Apply::kLive,
+       {{"false", N("OFF")}, {"true", N("ON")}},
        0},
-      {"haptics", "HAPTICS", "Controller pulse on every ball hit and a tick in menus. LIGHT eases "
+      {"haptics", N("HAPTICS"), N("Controller pulse on every ball hit and a tick in menus. LIGHT eases "
        "them off (gentler menu ticks on a controller with two rumble motors, such as the Steam "
-       "Controller or a DualSense; the Steam Deck is the same either way).", Apply::kLive,
-       {{"off", "OFF"}, {"light", "LIGHT"}, {"normal", "NORMAL"}},
+       "Controller or a DualSense; the Steam Deck is the same either way)."), Apply::kLive,
+       {{"off", N("OFF")}, {"light", N("LIGHT")}, {"normal", N("NORMAL")}},
        2},
-      {"achievement_sound", "ACHIEVEMENT SOUND", "Play a chime when an achievement unlocks.",
+      {"achievement_sound", N("ACHIEVEMENT SOUND"), N("Play a chime when an achievement unlocks."),
        Apply::kLive,
-       {{"false", "OFF"}, {"true", "ON"}},
+       {{"false", N("OFF")}, {"true", N("ON")}},
        1},
-      {"button_prompts", "BUTTON PROMPTS", "Button icons in the menus. AUTO shows PlayStation icons "
-       "while a PlayStation controller is in use and Xbox icons otherwise.", Apply::kLive,
+      {"button_prompts", N("BUTTON PROMPTS"), N("Button icons in the menus. AUTO shows PlayStation icons "
+       "while a PlayStation controller is in use and Xbox icons otherwise."), Apply::kLive,
        {{"auto", "AUTO"}, {"xbox", "XBOX"}, {"playstation", "PLAYSTATION"}},
        0},
-      {"native_res", "GAME RESOLUTION", "The size the game itself renders at, menus and HUD "
+      {"native_res", N("GAME RESOLUTION"), N("The size the game itself renders at, menus and HUD "
        "included; the Xbox 360 rendered at 720p. 1080P is sharp on 1080p screens and costs about "
        "twice the GPU work of 720P. AUTO is 1080P for 1080p and larger windows and 720P for "
        "smaller ones such as the Steam Deck; if 1080P cannot hold 60 FPS in a match, AUTO uses 720P "
-       "from the next start. Applies at the next start.", Apply::kRestart,
+       "from the next start. Applies at the next start."), Apply::kRestart,
        {{"auto", "AUTO"}, {"720p", "720P"}, {"900p", "900P"}, {"1080p", "1080P"}},
        0},
-      {"render_scale", "RENDER SCALE", "Multiples of GAME RESOLUTION (supersampling). WARNING: "
+      {"render_scale", N("RENDER SCALE"), N("Multiples of GAME RESOLUTION (supersampling). WARNING: "
        "very demanding. 2X needs about 3 times the GPU power of 1X (3840 X 2160 at 1080P); 3X about "
        "14 times, for the fastest GPUs only. AUTO starts at 1X and moves up only after a match "
-       "holds 60 FPS.", Apply::kRestart,
+       "holds 60 FPS."), Apply::kRestart,
        {{"auto", "AUTO"}, {"1", "1X"}, {"2", "2X"}, {"3", "3X"}},
        0},
-      {"texture_filtering", "TEXTURE FILTERING", "Anisotropic filtering keeps the floor, the "
+      {"texture_filtering", N("TEXTURE FILTERING"), N("Anisotropic filtering keeps the floor, the "
        "table and the walls sharp when seen at a shallow angle. The Xbox 360 used little or none; "
-       "16X costs almost nothing on current hardware.", Apply::kLive,
-       {{"off", "OFF"}, {"2x", "2X"}, {"4x", "4X"}, {"8x", "8X"}, {"16x", "16X"}},
-       4},
-      {"motion_swing", "MOTION SWING", "Play shots with a flick of the wrist, on a controller with "
+       "16X costs almost nothing on current graphics cards. AUTO is 16X, or OFF when the GPU cannot "
+       "hold 60 FPS even at 720P (integrated graphics)."), Apply::kLive,
+       {{"auto", "AUTO"}, {"off", N("OFF")}, {"2x", "2X"}, {"4x", "4X"}, {"8x", "8X"}, {"16x", "16X"}},
+       0},
+      {"motion_swing", N("MOTION SWING"), N("Play shots with a flick of the wrist, on a controller with "
        "a gyro (DualSense, DualShock 4, Switch Pro; Steam Deck with Steam Input off for the game). "
        "Tip the top forward for topspin, back for backspin, turn left or right for sidespin. "
-       "STRONG needs a firm flick, LIGHT a gentle one. Only during a rally.", Apply::kLive,
-       {{"off", "OFF"}, {"strong", "STRONG"}, {"normal", "NORMAL"}, {"light", "LIGHT"}},
+       "STRONG needs a firm flick, LIGHT a gentle one. Only during a rally."), Apply::kLive,
+       {{"off", N("OFF")}, {"strong", N("STRONG")}, {"normal", N("NORMAL")}, {"light", N("LIGHT")}},
        0},
-      {"subtitles", "SUBTITLES", "Captions at the bottom of the screen. ANNOUNCER shows what the "
+      {"subtitles", N("SUBTITLES"), N("Captions at the bottom of the screen. ANNOUNCER shows what the "
        "match announcer says (scores, serves, faults, points, players). ALL SOUNDS also tags crowd "
-       "reactions such as cheers, applause and gasps.", Apply::kLive,
-       {{"off", "OFF"}, {"announcer", "ANNOUNCER"}, {"all", "ALL SOUNDS"}},
+       "reactions such as cheers, applause and gasps."), Apply::kLive,
+       {{"off", N("OFF")}, {"announcer", N("ANNOUNCER")}, {"all", N("ALL SOUNDS")}},
        0},
-      {"player_name", "PLAYER NAME", "The name other players see online and in SYSTEM LINK. Press A "
-       "to change it (player_name= in tt-recomp.ini).", Apply::kRestart, {}, 0},
-      {"", "ONLINE SERVER", "The server ONLINE in the main menu plays through (server= in "
-       "tt-recomp.ini).", Apply::kInfo, {}, 0},
-      {"", "ONLINE STATUS", "", Apply::kInfo, {}, 0},
-      {"voice_chat", "VOICE CHAT", "Headset voice chat during ONLINE and SYSTEM LINK matches. "
-       "Needs a microphone; others hear you while you talk.", Apply::kLive,
-       {{"false", "OFF"}, {"true", "ON"}},
-       1},
-      {"", "RANKED ACCOUNT", "", Apply::kInfo, {}, 0},
-      {"", "SHOW LINK CODE", "Shows a one-time code (valid 5 minutes) that adds another PC or "
-       "Steam Deck to this account, so ranked results and leaderboards stay together. Press A.",
-       Apply::kInfo, {}, 0},
-      {"", "ENTER LINK CODE", "Joins this device to the account that showed the code. Its ranked "
-       "results and leaderboard place are then shared with that device. Press A.",
-       Apply::kInfo, {}, 0},
-      {"check_updates", "CHECK AT START", "Look for a new version each time the game starts.",
-       Apply::kSaved,
-       {{"false", "OFF"}, {"true", "ON"}},
-       1},
-      {"auto_update", "AUTOMATIC UPDATES", "Install new versions when the game starts.",
-       Apply::kSaved,
-       {{"false", "OFF"}, {"true", "ON"}},
+      {"language", N("LANGUAGE"), N("Menus and text in the game's own translations from your disc. "
+       "Applies at the next start."), Apply::kRestart,
+       {{"en", "ENGLISH"}, {"fr", "FRAN\xc3\x87" "AIS"}, {"de", "DEUTSCH"}, {"es", "ESPA\xc3\x91OL"}, {"it", "ITALIANO"}},
        0},
-      {"", "CHECK NOW", "", Apply::kInfo, {}, 0},
-      {"", "VERSION", "", Apply::kInfo, {}, 0},
+      {"player_name", N("PLAYER NAME"), N("The name other players see online and in SYSTEM LINK. Press A "
+       "to change it (player_name= in tt-recomp.ini)."), Apply::kRestart, {}, 0},
+      {"", N("ONLINE SERVER"), N("The server ONLINE in the main menu plays through (server= in "
+       "tt-recomp.ini)."), Apply::kInfo, {}, 0},
+      {"", N("ONLINE STATUS"), "", Apply::kInfo, {}, 0},
+      {"voice_chat", N("VOICE CHAT"), N("Headset voice chat during ONLINE and SYSTEM LINK matches. "
+       "Needs a microphone; others hear you while you talk."), Apply::kLive,
+       {{"false", N("OFF")}, {"true", N("ON")}},
+       1},
+      {"", N("RANKED ACCOUNT"), "", Apply::kInfo, {}, 0},
+      {"", N("SHOW LINK CODE"), N("Shows a one-time code (valid 5 minutes) that adds another PC or "
+       "Steam Deck to this account, so ranked results and leaderboards stay together. Press A."),
+       Apply::kInfo, {}, 0},
+      {"", N("ENTER LINK CODE"), N("Joins this device to the account that showed the code. Its ranked "
+       "results and leaderboard place are then shared with that device. Press A."),
+       Apply::kInfo, {}, 0},
+      {"check_updates", N("CHECK AT START"), N("Look for a new version each time the game starts."),
+       Apply::kSaved,
+       {{"false", N("OFF")}, {"true", N("ON")}},
+       1},
+      {"auto_update", N("AUTOMATIC UPDATES"), N("Install new versions when the game starts."),
+       Apply::kSaved,
+       {{"false", N("OFF")}, {"true", N("ON")}},
+       0},
+      {"", N("CHECK NOW"), "", Apply::kInfo, {}, 0},
+      {"", N("VERSION"), "", Apply::kInfo, {}, 0},
   };
 }
 
@@ -271,55 +277,67 @@ bool ValidRoomCode(const std::string& code) {
          std::all_of(code.begin(), code.end(), [](char c) { return std::strchr(kRoomAlphabet, c); });
 }
 
+// The online client's states and the server's messages (upper-cased by the client), translated
+// where they are shown with T(state).
+[[maybe_unused]] constexpr const char* kOnlineStates[] = {
+    N("OFF"), N("NO SERVER SET"), N("ENTER A ROOM CODE"), N("SERVER NOT FOUND"), N("CONNECTING"),
+    N("NO ANSWER FROM SERVER"), N("RECONNECTING"), N("CONNECTED"),
+    N("THIS SERVER SPEAKS A DIFFERENT VERSION; UPDATE THE GAME"), N("INVALID ROOM CODE"),
+    N("SERVER IS FULL"), N("TOO MANY PLAYERS FROM THIS ADDRESS"), N("ROOM IS FULL"),
+    N("{} PLAYER"), N("{} PLAYERS")};
+
 // Value and description of the STATUS row, from the online client.
 std::string OnlineStatusText(std::string* help) {
+  using l10n::F;
+  using l10n::T;
   const auto status = rex::system::net::GetOnlineStatus();
   if (status.mode != "public" && status.mode != "room") {
-    *help = "Not online. ONLINE in the main menu connects; SYSTEM LINK plays on the local network.";
-    return "NOT CONNECTED";
+    *help = T("Not online. ONLINE in the main menu connects; SYSTEM LINK plays on the local network.");
+    return T("NOT CONNECTED");
   }
   if (!status.connected) {
     *help = status.state == "NO SERVER SET"
-                ? "No online server is set (server= in tt-recomp.ini)."
-                : "Connecting to the online server.";
-    return status.state;
+                ? T("No online server is set (server= in tt-recomp.ini).")
+                : T("Connecting to the online server.");
+    return T(status.state.c_str());
   }
-  const std::string where = status.mode == "room" ? "ROOM " + status.room : "PUBLIC";
-  *help = "Connected. " + std::to_string(status.players_online) + " players online. Matches with " +
-          std::to_string(status.direct_peers) + " player(s) run directly, " +
-          std::to_string(status.relayed_peers) + " through the server.";
-  if (status.server_rtt_ms >= 0) *help += " Server: " + std::to_string(status.server_rtt_ms) + " ms.";
+  const std::string where = status.mode == "room" ? F("ROOM {}", {status.room}) : T("PUBLIC");
+  *help = F("Connected. {} players online. Matches with {} player(s) run directly, {} through the server.",
+            {std::to_string(status.players_online), std::to_string(status.direct_peers),
+             std::to_string(status.relayed_peers)});
+  if (status.server_rtt_ms >= 0) *help += " " + F("Server: {} ms.", {std::to_string(status.server_rtt_ms)});
   if (status.opponent >= 0 && status.peers[size_t(status.opponent)].rtt_ms >= 0) {
     const auto& peer = status.peers[size_t(status.opponent)];
     *help += " " + peer.name + ": " + std::to_string(peer.rtt_ms) + " ms.";
   }
-  return where + ": " + std::to_string(status.room_players) +
-         (status.room_players == 1 ? " PLAYER" : " PLAYERS");
+  return where + ": " +
+         F(status.room_players == 1 ? "{} PLAYER" : "{} PLAYERS", {std::to_string(status.room_players)});
 }
 
 // Value and description of the RANKED ACCOUNT row.
 std::string AccountText(std::string* help) {
   using rex::system::ranked::AccountStatus;
+  using l10n::T;
   switch (rex::system::ranked::GetAccountStatus()) {
     case AccountStatus::kOffline:
-      *help = "Ranked matches and leaderboards use an account named after the player name. It is "
-              "created when you go ONLINE.";
-      return "NOT ONLINE";
+      *help = T("Ranked matches and leaderboards use an account named after the player name. It is "
+                "created when you go ONLINE.");
+      return T("NOT ONLINE");
     case AccountStatus::kPending:
-      *help = "Talking to the online server...";
-      return "CONNECTING...";
+      *help = T("Talking to the online server...");
+      return T("CONNECTING...");
     case AccountStatus::kReady:
-      *help = "Ranked results and leaderboard places are saved to this account. Use SHOW LINK "
-              "CODE to play with it on another device.";
+      *help = T("Ranked results and leaderboard places are saved to this account. Use SHOW LINK "
+                "CODE to play with it on another device.");
       return rex::system::ranked::AccountName();
     case AccountStatus::kNameTaken:
-      *help = "Another account already uses this player name. If it is yours, use ENTER LINK "
-              "CODE with a code from your other device; otherwise pick another PLAYER NAME.";
-      return "NAME TAKEN";
+      *help = T("Another account already uses this player name. If it is yours, use ENTER LINK "
+                "CODE with a code from your other device; otherwise pick another PLAYER NAME.");
+      return T("NAME TAKEN");
     case AccountStatus::kError:
     default:
-      *help = "The online server could not be reached. Press A to try again.";
-      return "NOT REACHABLE";
+      *help = T("The online server could not be reached. Press A to try again.");
+      return T("NOT REACHABLE");
   }
 }
 
@@ -627,9 +645,13 @@ std::string SharpeningEffect() {
 // GAME RESOLUTION AUTO is measured the same way: when it chose 1080p and that cannot hold 60 FPS at
 // 1X, native_res_auto=720p makes the launcher use 720p from the next start (choosing GAME
 // RESOLUTION again clears it).
+// TEXTURE FILTERING AUTO is 16X until the measurement finds that even 720p at 1X cannot hold 60 FPS
+// on a busy GPU (integrated graphics): then texture_filtering_auto=off turns it off, at once and
+// from then on (choosing TEXTURE FILTERING again clears it).
 struct AutoScale {
   bool initialised = false, active = false, decided = false, match_seen = false;
   bool scale_auto = false, native_trial = false;
+  bool texture_auto = false, texture_off = false;  // TEXTURE FILTERING AUTO; already turned off
   int level = 1, cap = 1, failed = 0;
   std::vector<float> fps;
   std::vector<double> gpu_ms;
@@ -680,7 +702,12 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
     const auto native_it = ini.find("native_res");
     a.native_trial = (native_it == ini.end() || native_it->second == "auto") && NativeHeight() > 720 &&
                      a.level == 1;
-    a.active = a.scale_auto || a.native_trial;
+    const auto texture_it = ini.find("texture_filtering");
+    a.texture_auto = texture_it == ini.end() || texture_it->second == "auto";
+    const auto texture_auto_it = ini.find("texture_filtering_auto");
+    a.texture_off = texture_auto_it != ini.end() && texture_auto_it->second == "off";
+    a.active = a.scale_auto || a.native_trial ||
+               (a.texture_auto && !a.texture_off && a.level == 1 && NativeHeight() <= 720);
     const auto failed_it = ini.find("render_scale_auto_failed");
     a.failed = failed_it == ini.end() ? 0 : std::atoi(failed_it->second.c_str());
     int width = 1280, height = 720;
@@ -701,7 +728,12 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
   // behind the game's own frame rate falls too (the CPU waits for it), so the slower of the two is
   // what the player sees. A slow game with an idle GPU is loading or a CPU stall: skip that sample.
   const float game_fps = tabletennis::pacing::GetStats().fps;
-  const double gpu_ms = rex::system::gpu_frame_time::LastMs();
+  // Test hook: TT_TEST_GPU_MS=<ms> reports this GPU time per frame (a GPU that cannot keep up).
+  static const double test_gpu_ms = [] {
+    const char* value = std::getenv("TT_TEST_GPU_MS");
+    return value ? std::atof(value) : -1.0;
+  }();
+  const double gpu_ms = test_gpu_ms >= 0.0 ? test_gpu_ms : rex::system::gpu_frame_time::LastMs();
   const bool gpu_busy = gpu_ms >= 13.0;  // most of a 16.7 ms frame
   if (game_fps < 55.0f && !gpu_busy) return;
   const float fps = std::min(presented_fps, game_fps > 0.0f ? game_fps : presented_fps);
@@ -723,25 +755,36 @@ void UpdateAutoRenderScale(float presented_fps, bool page_open) {
   std::sort(gpu.begin(), gpu.end());
   const double gpu_median = gpu[gpu.size() / 2];
   const bool holds = median >= 58.0f && low >= 50.0f;
-  char measured[96];
-  std::snprintf(measured, sizeof(measured), "%.0f FPS, slowest tenth %.0f, GPU %.1f ms per frame",
-                median, low, gpu_median);
+  using l10n::F;
+  char numbers[3][16];
+  std::snprintf(numbers[0], sizeof(numbers[0]), "%.0f", median);
+  std::snprintf(numbers[1], sizeof(numbers[1]), "%.0f", low);
+  std::snprintf(numbers[2], sizeof(numbers[2]), "%.1f", gpu_median);
+  const std::string measured =
+      F("{} FPS, slowest tenth {}, GPU {} ms per frame", {numbers[0], numbers[1], numbers[2]});
   const std::string here = std::to_string(a.level) + "X";
   if (!holds && a.native_trial) {
     WriteIniValue("native_res_auto", "720p");
-    a.status = "AUTO: " + std::to_string(NativeHeight()) + "p could not hold 60 FPS (" +
-               std::string(measured) + "); GAME RESOLUTION AUTO uses 720p from the next start.";
+    a.status = F("AUTO: {}p could not hold 60 FPS ({}); GAME RESOLUTION AUTO uses 720p from the next start.",
+                 {std::to_string(NativeHeight()), measured});
   } else if (holds && a.scale_auto && a.level < a.cap && (a.failed == 0 || a.level + 1 < a.failed)) {
     WriteIniValue("render_scale_auto", std::to_string(a.level + 1));
-    a.status = "AUTO: " + here + " holds 60 FPS here (" + measured + "); the next start tries " +
-               std::to_string(a.level + 1) + "X.";
+    a.status = F("AUTO: {} holds 60 FPS here ({}); the next start tries {}X.",
+                 {here, measured, std::to_string(a.level + 1)});
   } else if (!holds && a.scale_auto && a.level > 1) {
     WriteIniValue("render_scale_auto", std::to_string(a.level - 1));
     WriteIniValue("render_scale_auto_failed", std::to_string(a.level));
-    a.status = "AUTO: " + here + " could not hold 60 FPS (" + std::string(measured) +
-               "); back to " + std::to_string(a.level - 1) + "X from the next start.";
+    a.status = F("AUTO: {} could not hold 60 FPS ({}); back to {}X from the next start.",
+                 {here, measured, std::to_string(a.level - 1)});
+  } else if (!holds && a.texture_auto && !a.texture_off && a.level == 1 && NativeHeight() <= 720 &&
+             gpu_median >= 13.0) {
+    // The lowest resolution is already in use and the GPU is the limit: filtering is the next cost.
+    WriteIniValue("texture_filtering_auto", "off");
+    a.texture_off = true;
+    rex::cvar::SetFlagByName("anisotropic_override", "0");
+    a.status = F("AUTO: 720p at 1X could not hold 60 FPS ({}); TEXTURE FILTERING AUTO is now off.", {measured});
   } else {
-    a.status = "AUTO renders at " + here + " (" + measured + ").";
+    a.status = F("AUTO renders at {} ({}).", {here, measured});
   }
   REXLOG_INFO("Tabletennis: render scale {}", a.status);
 }
@@ -1053,6 +1096,10 @@ void SettingsPage::Change(int row_index, int delta) {
   Save();
   // A GAME RESOLUTION choice gives AUTO a fresh measurement.
   if (row_index == kNativeRes) WriteIniValue("native_res_auto", "");
+  if (row_index == kTextureFiltering) {
+    WriteIniValue("texture_filtering_auto", "");
+    g_auto_scale.texture_off = false;
+  }
 }
 
 // True on a Steam Deck: Steam sets SteamDeck=1, and the built-in screen is 1280x800.
@@ -1075,7 +1122,7 @@ void SettingsPage::RestoreDefaults() {
   }
   for (int i = 0; i < int(g_rows.size()); ++i) ApplyLive(i);
   REXLOG_INFO("Tabletennis: PC settings restored to defaults");
-  notice_ = "DEFAULTS RESTORED";
+  notice_ = l10n::T("DEFAULTS RESTORED");
   notice_until_ = ImGui::GetTime() + 2.5;
   Save();
 }
@@ -1083,7 +1130,7 @@ void SettingsPage::RestoreDefaults() {
 // Leaves the update to the launcher: write the request, then quit the way Escape does.
 void SettingsPage::RequestUpdate() {
   if (!WriteUpdateRequest(g_update->version)) {
-    save_error_ = "COULD NOT REQUEST THE UPDATE";
+    save_error_ = l10n::T("COULD NOT REQUEST THE UPDATE");
     confirm_ = false;
     REXLOG_WARN("Tabletennis: cannot write the update request in {}", InstallDir().string());
     return;
@@ -1153,9 +1200,12 @@ void SettingsPage::ApplyLive(int row_index) {
       break;
     }
     case kTextureFiltering: {
-      // anisotropic_override: 0 off, 2 = 2x, 3 = 4x, 4 = 8x, 5 = 16x (no 1x step here).
-      static constexpr const char* kLevels[] = {"0", "2", "3", "4", "5"};
-      rex::cvar::SetFlagByName("anisotropic_override", kLevels[g_rows[kTextureFiltering].current]);
+      // anisotropic_override: 0 off, 2 = 2x, 3 = 4x, 4 = 8x, 5 = 16x (no 1x step here); AUTO is 16x
+      // unless the AUTO measurement turned it off.
+      static constexpr const char* kLevels[] = {"5", "0", "2", "3", "4", "5"};
+      const int choice = g_rows[kTextureFiltering].current;
+      rex::cvar::SetFlagByName("anisotropic_override",
+                               choice == 0 && g_auto_scale.texture_off ? "0" : kLevels[choice]);
       break;
     }
     case kAntiAliasing:
@@ -1223,7 +1273,7 @@ void SettingsPage::Save() {
     std::ofstream out(temp, std::ios::trunc);
     for (const auto& line : lines) out << line << '\n';
     if (!out) {
-      save_error_ = "COULD NOT SAVE " + path.filename().string();
+      save_error_ = l10n::F("COULD NOT SAVE {}", {path.filename().string()});
       REXLOG_WARN("Tabletennis: cannot write {}", temp.string());
       return;
     }
@@ -1231,7 +1281,7 @@ void SettingsPage::Save() {
   std::error_code ec;
   std::filesystem::rename(temp, path, ec);
   if (ec) {
-    save_error_ = "COULD NOT SAVE " + path.filename().string();
+    save_error_ = l10n::F("COULD NOT SAVE {}", {path.filename().string()});
     REXLOG_WARN("Tabletennis: cannot replace {}: {}", path.string(), ec.message());
     return;
   }
@@ -1385,7 +1435,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const float title_px = 44.0f * s;
   AddOutlinedText(dl, achievement_ui::HeadlineFont(title_px), title_px,
                   ImVec2(x0 + 34.0f * s, CapsTop(header_cy, title_px)), Col(255, 204, 0, in),
-                  Col(16, 18, 28, in), 2.6f * s, "PC SETTINGS", kCondensed);
+                  Col(16, 18, 28, in), 2.6f * s, l10n::T("PC SETTINGS"), kCondensed);
 
   // Rows: label on the left, value on the right; the chosen row is yellow with arrows.
   const float label_px = 23.0f * s;
@@ -1400,17 +1450,25 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   // Tab bar: LB  DISPLAY  GAME  ONLINE  UPDATES  RB, the current tab yellow and underlined.
   const float tabs_cy = body_y0 + 30.0f * s;
   {
-    const float px = 21.0f * s;
+    float px = 21.0f * s;
     ImFont* font = achievement_ui::HeadlineFont(px);
-    const float gap = 26.0f * s;
+    float gap = 26.0f * s;
     float total = 0.0f;
-    for (int t = 0; t < kTabCount; ++t) total += TextWidth(font, px, kTabNames[t], kCondensed) + (t ? gap : 0.0f);
+    for (int t = 0; t < kTabCount; ++t) total += TextWidth(font, px, l10n::T(kTabNames[t]), kCondensed) + (t ? gap : 0.0f);
+    // Longer tab names (translations) shrink to stay clear of the LB / RB hints.
+    const float room = value_right - label_x - 2.0f * 44.0f * s;
+    if (total > room) {
+      const float k = room / total;
+      px *= k;
+      gap *= k;
+      total = room;
+    }
     float x = (label_x + value_right) * 0.5f - total * 0.5f;
     for (int t = 0; t < kTabCount; ++t) {
-      const float w = TextWidth(font, px, kTabNames[t], kCondensed);
+      const float w = TextWidth(font, px, l10n::T(kTabNames[t]), kCondensed);
       const bool current = t == g_tab;
       AddText(dl, font, px, ImVec2(x, CapsTop(tabs_cy, px)), current ? Col(255, 204, 0, in) : Col(150, 156, 166, in),
-              kTabNames[t], kCondensed);
+              l10n::T(kTabNames[t]), kCondensed);
       if (current) {
         dl->AddRectFilled(ImVec2(x, tabs_cy + 13.0f * s), ImVec2(x + w, tabs_cy + 16.0f * s), Col(255, 204, 0, in));
       }
@@ -1431,40 +1489,41 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
   const std::string status_value = OnlineStatusText(&status_help);
   std::string server_value = rex::cvar::GetFlagByName("online_server");
   for (auto& c : server_value) c = char(std::toupper(static_cast<unsigned char>(c)));
-  if (server_value.empty()) server_value = "NOT SET";
+  if (server_value.empty()) server_value = l10n::T("NOT SET");
   const std::string version_value =
-      InstalledVersion().empty() ? "DEV BUILD"
-      : g_update                 ? "UPDATE TO " + g_update->version
+      InstalledVersion().empty() ? std::string(l10n::T("DEV BUILD"))
+      : g_update                 ? l10n::F("UPDATE TO {}", {g_update->version})
                                  : InstalledVersion();
   // The name in use; after it was cleared, the launcher picks the automatic name at the next start.
   const std::string auto_name = rex::cvar::GetFlagByName("user_name");
   const std::string name_value = !g_player_name.empty() ? g_player_name
                                  : g_player_name_running.empty() && !auto_name.empty() ? auto_name
-                                                                                       : "AUTOMATIC";
+                                                                                       : l10n::T("AUTOMATIC");
   rex::system::ranked::EnsureAccount();
   std::string account_help;
   const std::string account_value = AccountText(&account_help);
   const std::string link_code = rex::system::ranked::LinkCode();
   const std::string link_message = rex::system::ranked::LinkMessage();
-  const std::string show_code_value = !link_code.empty() ? link_code : "SHOW";
-  const std::string enter_code_value = "ENTER";
+  const std::string show_code_value = !link_code.empty() ? link_code : l10n::T("SHOW");
+  const std::string enter_code_value = l10n::T("ENTER");
   // A redeemed code renames this device's player to the account's name (from the next start).
   const std::string linked_name = rex::system::ranked::AccountName();
   if (rex::system::ranked::GetAccountStatus() == rex::system::ranked::AccountStatus::kReady &&
       link_message.rfind("LINKED TO ", 0) == 0 && !linked_name.empty() &&
       g_player_name != linked_name) {
     g_player_name = linked_name;
-    notice_ = "LINKED - PLAYER NAME IS NOW " + linked_name + " (AFTER RESTART)";
+    notice_ = l10n::F("LINKED - PLAYER NAME IS NOW {} (AFTER RESTART)", {linked_name});
     notice_until_ = ImGui::GetTime() + 4.0;
     Save();
   }
   const bool can_check = CanCheckForUpdates();
-  const std::string check_value = !can_check                   ? "NOT AVAILABLE"
-                                  : g_check == Check::kRunning  ? "CHECKING..."
-                                  : g_check == Check::kUpToDate ? "UP TO DATE"
-                                  : g_check == Check::kFound && g_update ? "FOUND " + g_update->version
-                                  : g_check == Check::kFailed   ? "FAILED"
-                                                                : "CHECK";
+  using l10n::T;
+  const std::string check_value = !can_check                   ? T("NOT AVAILABLE")
+                                  : g_check == Check::kRunning  ? T("CHECKING...")
+                                  : g_check == Check::kUpToDate ? T("UP TO DATE")
+                                  : g_check == Check::kFound && g_update ? l10n::F("FOUND {}", {g_update->version})
+                                  : g_check == Check::kFailed   ? T("FAILED")
+                                                                : T("CHECK");
   for (int position = 0; position < int(tab_rows.size()); ++position) {
     const int i = tab_rows[position];
     const Row& row = g_rows[i];
@@ -1475,13 +1534,13 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
                                   Col(255, 255, 255, 0.10f * in), Col(255, 255, 255, 0.02f * in),
                                   Col(255, 255, 255, 0.02f * in), Col(255, 255, 255, 0.10f * in));
     }
-    std::string label = row.label;
+    std::string label = T(row.label);
     if (row.apply == Apply::kRestart) label += " *";
     const ImU32 label_col = selected ? Col(255, 204, 0, in) : Col(222, 224, 228, in);
     AddText(dl, label_font, label_px, ImVec2(label_x, CapsTop(cy, label_px)), label_col, label.c_str(),
             kCondensed);
 
-    const char* value = !row.choices.empty() ? row.choices[row.current].label
+    const char* value = !row.choices.empty() ? T(row.choices[row.current].label)
                         : i == kPlayerName   ? name_value.c_str()
                         : i == kOnlineServer ? server_value.c_str()
                         : i == kOnlineStatus ? status_value.c_str()
@@ -1534,7 +1593,7 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     // A changed restart setting is marked on its row until the game is restarted.
     if (pending) {
       const float tag_px = 15.0f * s;
-      const char* tag = "AFTER RESTART";
+      const char* tag = T("AFTER RESTART");
       const float w = TextWidth(label_font, tag_px, tag, kCondensed);
       AddText(dl, label_font, tag_px, ImVec2(value_left - 14.0f * s - w, CapsTop(cy, tag_px)),
               Col(255, 204, 0, 0.85f * in), tag, kCondensed);
@@ -1563,12 +1622,13 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
         y += h + help_px * 0.3f;
       };
       if (InstalledVersion().empty()) {
-        line("Development build: updates are not offered.", Col(176, 182, 192, in));
+        line(T("Development build: updates are not offered."), Col(176, 182, 192, in));
       } else if (!g_update) {
-        line("Installed version " + InstalledVersion() + ". New versions are found when the game starts, "
-             "or with CHECK NOW.", Col(176, 182, 192, in));
+        line(l10n::F("Installed version {}. New versions are found when the game starts, or with CHECK NOW.",
+                     {InstalledVersion()}),
+             Col(176, 182, 192, in));
       } else {
-        std::string heading = g_update->title.empty() ? "Version " + g_update->version
+        std::string heading = g_update->title.empty() ? l10n::F("Version {}", {g_update->version})
                                                       : g_update->version + ": " + g_update->title;
         if (!g_update->published.empty()) heading += "  (" + g_update->published + ")";
         line(heading, Col(235, 237, 240, in));
@@ -1577,41 +1637,41 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     } else {
       std::string extra;
       if (selected_ == kPlayerName) {
-        extra = std::string(row.help) + " Two players in one room cannot use the same name.";
+        extra = std::string(T(row.help)) + " " + T("Two players in one room cannot use the same name.");
       } else if (selected_ == kCheckNow) {
-        extra = !can_check                    ? (InstalledVersion().empty()
-                                                     ? "Development build: updates are not offered."
-                                                     : "Checking from the game is not available here.")
-                : g_check == Check::kRunning  ? "Looking for a new version..."
-                : g_check == Check::kUpToDate ? "Version " + InstalledVersion() + " is the latest."
-                : g_check == Check::kFound && g_update ? "Version " + g_update->version +
-                                                             " is available: see VERSION below, or press A on it."
+        extra = !can_check                    ? std::string(InstalledVersion().empty()
+                                                     ? T("Development build: updates are not offered.")
+                                                     : T("Checking from the game is not available here."))
+                : g_check == Check::kRunning  ? std::string(T("Looking for a new version..."))
+                : g_check == Check::kUpToDate ? l10n::F("Version {} is the latest.", {InstalledVersion()})
+                : g_check == Check::kFound && g_update
+                    ? l10n::F("Version {} is available: see VERSION below, or press A on it.", {g_update->version})
                 : g_check == Check::kFailed   ? g_check_error
-                                              : "Look for a new version now.";
+                                              : std::string(T("Look for a new version now."));
       }
       if (selected_ == kShowLinkCode) {
         extra = !link_code.empty()
-                    ? "Enter " + link_code + " under ENTER LINK CODE on the other device within 5 "
-                      "minutes. The code works once."
+                    ? l10n::F("Enter {} under ENTER LINK CODE on the other device within 5 minutes. The code works once.",
+                              {link_code})
                     : !link_message.empty() ? link_message
-                                            : std::string(row.help);
+                                            : std::string(T(row.help));
       } else if (selected_ == kEnterLinkCode && !link_message.empty()) {
         extra = link_message;
       } else if (selected_ == kAccount) {
         extra = account_help;
       } else if (selected_ == kRenderScale && g_rows[kRenderScale].current == 0) {
-        extra = std::string(row.help) + " " +
+        extra = std::string(T(row.help)) + " " +
                 (g_auto_scale.status.empty()
-                     ? "AUTO renders at " + std::to_string(g_auto_scale.level) +
-                           "X now and measures the GPU during matches to pick the level for the next start."
+                     ? l10n::F("AUTO renders at {}X now and measures the GPU during matches to pick the level for the next start.",
+                               {std::to_string(g_auto_scale.level)})
                      : g_auto_scale.status);
       } else if (selected_ == kMotionSwing && g_rows[kMotionSwing].current &&
                  !tabletennis::motion::GyroAvailable()) {
-        extra = std::string(row.help) + " No controller with a gyro is connected right now.";
+        extra = std::string(T(row.help)) + " " + T("No controller with a gyro is connected right now.");
       }
       const char* help = selected_ == kOnlineStatus ? status_help.c_str()
                          : !extra.empty()           ? extra.c_str()
-                                                    : row.help;
+                                                    : T(row.help);
       AddText(dl, body, help_px, ImVec2(label_x, help_y), Col(176, 182, 192, in), help, 1.0f,
               value_right - label_x);
     }
@@ -1624,21 +1684,21 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
       status = save_error_.c_str();
       status_col = Col(240, 90, 80, in);
     } else if (RestartPending(selected_)) {
-      status = "APPLIES AFTER RESTART";
+      status = T("APPLIES AFTER RESTART");
     } else if (row.apply == Apply::kLive) {
-      status = "APPLIES NOW";
+      status = T("APPLIES NOW");
       status_col = Col(128, 194, 238, in);
     } else if (row.apply == Apply::kSaved) {
-      status = "SAVED; USED WHEN THE GAME STARTS";
+      status = T("SAVED; USED WHEN THE GAME STARTS");
       status_col = Col(128, 194, 238, in);
     } else if (selected_ == kVersion && g_update) {
-      status = "PRESS A TO UPDATE";
+      status = T("PRESS A TO UPDATE");
     }
     const float status_px = 19.0f * s;
     if (status) {
       AddText(dl, label_font, status_px, ImVec2(label_x, body_y1 - 32.0f * s), status_col, status, kCondensed);
     }
-    const char* legend = "* APPLIES AFTER RESTART";
+    const char* legend = T("* APPLIES AFTER RESTART");
     AddText(dl, label_font, status_px,
             ImVec2(value_right - TextWidth(label_font, status_px, legend, kCondensed), body_y1 - 32.0f * s),
             Col(150, 156, 166, in), legend, kCondensed);
@@ -1654,19 +1714,21 @@ void SettingsPage::Draw(ImGuiIO& io, float in) {
     float x = x1 - 26.0f * s - r;
     FaceButton(dl, ImVec2(x, cy), r, Col(210, 44, 44, in), "B", in);
     x -= r + 8.0f * s;
-    AddText(dl, font, px, ImVec2(x - TextWidth(font, px, "BACK", kCondensed), CapsTop(cy, px)), text, "BACK",
+    const char* back = l10n::T("BACK");
+    AddText(dl, font, px, ImVec2(x - TextWidth(font, px, back, kCondensed), CapsTop(cy, px)), text, back,
             kCondensed);
-    x -= TextWidth(font, px, "BACK", kCondensed) + 26.0f * s;
+    x -= TextWidth(font, px, back, kCondensed) + 26.0f * s;
     const float arrow = 11.0f * s;
-    AddText(dl, font, px, ImVec2(x - TextWidth(font, px, "CHANGE", kCondensed), CapsTop(cy, px)), text,
-            "CHANGE", kCondensed);
-    x -= TextWidth(font, px, "CHANGE", kCondensed) + 10.0f * s;
+    const char* change = l10n::T("CHANGE");
+    AddText(dl, font, px, ImVec2(x - TextWidth(font, px, change, kCondensed), CapsTop(cy, px)), text,
+            change, kCondensed);
+    x -= TextWidth(font, px, change, kCondensed) + 10.0f * s;
     Arrow(dl, ImVec2(x - arrow * 0.5f, cy), arrow, true, text);
     Arrow(dl, ImVec2(x - arrow * 2.0f, cy), arrow, false, text);
     // Left: the game's own "(X) RESTORE DEFAULTS".
     const float lx = bx0 + 24.0f * s + r;
     FaceButton(dl, ImVec2(lx, cy), r, Col(40, 110, 210, in), "X", in);
-    AddText(dl, font, px, ImVec2(lx + r + 8.0f * s, CapsTop(cy, px)), text, "RESTORE DEFAULTS", kCondensed);
+    AddText(dl, font, px, ImVec2(lx + r + 8.0f * s, CapsTop(cy, px)), text, l10n::T("RESTORE DEFAULTS"), kCondensed);
   }
 
   if (confirm_ && g_update) {
@@ -1892,7 +1954,7 @@ void SettingsPage::SaveName() {
   g_player_name = name_edit_;
   REXLOG_INFO("Tabletennis: player name set to '{}' (used from the next start)",
               g_player_name.empty() ? "automatic" : g_player_name);
-  notice_ = g_player_name == g_player_name_running ? "NAME UNCHANGED" : "NAME SAVED - USED AFTER RESTART";
+  notice_ = g_player_name == g_player_name_running ? l10n::T("NAME UNCHANGED") : l10n::T("NAME SAVED - USED AFTER RESTART");
   notice_until_ = ImGui::GetTime() + 3.0;
   Save();
 }
@@ -1916,12 +1978,12 @@ void SettingsPage::DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, f
   const float title_px = 36.0f * s;
   AddOutlinedText(dl, achievement_ui::HeadlineFont(title_px), title_px,
                   ImVec2(x0 + 28.0f * s, CapsTop((y0 + head_y1) * 0.5f, title_px)), Col(255, 204, 0, t),
-                  Col(16, 18, 28, t), 2.2f * s, editing_link_ ? "LINK CODE" : "PLAYER NAME",
+                  Col(16, 18, 28, t), 2.2f * s, editing_link_ ? l10n::T("LINK CODE") : l10n::T("PLAYER NAME"),
                   kCondensed);
   ImFont* body = achievement_ui::BodyFont();
   const float text_px = 18.0f * s;
   AddText(dl, body, text_px, ImVec2(x0 + 40.0f * s, head_y1 + 16.0f * s), Col(176, 182, 192, t),
-          "Up/down: letter, left/right: position, X: delete. A keyboard works too.", 1.0f, w - 70.0f * s);
+          l10n::T("Up/down: letter, left/right: position, X: delete. A keyboard works too."), 1.0f, w - 70.0f * s);
   // One cell per letter, plus a faint empty cell where the next letter would go.
   const float cell = 31.0f * s;
   const int cells = std::min(editing_link_ ? kLinkMax : kNameMax, int(name_edit_.size()) + 1);
@@ -1947,11 +2009,11 @@ void SettingsPage::DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, f
     x += cell;
   }
   const std::string note = editing_link_
-                               ? "The 6-letter code from SHOW LINK CODE on your other device."
+                               ? std::string(l10n::T("The 6-letter code from SHOW LINK CODE on your other device."))
                            : name_edit_.empty()
-                               ? "Empty: the automatic name (this computer's name)."
-                               : std::to_string(name_edit_.size()) + " of " + std::to_string(kNameMax) +
-                                     " letters. Used from the next start.";
+                               ? std::string(l10n::T("Empty: the automatic name (this computer's name)."))
+                               : l10n::F("{} of {} letters. Used from the next start.",
+                                         {std::to_string(name_edit_.size()), std::to_string(kNameMax)});
   AddText(dl, body, text_px, ImVec2(x0 + 40.0f * s, body_y1 - 40.0f * s), Col(176, 182, 192, t), note.c_str(),
           1.0f, w - 70.0f * s);
   // Footer: (A) SAVE, (B) CANCEL.
@@ -1963,12 +2025,13 @@ void SettingsPage::DrawNameEditor(ImDrawList* dl, float s, float cx, float cy, f
   float fx = x1 - 22.0f * s - br;
   FaceButton(dl, ImVec2(fx, fy), br, Col(210, 44, 44, t), "B", t);
   fx -= br + 8.0f * s;
-  AddText(dl, ffont, fpx, ImVec2(fx - TextWidth(ffont, fpx, "CANCEL", kCondensed), CapsTop(fy, fpx)), text,
-          "CANCEL", kCondensed);
-  fx -= TextWidth(ffont, fpx, "CANCEL", kCondensed) + 26.0f * s + br;
+  const char* cancel = l10n::T("CANCEL");
+  AddText(dl, ffont, fpx, ImVec2(fx - TextWidth(ffont, fpx, cancel, kCondensed), CapsTop(fy, fpx)), text,
+          cancel, kCondensed);
+  fx -= TextWidth(ffont, fpx, cancel, kCondensed) + 26.0f * s + br;
   FaceButton(dl, ImVec2(fx, fy), br, Col(90, 186, 40, t), "A", t);
   fx -= br + 8.0f * s;
-  const char* confirm = editing_link_ ? "LINK" : "SAVE";
+  const char* confirm = editing_link_ ? l10n::T("LINK") : l10n::T("SAVE");
   AddText(dl, ffont, fpx, ImVec2(fx - TextWidth(ffont, fpx, confirm, kCondensed), CapsTop(fy, fpx)), text,
           confirm, kCondensed);
 }
@@ -1993,11 +2056,11 @@ void SettingsPage::DrawConfirm(ImDrawList* dl, float s, float cx, float cy, floa
   const float title_px = 36.0f * s;
   AddOutlinedText(dl, achievement_ui::HeadlineFont(title_px), title_px,
                   ImVec2(x0 + 28.0f * s, CapsTop((y0 + head_y1) * 0.5f, title_px)), Col(255, 204, 0, t),
-                  Col(16, 18, 28, t), 2.2f * s, ("UPDATE TO " + g_update->version + "?").c_str(), kCondensed);
+                  Col(16, 18, 28, t), 2.2f * s, l10n::F("UPDATE TO {}?", {g_update->version}).c_str(), kCondensed);
   const float text_px = 21.0f * s;
   ImFont* body = achievement_ui::BodyFont();
   AddText(dl, body, text_px, ImVec2(x0 + 40.0f * s, head_y1 + 22.0f * s), Col(235, 237, 240, t),
-          "Update now? The game closes, updates (about a minute) and starts again.", 1.0f, w - 70.0f * s);
+          l10n::T("Update now? The game closes, updates (about a minute) and starts again."), 1.0f, w - 70.0f * s);
   if (!g_update->title.empty()) {
     AddText(dl, body, text_px * 0.9f, ImVec2(x0 + 40.0f * s, body_y1 - 40.0f * s), Col(176, 182, 192, t),
             g_update->title.c_str(), 1.0f, w - 70.0f * s);
@@ -2011,13 +2074,15 @@ void SettingsPage::DrawConfirm(ImDrawList* dl, float s, float cx, float cy, floa
   float x = x1 - 22.0f * s - br;
   FaceButton(dl, ImVec2(x, fy), br, Col(210, 44, 44, t), "B", t);
   x -= br + 8.0f * s;
-  AddText(dl, font, px, ImVec2(x - TextWidth(font, px, "LATER", kCondensed), CapsTop(fy, px)), text, "LATER",
+  const char* later = l10n::T("LATER");
+  const char* update_now = l10n::T("UPDATE NOW");
+  AddText(dl, font, px, ImVec2(x - TextWidth(font, px, later, kCondensed), CapsTop(fy, px)), text, later,
           kCondensed);
-  x -= TextWidth(font, px, "LATER", kCondensed) + 26.0f * s + br;
+  x -= TextWidth(font, px, later, kCondensed) + 26.0f * s + br;
   FaceButton(dl, ImVec2(x, fy), br, Col(90, 186, 40, t), "A", t);
   x -= br + 8.0f * s;
-  AddText(dl, font, px, ImVec2(x - TextWidth(font, px, "UPDATE NOW", kCondensed), CapsTop(fy, px)), text,
-          "UPDATE NOW", kCondensed);
+  AddText(dl, font, px, ImVec2(x - TextWidth(font, px, update_now, kCondensed), CapsTop(fy, px)), text,
+          update_now, kCondensed);
 }
 
 // ==============================================================================================
@@ -2102,14 +2167,14 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
                       ImVec2(badge.x + br * 0.11f, badge.y + br * 0.18f), mark, br * 0.08f);
     dl->AddCircleFilled(ImVec2(badge.x, badge.y + br * 0.42f), br * 0.12f, mark, 16);
     AddText(dl, heavy_small, cap_px, ImVec2(tx, y0 + 12.0f * s), Col(240, 128, 118, alpha),
-            "NO GPU DRIVER FOUND", kCondensed);
+            l10n::T("NO GPU DRIVER FOUND"), kCondensed);
     AddOutlinedText(dl, achievement_ui::HeadlineFont(head_px), head_px, ImVec2(tx, y0 + 28.0f * s),
-                    Col(255, 204, 0, alpha), Col(16, 18, 28, alpha), 2.0f * s, "SOFTWARE RENDERING",
+                    Col(255, 204, 0, alpha), Col(16, 18, 28, alpha), 2.0f * s, l10n::T("SOFTWARE RENDERING"),
                     kCondensed);
     AddText(dl, heavy_small, title_px, ImVec2(tx, y0 + 66.0f * s), Col(235, 237, 240, alpha),
-            "THE GAME WILL RUN VERY SLOWLY", kCondensed);
+            l10n::T("THE GAME WILL RUN VERY SLOWLY"), kCondensed);
     AddText(dl, heavy_small, hint_px, ImVec2(tx, y0 + 89.0f * s), Col(158, 164, 174, alpha),
-            "INSTALL YOUR MESA VULKAN DRIVER", kCondensed);
+            l10n::T("INSTALL YOUR MESA VULKAN DRIVER"), kCondensed);
     return;
   }
   // Badge: yellow disc with a downward arrow.
@@ -2123,11 +2188,11 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
                     ink);
   // Text block.
   const float text_w = x1 - 24.0f * s - tx;
-  AddText(dl, heavy_small, cap_px, ImVec2(tx, y0 + 12.0f * s), Col(128, 194, 238, alpha), "UPDATE AVAILABLE",
+  AddText(dl, heavy_small, cap_px, ImVec2(tx, y0 + 12.0f * s), Col(128, 194, 238, alpha), l10n::T("UPDATE AVAILABLE"),
           kCondensed);
   AddOutlinedText(dl, achievement_ui::HeadlineFont(head_px), head_px, ImVec2(tx, y0 + 28.0f * s),
                   Col(255, 204, 0, alpha), Col(16, 18, 28, alpha), 2.0f * s,
-                  ("VERSION " + shown_version_).c_str(), kCondensed);
+                  l10n::F("VERSION {}", {shown_version_}).c_str(), kCondensed);
   if (g_update && !g_update->title.empty()) {
     std::string title = Upper(g_update->title);
     while (title.size() > 4 && TextWidth(heavy_small, title_px, title.c_str(), kCondensed) > text_w) {
@@ -2138,7 +2203,7 @@ void UpdateToast::OnDraw(ImGuiIO& io) {
             kCondensed);
   }
   AddText(dl, heavy_small, hint_px, ImVec2(tx, y0 + 89.0f * s), Col(158, 164, 174, alpha),
-          "OPTIONS > PC SETTINGS TO UPDATE", kCondensed);
+          l10n::T("OPTIONS > PC SETTINGS TO UPDATE"), kCondensed);
 }
 
 
@@ -2162,8 +2227,8 @@ ImU32 QualityColour(int bars, float alpha) {
 }
 
 const char* QualityWarning(int rtt_ms, float loss) {
-  if (loss > kHighLoss) return "PACKET LOSS: THE GAME WILL STUTTER AND FEEL DELAYED";
-  if (rtt_ms > kHighLatencyMs) return "HIGH LATENCY: THE GAME WILL FEEL DELAYED";
+  if (loss > kHighLoss) return l10n::T("PACKET LOSS: THE GAME WILL STUTTER AND FEEL DELAYED");
+  if (rtt_ms > kHighLatencyMs) return l10n::T("HIGH LATENCY: THE GAME WILL FEEL DELAYED");
   return nullptr;
 }
 
@@ -2180,9 +2245,9 @@ void DrawBars(ImDrawList* dl, ImVec2 left_bottom, float s, int bars, float alpha
 
 std::string QualityText(const rex::system::net::OnlinePeerQuality& peer) {
   std::string text = std::to_string(peer.rtt_ms) + " MS";
-  if (peer.loss > 0.005f) text += ", " + std::to_string(int(peer.loss * 100.0f + 0.5f)) + "% LOSS";
-  text += peer.direct ? ", DIRECT" : ", VIA SERVER";
-  if (peer.redundant) text += ", REDUNDANT";  // every datagram sent twice (online_redundancy)
+  if (peer.loss > 0.005f) text += ", " + l10n::F("{}% LOSS", {std::to_string(int(peer.loss * 100.0f + 0.5f))});
+  text += std::string(", ") + (peer.direct ? l10n::T("DIRECT") : l10n::T("VIA SERVER"));
+  if (peer.redundant) text += std::string(", ") + l10n::T("REDUNDANT");  // every datagram sent twice (online_redundancy)
   return text;
 }
 }  // namespace
@@ -2212,7 +2277,7 @@ void ConnectionIndicator::OnDraw(ImGuiIO& io) {
   ImDrawList* dl = ImGui::GetForegroundDrawList();
 
   const int bars = QualityBars(peer.rtt_ms, peer.loss);
-  const std::string name = peer.name.empty() ? "OPPONENT" : peer.name;
+  const std::string name = peer.name.empty() ? std::string(l10n::T("OPPONENT")) : peer.name;
   std::string upper_name = name;
   for (auto& c : upper_name) c = char(std::toupper(static_cast<unsigned char>(c)));
   const std::string text = QualityText(peer);
@@ -2418,7 +2483,7 @@ void OnlinePrompt::Draw(ImGuiIO& io, float in) {
   dl->AddRectFilled(ImVec2(x0 + 4.0f * s, header_y0 + 4.0f * s), ImVec2(x1 - 4.0f * s, header_y1 - 4.0f * s),
                     Col(12, 28, 52, in), header_r - 4.0f * s);
   const float title_px = 44.0f * s;
-  const char* title = step_ == Step::kChoose || step_ == Step::kUnavailable ? "ONLINE" : "PLAY WITH A FRIEND";
+  const char* title = step_ == Step::kChoose || step_ == Step::kUnavailable ? l10n::T("ONLINE") : l10n::T("PLAY WITH A FRIEND");
   AddOutlinedText(dl, achievement_ui::HeadlineFont(title_px), title_px,
                   ImVec2(x0 + 34.0f * s, CapsTop(header_cy, title_px)), Col(255, 204, 0, in),
                   Col(16, 18, 28, in), 2.6f * s, title, kCondensed);
@@ -2436,7 +2501,7 @@ void OnlinePrompt::Draw(ImGuiIO& io, float in) {
     y += body->CalcTextSizeA(help_px, FLT_MAX, wrap, text.c_str()).y + 10.0f * s;
   };
   auto menu = [&](const char* a, const char* b) {
-    const char* items[2] = {a, b};
+    const char* items[2] = {l10n::T(a), l10n::T(b)};
     for (int i = 0; i < 2; ++i) {
       const float cy = y + 22.0f * s;
       const bool selected = i == selected_;
@@ -2477,38 +2542,39 @@ void OnlinePrompt::Draw(ImGuiIO& io, float in) {
     y += 76.0f * s;
   };
 
-  const char* a_label = "SELECT";
+  using l10n::T;
+  const char* a_label = T("SELECT");
   switch (step_) {
     case Step::kUnavailable:
-      text_block("Online play is not available.", Col(235, 237, 240, in));
-      text_block("No online server is set (server= in tt-recomp.ini). SYSTEM LINK in the main menu "
-                 "plays against other machines on your local network.", Col(176, 182, 192, in));
-      a_label = "BACK";
+      text_block(T("Online play is not available."), Col(235, 237, 240, in));
+      text_block(T("No online server is set (server= in tt-recomp.ini). SYSTEM LINK in the main menu "
+                   "plays against other machines on your local network."), Col(176, 182, 192, in));
+      a_label = T("BACK");
       break;
     case Step::kChoose:
-      menu("PLAY ANYONE", "PLAY WITH A FRIEND");
-      text_block(selected_ == 0 ? "Find or create a match with anyone playing online."
-                                : "Play only with a friend: one of you shares a room code.",
+      menu(N("PLAY ANYONE"), N("PLAY WITH A FRIEND"));
+      text_block(selected_ == 0 ? T("Find or create a match with anyone playing online.")
+                                : T("Play only with a friend: one of you shares a room code."),
                  Col(176, 182, 192, in));
       break;
     case Step::kFriend:
-      menu("SHOW MY CODE", "ENTER CODE");
-      text_block(selected_ == 0 ? "Get a code to give your friend, then create a match."
-                                : "Type the code your friend gives you, then use QUICK MATCH.",
+      menu(N("SHOW MY CODE"), N("ENTER CODE"));
+      text_block(selected_ == 0 ? T("Get a code to give your friend, then create a match.")
+                                : T("Type the code your friend gives you, then use QUICK MATCH."),
                  Col(176, 182, 192, in));
       break;
     case Step::kShowCode:
-      text_block("Give this code to your friend:", Col(235, 237, 240, in));
+      text_block(T("Give this code to your friend:"), Col(235, 237, 240, in));
       code_boxes(g_room_code, -1);
-      text_block("Then choose PLAYER MATCH > CREATE MATCH. Your friend enters the code and uses "
-                 "QUICK MATCH.", Col(176, 182, 192, in));
-      a_label = "CONTINUE";
+      text_block(T("Then choose PLAYER MATCH > CREATE MATCH. Your friend enters the code and uses "
+                   "QUICK MATCH."), Col(176, 182, 192, in));
+      a_label = T("CONTINUE");
       break;
     case Step::kEnterCode:
-      text_block("Enter your friend's code (up/down: letter, left/right: position):",
+      text_block(T("Enter your friend's code (up/down: letter, left/right: position):"),
                  Col(235, 237, 240, in));
       code_boxes(code_edit_, code_pos_);
-      a_label = "JOIN";
+      a_label = T("JOIN");
       break;
   }
 
@@ -2519,13 +2585,13 @@ void OnlinePrompt::Draw(ImGuiIO& io, float in) {
     ImU32 col = Col(128, 194, 238, in);
     if (status.mode == "public" || status.mode == "room") {
       if (status.connected) {
-        line = "CONNECTED - " + std::to_string(status.room_players) + " IN THIS ROOM, " +
-               std::to_string(status.players_online) + " ONLINE";
-        if (status.mode == "public") line += " (" + std::to_string(status.nearby_players) + " NEAR YOU)";
-        if (status.server_rtt_ms >= 0) line += " - SERVER " + std::to_string(status.server_rtt_ms) + " MS";
+        line = l10n::F("CONNECTED - {} IN THIS ROOM, {} ONLINE",
+                       {std::to_string(status.room_players), std::to_string(status.players_online)});
+        if (status.mode == "public") line += " " + l10n::F("({} NEAR YOU)", {std::to_string(status.nearby_players)});
+        if (status.server_rtt_ms >= 0) line += " - " + l10n::F("SERVER {} MS", {std::to_string(status.server_rtt_ms)});
       } else {
-        line = status.state;
-        if (line != "CONNECTING" && line != "RECONNECTING") col = Col(240, 90, 80, in);
+        line = l10n::T(status.state.c_str());
+        if (status.state != "CONNECTING" && status.state != "RECONNECTING") col = Col(240, 90, 80, in);
       }
     }
     if (!line.empty()) {
@@ -2544,9 +2610,10 @@ void OnlinePrompt::Draw(ImGuiIO& io, float in) {
     float x = x1 - 26.0f * s - r;
     FaceButton(dl, ImVec2(x, cy), r, Col(210, 44, 44, in), "B", in);
     x -= r + 8.0f * s;
-    AddText(dl, font, px, ImVec2(x - TextWidth(font, px, "BACK", kCondensed), CapsTop(cy, px)), text, "BACK",
+    const char* back = l10n::T("BACK");
+    AddText(dl, font, px, ImVec2(x - TextWidth(font, px, back, kCondensed), CapsTop(cy, px)), text, back,
             kCondensed);
-    x -= TextWidth(font, px, "BACK", kCondensed) + 26.0f * s;
+    x -= TextWidth(font, px, back, kCondensed) + 26.0f * s;
     if (step_ != Step::kUnavailable) {
       FaceButton(dl, ImVec2(x - r, cy), r, Col(90, 186, 40, in), "A", in);
       x -= 2.0f * r + 8.0f * s;

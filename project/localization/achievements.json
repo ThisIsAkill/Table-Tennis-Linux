@@ -1,0 +1,23 @@
+[
+["ACHIEVEMENTS", "SUCCÈS", "ERFOLGE", "LOGROS", "OBIETTIVI"],
+["ACHIEVEMENT UNLOCKED", "SUCCÈS DÉBLOQUÉ", "ERFOLG FREIGESCHALTET", "LOGRO DESBLOQUEADO", "OBIETTIVO SBLOCCATO"],
+["{} / {} UNLOCKED", "{} / {} DÉBLOQUÉS", "{} / {} FREIGESCHALTET", "{} / {} DESBLOQUEADOS", "{} / {} SBLOCCATI"],
+["UNLOCKED {}", "DÉBLOQUÉ {}", "FREIGESCHALTET {}", "DESBLOQUEADO {}", "SBLOCCATO {}"],
+["LOCKED", "VERROUILLÉ", "GESPERRT", "BLOQUEADO", "BLOCCATO"],
+["SCROLL", "DÉFILER", "SCROLLEN", "DESPLAZAR", "SCORRI"],
+["CLOSE", "FERMER", "SCHLIESSEN", "CERRAR", "CHIUDI"],
+["HOLD VIEW OR PRESS F7 TO OPEN", "MAINTENIR VIEW OU APPUYER SUR F7", "VIEW HALTEN ODER F7 DRÜCKEN", "MANTÉN VIEW O PULSA F7 PARA ABRIR", "TIENI PREMUTO VIEW O PREMI F7"],
+["{} {} {}", "{} {} {}", "{}. {} {}", "{} {} {}", "{} {} {}"],
+["JAN", "JANV", "JAN", "ENE", "GEN"],
+["FEB", "FÉVR", "FEB", "FEB", "FEB"],
+["MAR", "MARS", "MÄR", "MAR", "MAR"],
+["APR", "AVR", "APR", "ABR", "APR"],
+["MAY", "MAI", "MAI", "MAY", "MAG"],
+["JUN", "JUIN", "JUN", "JUN", "GIU"],
+["JUL", "JUIL", "JUL", "JUL", "LUG"],
+["AUG", "AOÛT", "AUG", "AGO", "AGO"],
+["SEP", "SEPT", "SEP", "SEP", "SET"],
+["OCT", "OCT", "OKT", "OCT", "OTT"],
+["NOV", "NOV", "NOV", "NOV", "NOV"],
+["DEC", "DÉC", "DEZ", "DIC", "DIC"]
+]

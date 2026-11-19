@@ -29,6 +29,21 @@ def apply_edits(text, rule):
     return text
 
 
+def reset_stale(folder):
+    """Remove a tabletennis_pch.h carrying edits from an older native_edits.json.
+
+    Code generation keeps an existing header, so after the header's edits change it would hold
+    neither the generated input nor the current output. Without it, codegen writes it afresh.
+    """
+    header = Path(folder) / 'tabletennis_pch.h'
+    if not header.exists():
+        return
+    rule = {r['name']: r for r in json.loads(Path(__file__).with_name('native_edits.json').read_text())}[header.name]
+    if digest(header.read_text(encoding='utf-8')) not in (rule['input_sha256'], rule['output_sha256']):
+        header.unlink()
+        print('Removed tabletennis_pch.h with outdated native edits; it is generated again.', flush=True)
+
+
 def patch(folder):
     folder = Path(folder)
     rules = {r['name']: r for r in json.loads(Path(__file__).with_name('native_edits.json').read_text())}

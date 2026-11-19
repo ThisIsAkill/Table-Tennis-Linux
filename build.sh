@@ -83,7 +83,7 @@ run_tools() { python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); $1" "$
 
 stage "Preparing your local game files"
 run_tools "from disc_image import extract; extract(sys.argv[2], sys.argv[3])" "$iso" "$root"
-run_tools "from patch_menu import patch; patch(sys.argv[2])" "$root/dist/assets/resource/flash/flash.rpf"
+run_tools "from patch_menu import patch, write_languages; patch(sys.argv[2]); write_languages(sys.argv[2])" "$root/dist/assets/resource/flash/flash.rpf"
 
 stage "Preparing game build support"
 # Fixes to the SDK itself (not to generated code) live in project/sdk-patches and are applied
@@ -131,6 +131,8 @@ sdk="$(abspath "$sdk")" || die "SDK path not found"
 [[ "$("$sdk/bin/rexglue" --version)" == 0.10.0 ]] || die "this project requires ReXGlue SDK v0.10.0"
 
 stage "Generating your local game"
+[[ -d "$root/project/generated/default" ]] \
+  && run_tools "from patch_native import reset_stale; reset_stale(sys.argv[2])" "$root/project/generated/default"
 (cd "$root" && "$sdk/bin/rexglue" codegen project/tabletennis_manifest.toml)
 run_tools "from patch_native import patch; patch(sys.argv[2])" "$root/project/generated/default"
 if ((prepare_only)); then

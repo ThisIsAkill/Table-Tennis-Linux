@@ -182,7 +182,7 @@ def _main_list_head():
             _main_list_literal('SYSTEM LINK') + _main_list_literal('ONLINE') + _main_list_item(83, 214))
 
 
-def _compact_main_list(exhibition):
+def _compact_main_list(exhibition, system_link='SYSTEM LINK', quit='QUIT GAME'):
     """The 8-row LIST_MAIN with QUIT GAME, written compactly to fit the original space. The
     menu's label script (the region _add_online edits) sets the text of rows 0-3, 5 and 6 from
     the localisation strings after the list is built, so those items carry an empty text here;
@@ -194,8 +194,8 @@ def _compact_main_list(exhibition):
         return _push(_int(-1), _int(state), _str(text), _int(3), _pool(162)) + NEW_OBJECT
 
     # The list's name shares the first Push with the QUIT GAME item (FE_WAIT_FOR_ONLINE, 91).
-    quit_item = _push(_pool(210), _int(-1), _int(91), _str('QUIT GAME'), _int(3), _pool(162)) + NEW_OBJECT
-    return (quit_item + item(85) + item(18) + item(91, 'SYSTEM LINK') + item(91) + item(83) +
+    quit_item = _push(_pool(210), _int(-1), _int(91), _str(quit), _int(3), _pool(162)) + NEW_OBJECT
+    return (quit_item + item(85) + item(18) + item(91, system_link) + item(91) + item(83) +
             exhibition + item(5) + _push(_int(8), _pool(162)) + NEW_OBJECT)
 
 
@@ -335,7 +335,10 @@ def _add_pause_pc_settings(movie):
 
 
 def _read_archive(path):
-    archive = bytearray(path.read_bytes())
+    return _read_archive_bytes(bytearray(path.read_bytes()))
+
+
+def _read_archive_bytes(archive):
     if archive[:4] != b'RPF0':
         raise ValueError('Not an RPF0 menu archive')
     toc, count = struct.unpack_from('<II', archive, 4)
@@ -442,3 +445,94 @@ def _store(archive, entries, entry, offset, movie):
         raise ValueError('Patched movie exceeds archive slot')
     archive[offset:limit] = replacement + bytes(limit - offset - len(replacement))
     struct.pack_into('<I', archive, entry + 8, len(replacement))
+
+
+# --- Menu languages -----------------------------------------------------------------------------
+# The game's own label script fills in its rows from the disc's translations; the rows this patch
+# adds keep their own text. For GAME LANGUAGE, flash/<code>/flash.rpf holds the same menu with
+# those labels translated (PC SETTINGS and QUIT GAME after davidptrssvea's Table-Tennis-Rockstar-PC
+# v1.6.0). The executable mounts the one for the chosen language.
+MENU_LABELS = {
+    'fr': {'PC SETTINGS': 'OPTIONS PC', 'ONLINE': 'EN LIGNE', 'SYSTEM LINK': 'LIAISON SYST\u00c8ME',
+           'QUIT GAME': 'QUITTER LE JEU'},
+    'de': {'PC SETTINGS': 'PC-OPTIONEN', 'ONLINE': 'ONLINE', 'SYSTEM LINK': 'SYSTEM LINK',
+           'QUIT GAME': 'SPIEL BEENDEN'},
+    'es': {'PC SETTINGS': 'OPCIONES PC', 'ONLINE': 'EN L\u00cdNEA', 'SYSTEM LINK': 'ENLACE DE SISTEMA',
+           'QUIT GAME': 'SALIR DEL JUEGO'},
+    'it': {'PC SETTINGS': 'OPZIONI PC', 'ONLINE': 'ONLINE', 'SYSTEM LINK': 'SYSTEM LINK',
+           'QUIT GAME': 'ESCI DAL GIOCO'},
+}
+ONLINE_LABEL_START, ONLINE_LABEL_END = 0x3AC212, 0x3AC23D
+EXHIBITION_SIZE = 0x17FB9 - 0x17F5D
+
+
+def _online_label(text):
+    code = lambda t: (_push(_pool(0)) + GET_VARIABLE + _push(_pool(2)) + GET_MEMBER + _push(_int(3)) +
+                      GET_MEMBER + _push(_int(0), _str(t)) + SET_MEMBER)
+    # _fit takes a gap of 0, 2, 4 or 5 and more; trailing spaces do not show (left-aligned text).
+    for pad in range(4):
+        try:
+            return _fit(code(text + ' ' * pad), ONLINE_LABEL_END - ONLINE_LABEL_START)
+        except ValueError:
+            continue
+    raise ValueError('Menu label too long: ' + text)
+
+
+def _slot(movie, english, text):
+    """Put text in english's place (a NUL-terminated string) padded with spaces."""
+    old = english.encode() + b'\0'
+    new = text.encode()
+    if movie.count(old) != 1 or len(new) > len(old) - 1:
+        raise ValueError('Menu label does not fit: ' + text)
+    i = movie.index(old)
+    movie[i:i + len(old)] = new.ljust(len(old) - 1, b' ') + b'\0'
+
+
+def localize(archive_bytes, code):
+    """The patched menu archive with this patch's own labels in another language."""
+    labels = MENU_LABELS[code]
+    archive = bytearray(archive_bytes)
+    _, entries = _read_archive_bytes(archive)
+    movie, entry, offset = _read_movie(archive, entries, b'pongui_001.xeck')
+    if hashlib.sha256(movie).hexdigest() != PATCHED_MOVIE:
+        raise ValueError('Localize the verified English menu only')
+    head = len(_compact_main_list(b'')) - len(_push(_int(8), _pool(162)) + NEW_OBJECT) - len(
+        _push(_int(-1), _int(5), _str(''), _int(3), _pool(162)) + NEW_OBJECT)
+    exhibition = bytes(movie[MAIN_LIST_START + head:MAIN_LIST_START + head + EXHIBITION_SIZE])
+    region = MAIN_LIST_END - MAIN_LIST_START
+    if _fit(_compact_main_list(exhibition), region) != bytes(movie[MAIN_LIST_START:MAIN_LIST_END]):
+        raise ValueError('Unexpected main menu list code')
+    movie[MAIN_LIST_START:MAIN_LIST_END] = _fit(
+        _compact_main_list(exhibition, labels['SYSTEM LINK'], labels['QUIT GAME']), region)
+    movie[ONLINE_LABEL_START:ONLINE_LABEL_END] = _online_label(labels['ONLINE'])
+    _slot(movie, 'PC SETTINGS', labels['PC SETTINGS'])
+    _store(archive, entries, entry, offset, movie)
+    _, entries = _read_archive_bytes(archive)
+    pause, entry, offset = _read_movie(archive, entries, b'pongpause_001.xeck')
+    if hashlib.sha256(pause).hexdigest() != PATCHED_PAUSE_MOVIE:
+        raise ValueError('Localize the verified English pause menu only')
+    _slot(pause, 'PC SETTINGS', labels['PC SETTINGS'])
+    _store(archive, entries, entry, offset, pause)
+    # Read back what was written.
+    _, entries = _read_archive_bytes(archive)
+    check, _, _ = _read_movie(archive, entries, b'pongui_001.xeck')
+    for english, text in labels.items():
+        if english != 'ONLINE' and text != english and text.encode() not in check:
+            raise ValueError('Localized menu verification failed: ' + text)
+    return bytes(archive)
+
+
+def write_languages(path):
+    """flash/<code>/flash.rpf next to the patched English flash.rpf, for every menu language."""
+    path = Path(path)
+    english = path.read_bytes()
+    for code in MENU_LABELS:
+        data = localize(english, code)
+        target = path.parent / code / path.name
+        target.parent.mkdir(exist_ok=True)
+        if target.exists() and target.read_bytes() == data:
+            continue
+        temp = target.with_suffix('.tmp')
+        temp.write_bytes(data)
+        temp.replace(target)
+    print('Menu languages written: ' + ', '.join(MENU_LABELS) + '.', flush=True)

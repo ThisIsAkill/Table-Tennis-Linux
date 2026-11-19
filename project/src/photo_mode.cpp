@@ -4,6 +4,7 @@
 #include "photo_mode.h"
 #include "achievement_ui.h"
 #include "haptics.h"
+#include "l10n.h"
 #include "pc_features.h"
 
 #include <imgui.h>
@@ -78,16 +79,16 @@ struct Filter {
   float tint[3];
 };
 constexpr Filter kFilters[] = {
-    {"NONE", 1.0f, 1.0f, 1.0f, {1.0f, 1.0f, 1.0f}},
-    {"BLACK & WHITE", 0.0f, 1.1f, 1.0f, {1.0f, 1.0f, 1.0f}},
+    {N("NONE"), 1.0f, 1.0f, 1.0f, {1.0f, 1.0f, 1.0f}},
+    {N("BLACK & WHITE"), 0.0f, 1.1f, 1.0f, {1.0f, 1.0f, 1.0f}},
     // The game desaturates after tinting, so sepia keeps a little colour of a strong warm tint.
-    {"SEPIA", 0.25f, 1.05f, 1.0f, {1.55f, 1.08f, 0.58f}},
-    {"NOIR", 0.0f, 1.55f, 0.9f, {1.0f, 1.0f, 1.0f}},
-    {"WARM", 1.05f, 1.0f, 1.0f, {1.14f, 1.0f, 0.84f}},
-    {"COOL", 0.95f, 1.0f, 1.0f, {0.86f, 0.98f, 1.16f}},
-    {"VIVID", 1.5f, 1.15f, 1.0f, {1.0f, 1.0f, 1.0f}},
-    {"FADED", 0.55f, 0.8f, 1.12f, {1.04f, 1.0f, 0.96f}},
-    {"MATCH NIGHT", 1.2f, 1.3f, 0.85f, {0.95f, 0.97f, 1.1f}},
+    {N("SEPIA"), 0.25f, 1.05f, 1.0f, {1.55f, 1.08f, 0.58f}},
+    {N("NOIR"), 0.0f, 1.55f, 0.9f, {1.0f, 1.0f, 1.0f}},
+    {N("WARM"), 1.05f, 1.0f, 1.0f, {1.14f, 1.0f, 0.84f}},
+    {N("COOL"), 0.95f, 1.0f, 1.0f, {0.86f, 0.98f, 1.16f}},
+    {N("VIVID"), 1.5f, 1.15f, 1.0f, {1.0f, 1.0f, 1.0f}},
+    {N("FADED"), 0.55f, 0.8f, 1.12f, {1.04f, 1.0f, 0.96f}},
+    {N("MATCH NIGHT"), 1.2f, 1.3f, 0.85f, {0.95f, 0.97f, 1.1f}},
 };
 constexpr int kFilterCount = int(sizeof(kFilters) / sizeof(kFilters[0]));
 
@@ -95,11 +96,14 @@ struct Frame {
   const char* name;
   float aspect;  // width / height; 0 = the picture as it is
 };
-constexpr Frame kFrames[] = {{"ORIGINAL", 0.0f}, {"2.39:1 CINEMA", 2.39f}, {"1.85:1", 1.85f},
-                             {"16:9", 16.0f / 9.0f}, {"4:3", 4.0f / 3.0f}, {"1:1 SQUARE", 1.0f},
-                             {"4:5 PORTRAIT", 0.8f}, {"9:16 VERTICAL", 9.0f / 16.0f}};
+// Names and labels in these tables are translated where they are drawn (OptionValue, the panel);
+// the test hook below matches the English option labels.
+constexpr Frame kFrames[] = {{N("ORIGINAL"), 0.0f},     {N("2.39:1 CINEMA"), 2.39f},
+                             {"1.85:1", 1.85f},          {"16:9", 16.0f / 9.0f},
+                             {"4:3", 4.0f / 3.0f},       {N("1:1 SQUARE"), 1.0f},
+                             {N("4:5 PORTRAIT"), 0.8f},  {N("9:16 VERTICAL"), 9.0f / 16.0f}};
 constexpr int kFrameCount = int(sizeof(kFrames) / sizeof(kFrames[0]));
-constexpr const char* kBorders[] = {"NONE", "WHITE", "BLACK", "THIN WHITE"};
+constexpr const char* kBorders[] = {N("NONE"), N("WHITE"), N("BLACK"), N("THIN WHITE")};
 constexpr int kBorderCount = 4;
 
 struct OptionInfo {
@@ -107,17 +111,17 @@ struct OptionInfo {
   int min, max, initial;
 };
 constexpr OptionInfo kOptionInfo[kOptionCount] = {
-    {"ZOOM", 5, 50, 10},  // tenths: 1.0X is the game's own view
-    {"TILT", -45, 45, 0},
-    {"FILTER", 0, kFilterCount - 1, 0},
-    {"EXPOSURE", -10, 10, 0},
-    {"CONTRAST", -10, 10, 0},
-    {"SATURATION", -10, 10, 0},
-    {"TEMPERATURE", -10, 10, 0},
-    {"BLOOM", 0, 10, 3},
-    {"VIGNETTE", 0, 10, 0},
-    {"FRAME", 0, kFrameCount - 1, 0},
-    {"BORDER", 0, kBorderCount - 1, 0},
+    {N("ZOOM"), 5, 50, 10},  // tenths: 1.0X is the game's own view
+    {N("TILT"), -45, 45, 0},
+    {N("FILTER"), 0, kFilterCount - 1, 0},
+    {N("EXPOSURE"), -10, 10, 0},
+    {N("CONTRAST"), -10, 10, 0},
+    {N("SATURATION"), -10, 10, 0},
+    {N("TEMPERATURE"), -10, 10, 0},
+    {N("BLOOM"), 0, 10, 3},
+    {N("VIGNETTE"), 0, 10, 0},
+    {N("FRAME"), 0, kFrameCount - 1, 0},
+    {N("BORDER"), 0, kBorderCount - 1, 0},
 };
 constexpr int kOptionStep[kOptionCount] = {2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
@@ -138,14 +142,14 @@ std::string OptionValue(int id) {
     case kTilt:
       return (v > 0 ? "+" : "") + std::to_string(v);
     case kFilter:
-      return kFilters[std::clamp(v, 0, kFilterCount - 1)].name;
+      return l10n::T(kFilters[std::clamp(v, 0, kFilterCount - 1)].name);
     case kFrame:
-      return kFrames[std::clamp(v, 0, kFrameCount - 1)].name;
+      return l10n::T(kFrames[std::clamp(v, 0, kFrameCount - 1)].name);
     case kBorder:
-      return kBorders[std::clamp(v, 0, kBorderCount - 1)];
+      return l10n::T(kBorders[std::clamp(v, 0, kBorderCount - 1)]);
     case kBloom:
     case kVignette:
-      return v == 0 ? "OFF" : std::to_string(v);
+      return v == 0 ? std::string(l10n::T("OFF")) : std::to_string(v);
     default:
       return v == 0 ? "0" : (v > 0 ? "+" : "") + std::to_string(v);
   }
@@ -367,13 +371,13 @@ std::vector<uint8_t> FramedPicture(const rex::ui::RawImage& image, uint32_t* out
 void SavePicture() {
   rex::ui::Presenter* presenter = g_presenter ? g_presenter() : nullptr;
   if (!presenter) {
-    Notice("CANNOT SAVE PICTURES HERE");
+    Notice(l10n::T("CANNOT SAVE PICTURES HERE"));
     return;
   }
   std::thread([presenter] {
     rex::ui::RawImage image;
     if (!presenter->CaptureGuestOutput(image) || !image.width) {
-      Notice("COULD NOT CAPTURE THE PICTURE");
+      Notice(l10n::T("COULD NOT CAPTURE THE PICTURE"));
       return;
     }
     uint32_t w = 0, h = 0;
@@ -384,10 +388,10 @@ void SavePicture() {
     const auto path = rex::filesystem::GetExecutableFolder() / "photos" / name;
     if (WritePng(path, w, h, rgb)) {
       REXLOG_INFO("Tabletennis: photo saved to {} ({}x{})", path.string(), w, h);
-      Notice("SAVED photos/" + std::string(name) + " (" + std::to_string(w) + "x" +
-             std::to_string(h) + ")");
+      Notice(l10n::F("SAVED photos/{} ({}x{})",
+                                  {name, std::to_string(w), std::to_string(h)}));
     } else {
-      Notice("COULD NOT SAVE THE PICTURE");
+      Notice(l10n::T("COULD NOT SAVE THE PICTURE"));
     }
   }).detach();
 }
@@ -585,7 +589,7 @@ bool FilterInput(uint32_t user, achievement_ui::PadSample& pad) {
   if (pressed & kX) g_save_requested.store(true);
   if (pressed & kBack) {
     ResetOptions();
-    Notice("ALL OPTIONS RESET");
+    Notice(l10n::T("ALL OPTIONS RESET"));
   }
   // D-pad: choose an option and change it, repeating while held.
   const auto now = Clock::now();
@@ -721,7 +725,7 @@ void Overlay::OnDraw(ImGuiIO& io) {
                     6.0f * s);
   ImFont* title_font = achievement_ui::HeadlineFont(title_px);
   shadowed(title_font, title_px, ImVec2(px0 + 16.0f * s, py0 + 8.0f * s),
-           IM_COL32(255, 204, 0, 255), "PHOTO MODE");
+           IM_COL32(255, 204, 0, 255), l10n::T("PHOTO MODE"));
   const int selected = g_selected.load();
   float y = py0 + title_px * 1.6f;
   for (int i = 0; i < kOptionCount; ++i) {
@@ -732,7 +736,7 @@ void Overlay::OnDraw(ImGuiIO& io) {
     }
     const ImU32 col = hot ? IM_COL32(255, 204, 0, 255) : IM_COL32(222, 224, 228, 255);
     const float ty = y + (row_h - body_px) * 0.5f;
-    dl->AddText(body, body_px, ImVec2(px0 + 16.0f * s, ty), col, kOptionInfo[i].label);
+    dl->AddText(body, body_px, ImVec2(px0 + 16.0f * s, ty), col, l10n::T(kOptionInfo[i].label));
     std::string value = OptionValue(i);
     if (hot) value = "< " + value + " >";
     const float vw = body->CalcTextSizeA(body_px, FLT_MAX, 0.0f, value.c_str()).x;
@@ -741,9 +745,11 @@ void Overlay::OnDraw(ImGuiIO& io) {
   }
   // Controls along the bottom left.
   const char* help[] = {
-      "Left stick move   Right stick / mouse drag look   LT / RT down, up   LB slow  RB fast",
-      "D-pad choose and change an option (Tab and - = on a keyboard)",
-      "X save picture   Y reset camera   Back reset options   A hide all this   B leave",
+      l10n::T(
+          "Left stick move   Right stick / mouse drag look   LT / RT down, up   LB slow  RB fast"),
+      l10n::T("D-pad choose and change an option (Tab and - = on a keyboard)"),
+      l10n::T(
+          "X save picture   Y reset camera   Back reset options   A hide all this   B leave"),
   };
   float hy = pic_y + pic_h - 30.0f * s - (notice.empty() ? 0.0f : 26.0f * s);
   for (int i = 2; i >= 0; --i) {
@@ -770,12 +776,12 @@ extern "C" void sub_821B5A68(PPCContext& ctx, uint8_t* base) {
   if (g_toggle_requested.exchange(false)) {
     if (g_active.load()) {
       g_active.store(false);
-      Notice("PHOTO MODE OFF");
+      Notice(tabletennis::l10n::T("PHOTO MODE OFF"));
       REXLOG_INFO("Tabletennis: photo mode off");
     } else if (InNetworkSession()) {
-      Notice("PHOTO MODE IS NOT AVAILABLE IN NETWORK MATCHES");
+      Notice(tabletennis::l10n::T("PHOTO MODE IS NOT AVAILABLE IN NETWORK MATCHES"));
     } else if (!tabletennis::haptics::MatchInPlay()) {
-      Notice("PHOTO MODE WORKS DURING A MATCH");
+      Notice(tabletennis::l10n::T("PHOTO MODE WORKS DURING A MATCH"));
     } else {
       g_active.store(true);
       g_ui_visible.store(true);

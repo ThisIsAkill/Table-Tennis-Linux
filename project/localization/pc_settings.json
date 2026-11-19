@@ -1,0 +1,1325 @@
+[
+[
+"DISPLAY",
+"AFFICHAGE",
+"ANZEIGE",
+"PANTALLA",
+"SCHERMO"
+],
+[
+"GRAPHICS",
+"GRAPHISMES",
+"GRAFIK",
+"GRÁFICOS",
+"GRAFICA"
+],
+[
+"GAME",
+"JEU",
+"SPIEL",
+"JUEGO",
+"GIOCO"
+],
+[
+"ONLINE",
+"ONLINE",
+"ONLINE",
+"ONLINE",
+"ONLINE"
+],
+[
+"UPDATES",
+"MISES À JOUR",
+"UPDATES",
+"ACTUALIZACIONES",
+"AGGIORNAMENTI"
+],
+[
+"RESOLUTION",
+"RÉSOLUTION",
+"AUFLÖSUNG",
+"RESOLUCIÓN",
+"RISOLUZIONE"
+],
+[
+"Window size. The game renders at GRAPHICS > GAME RESOLUTION and is scaled to the window; for a sharper picture on large screens use SHARPENING (FSR) or, on a fast graphics card, GRAPHICS > RENDER SCALE.",
+"Taille de la fenêtre. Le jeu est rendu en GRAPHISMES > RÉSOLUTION DU JEU puis mis à l'échelle de la fenêtre ; pour une image plus nette sur grand écran, utilisez NETTETÉ (FSR) ou, avec une carte graphique rapide, GRAPHISMES > ÉCHELLE DE RENDU.",
+"Fenstergröße. Das Spiel rendert mit GRAFIK > SPIELAUFLÖSUNG und wird auf das Fenster skaliert; für ein schärferes Bild auf großen Bildschirmen SCHÄRFE (FSR) oder, mit einer schnellen Grafikkarte, GRAFIK > RENDERSKALA verwenden.",
+"Tamaño de la ventana. El juego se renderiza a GRÁFICOS > RESOLUCIÓN DEL JUEGO y se escala a la ventana; para una imagen más nítida en pantallas grandes usa NITIDEZ (FSR) o, con una tarjeta gráfica rápida, GRÁFICOS > ESCALA DE RENDER.",
+"Dimensioni della finestra. Il gioco esegue il rendering a GRAFICA > RISOLUZIONE GIOCO e viene scalato alla finestra; per un'immagine più nitida su schermi grandi usa NITIDEZZA (FSR) o, con una scheda grafica veloce, GRAFICA > SCALA RENDER."
+],
+[
+"FULLSCREEN",
+"PLEIN ÉCRAN",
+"VOLLBILD",
+"PANTALLA COMPLETA",
+"SCHERMO INTERO"
+],
+[
+"Fill the whole display instead of a window.",
+"Occupe tout l'écran au lieu d'une fenêtre.",
+"Den ganzen Bildschirm statt eines Fensters nutzen.",
+"Ocupa toda la pantalla en lugar de una ventana.",
+"Occupa l'intero schermo invece di una finestra."
+],
+[
+"OFF",
+"NON",
+"AUS",
+"NO",
+"NO"
+],
+[
+"ON",
+"OUI",
+"EIN",
+"SÍ",
+"SÌ"
+],
+[
+"PICTURE",
+"IMAGE",
+"BILD",
+"IMAGEN",
+"IMMAGINE"
+],
+[
+"Screens that are not 16:9. FILL widens the 3D view on wider screens (menus stay 16:9) and shows more at the top and bottom on narrower ones such as the Steam Deck (menus stretch slightly). LETTERBOX keeps the original picture with bars. AUTO fills wider screens and letterboxes narrower ones.",
+"Écrans qui ne sont pas en 16:9. REMPLIR élargit la vue 3D sur les écrans plus larges (les menus restent en 16:9) et montre plus d'image en haut et en bas sur les écrans plus étroits comme le Steam Deck (menus légèrement étirés). LETTERBOX garde l'image d'origine avec des bandes. AUTO remplit les écrans plus larges et ajoute des bandes aux plus étroits.",
+"Bildschirme, die nicht 16:9 sind. FÜLLEN verbreitert die 3D-Ansicht auf breiteren Bildschirmen (Menüs bleiben 16:9) und zeigt auf schmaleren wie dem Steam Deck oben und unten mehr (Menüs leicht gestreckt). LETTERBOX behält das Originalbild mit Balken. AUTO füllt breitere Bildschirme und zeigt schmalere mit Balken.",
+"Pantallas que no son 16:9. RELLENAR amplía la vista 3D en pantallas más anchas (los menús siguen en 16:9) y muestra más arriba y abajo en las más estrechas, como la Steam Deck (los menús se estiran un poco). BANDAS mantiene la imagen original con bandas. AUTO rellena las pantallas más anchas y añade bandas a las más estrechas.",
+"Schermi non 16:9. RIEMPI allarga la vista 3D sugli schermi più larghi (i menu restano 16:9) e mostra di più in alto e in basso su quelli più stretti come Steam Deck (menu leggermente allungati). BANDE NERE mantiene l'immagine originale con le bande. AUTO riempie gli schermi più larghi e aggiunge bande a quelli più stretti."
+],
+[
+"LETTERBOX",
+"LETTERBOX",
+"LETTERBOX",
+"BANDAS",
+"BANDE NERE"
+],
+[
+"FILL SCREEN",
+"REMPLIR",
+"FÜLLEN",
+"RELLENAR",
+"RIEMPI"
+],
+[
+"ANTI-ALIASING",
+"ANTICRÉNELAGE",
+"KANTENGLÄTTUNG",
+"SUAVIZADO",
+"ANTI-ALIASING"
+],
+[
+"Smooths jagged edges with FXAA after each frame.",
+"Lisse les contours crénelés avec FXAA après chaque image.",
+"Glättet gezackte Kanten nach jedem Bild mit FXAA.",
+"Suaviza los bordes dentados con FXAA tras cada fotograma.",
+"Smussa i bordi seghettati con FXAA dopo ogni fotogramma."
+],
+[
+"INTEGER",
+"ENTIER",
+"INTEGER",
+"ENTERO",
+"INTERO"
+],
+[
+"VSYNC",
+"VSYNC",
+"VSYNC",
+"VSYNC",
+"VSYNC"
+],
+[
+"Waits for the display before showing each frame, so the picture does not tear. AUTO is on for macOS and off elsewhere (lowest latency).",
+"Attend l'écran avant d'afficher chaque image pour éviter le déchirement. AUTO l'active sur macOS et le désactive ailleurs (latence minimale).",
+"Wartet vor jedem Bild auf den Bildschirm, damit das Bild nicht zerreißt. AUTO ist unter macOS an und sonst aus (geringste Latenz).",
+"Espera a la pantalla antes de mostrar cada fotograma para que la imagen no se corte. AUTO lo activa en macOS y lo desactiva en el resto (latencia mínima).",
+"Attende lo schermo prima di mostrare ogni fotogramma, così l'immagine non si strappa. AUTO è attivo su macOS e disattivato altrove (latenza minima)."
+],
+[
+"BRIGHTNESS",
+"LUMINOSITÉ",
+"HELLIGKEIT",
+"BRILLO",
+"LUMINOSITÀ"
+],
+[
+"Lightens dark and middle tones; white stays white. NORMAL is the picture as the game draws it.",
+"Éclaircit les tons sombres et moyens ; le blanc reste blanc. NORMAL correspond à l'image telle que le jeu la dessine.",
+"Hellt dunkle und mittlere Töne auf; Weiß bleibt Weiß. NORMAL ist das Bild, wie das Spiel es zeichnet.",
+"Aclara los tonos oscuros y medios; el blanco sigue siendo blanco. NORMAL es la imagen tal como la dibuja el juego.",
+"Schiarisce i toni scuri e medi; il bianco resta bianco. NORMALE è l'immagine come la disegna il gioco."
+],
+[
+"SHOW FPS",
+"AFFICHER FPS",
+"FPS ANZEIGEN",
+"MOSTRAR FPS",
+"MOSTRA FPS"
+],
+[
+"Frame rate counter in the top left corner (F10).",
+"Compteur d'images par seconde en haut à gauche (F10).",
+"Bildratenanzeige oben links (F10).",
+"Contador de fotogramas en la esquina superior izquierda (F10).",
+"Contatore dei fotogrammi nell'angolo in alto a sinistra (F10)."
+],
+[
+"HAPTICS",
+"VIBRATIONS",
+"VIBRATION",
+"VIBRACIÓN",
+"VIBRAZIONE"
+],
+[
+"Controller pulse on every ball hit and a tick in menus. LIGHT eases them off (gentler menu ticks on a controller with two rumble motors, such as the Steam Controller or a DualSense; the Steam Deck is the same either way).",
+"Impulsion de la manette à chaque frappe de balle et petit retour dans les menus. LÉGER les atténue (retours de menu plus doux sur une manette à deux moteurs de vibration, comme le Steam Controller ou une DualSense ; sur le Steam Deck, c'est identique).",
+"Controller-Impuls bei jedem Ballschlag und ein kurzes Ticken in Menüs. LEICHT schwächt sie ab (sanfteres Ticken in Menüs bei Controllern mit zwei Vibrationsmotoren wie dem Steam Controller oder einem DualSense; beim Steam Deck gleich).",
+"Pulso del mando en cada golpe a la bola y un toque en los menús. SUAVE los atenúa (toques de menú más suaves en mandos con dos motores de vibración, como el Steam Controller o un DualSense; en la Steam Deck no cambia).",
+"Impulso del controller a ogni colpo di palla e un tocco nei menu. LEGGERO li attenua (tocchi nei menu più delicati su controller con due motori di vibrazione, come lo Steam Controller o un DualSense; su Steam Deck non cambia)."
+],
+[
+"LIGHT",
+"LÉGER",
+"LEICHT",
+"SUAVE",
+"LEGGERO"
+],
+[
+"BUTTON PROMPTS",
+"ICÔNES DES TOUCHES",
+"TASTENSYMBOLE",
+"ICONOS DE BOTONES",
+"ICONE DEI PULSANTI"
+],
+[
+"Button icons in the menus. AUTO shows PlayStation icons while a PlayStation controller is in use and Xbox icons otherwise.",
+"Icônes des touches dans les menus. AUTO affiche les icônes PlayStation quand une manette PlayStation est utilisée, sinon les icônes Xbox.",
+"Tastensymbole in den Menüs. AUTO zeigt PlayStation-Symbole, solange ein PlayStation-Controller benutzt wird, sonst Xbox-Symbole.",
+"Iconos de botones en los menús. AUTO muestra iconos de PlayStation mientras se usa un mando de PlayStation, y de Xbox en otro caso.",
+"Icone dei pulsanti nei menu. AUTO mostra le icone PlayStation quando è in uso un controller PlayStation, altrimenti quelle Xbox."
+],
+[
+"GAME RESOLUTION",
+"RÉSOLUTION DU JEU",
+"SPIELAUFLÖSUNG",
+"RESOLUCIÓN DEL JUEGO",
+"RISOLUZIONE GIOCO"
+],
+[
+"The size the game itself renders at, menus and HUD included; the Xbox 360 rendered at 720p. 1080P is sharp on 1080p screens and costs about twice the GPU work of 720P. AUTO is 1080P for 1080p and larger windows and 720P for smaller ones such as the Steam Deck; if 1080P cannot hold 60 FPS in a match, AUTO uses 720P from the next start. Applies at the next start.",
+"Taille de rendu du jeu lui-même, menus et HUD compris ; la Xbox 360 rendait en 720p. 1080P est net sur les écrans 1080p et demande environ deux fois plus de travail au GPU que 720P. AUTO choisit 1080P pour les fenêtres de 1080p et plus et 720P pour les plus petites comme le Steam Deck ; si 1080P ne tient pas 60 FPS en match, AUTO utilise 720P dès le démarrage suivant. S'applique au prochain démarrage.",
+"Die Größe, in der das Spiel selbst rendert, inklusive Menüs und HUD; die Xbox 360 renderte in 720p. 1080P ist auf 1080p-Bildschirmen scharf und kostet etwa doppelt so viel GPU-Arbeit wie 720P. AUTO wählt 1080P für Fenster ab 1080p und 720P für kleinere wie das Steam Deck; hält 1080P im Match keine 60 FPS, nutzt AUTO ab dem nächsten Start 720P. Gilt ab dem nächsten Start.",
+"El tamaño al que se renderiza el propio juego, menús y HUD incluidos; la Xbox 360 renderizaba a 720p. 1080P se ve nítido en pantallas 1080p y cuesta cerca del doble de trabajo de GPU que 720P. AUTO usa 1080P en ventanas de 1080p o más y 720P en las más pequeñas, como la Steam Deck; si 1080P no mantiene 60 FPS en una partida, AUTO usa 720P desde el siguiente inicio. Se aplica en el siguiente inicio.",
+"La dimensione a cui il gioco esegue il rendering, menu e HUD inclusi; Xbox 360 usava 720p. 1080P è nitido sugli schermi 1080p e richiede circa il doppio del lavoro GPU di 720P. AUTO usa 1080P per finestre da 1080p in su e 720P per quelle più piccole come Steam Deck; se 1080P non regge 60 FPS in partita, AUTO usa 720P dal prossimo avvio. Si applica al prossimo avvio."
+],
+[
+"RENDER SCALE",
+"ÉCHELLE DE RENDU",
+"RENDERSKALA",
+"ESCALA DE RENDER",
+"SCALA RENDER"
+],
+[
+"Multiples of GAME RESOLUTION (supersampling). WARNING: very demanding. 2X needs about 3 times the GPU power of 1X (3840 X 2160 at 1080P); 3X about 14 times, for the fastest GPUs only. AUTO starts at 1X and moves up only after a match holds 60 FPS.",
+"Multiples de RÉSOLUTION DU JEU (suréchantillonnage). ATTENTION : très exigeant. 2X demande environ 3 fois la puissance GPU de 1X (3840 X 2160 en 1080P) ; 3X environ 14 fois, réservé aux GPU les plus rapides. AUTO commence à 1X et ne monte qu'après un match tenu à 60 FPS.",
+"Vielfache von SPIELAUFLÖSUNG (Supersampling). WARNUNG: sehr anspruchsvoll. 2X braucht etwa die 3-fache GPU-Leistung von 1X (3840 X 2160 bei 1080P); 3X etwa die 14-fache, nur für die schnellsten GPUs. AUTO beginnt bei 1X und steigt erst, nachdem ein Match 60 FPS hält.",
+"Múltiplos de RESOLUCIÓN DEL JUEGO (supermuestreo). AVISO: muy exigente. 2X necesita unas 3 veces la potencia de GPU de 1X (3840 X 2160 a 1080P); 3X unas 14 veces, solo para las GPU más rápidas. AUTO empieza en 1X y solo sube cuando una partida mantiene 60 FPS.",
+"Multipli di RISOLUZIONE GIOCO (supersampling). ATTENZIONE: molto impegnativo. 2X richiede circa 3 volte la potenza GPU di 1X (3840 X 2160 a 1080P); 3X circa 14 volte, solo per le GPU più veloci. AUTO parte da 1X e sale solo dopo una partita a 60 FPS costanti."
+],
+[
+"TEXTURE FILTERING",
+"FILTRAGE TEXTURES",
+"TEXTURFILTER",
+"FILTRADO TEXTURAS",
+"FILTRO TEXTURE"
+],
+[
+"MOTION SWING",
+"FRAPPE GYRO",
+"GYRO-SCHLAG",
+"GOLPE CON GESTO",
+"COLPO GESTUALE"
+],
+[
+"Play shots with a flick of the wrist, on a controller with a gyro (DualSense, DualShock 4, Switch Pro; Steam Deck with Steam Input off for the game). Tip the top forward for topspin, back for backspin, turn left or right for sidespin. STRONG needs a firm flick, LIGHT a gentle one. Only during a rally.",
+"Frappez d'un coup de poignet avec une manette dotée d'un gyroscope (DualSense, DualShock 4, Switch Pro ; Steam Deck avec Steam Input désactivé pour le jeu). Inclinez le haut vers l'avant pour un lift, vers l'arrière pour un coupé, tournez à gauche ou à droite pour un effet latéral. FORT demande un geste ferme, LÉGER un geste doux. Uniquement pendant un échange.",
+"Schläge mit einer Bewegung aus dem Handgelenk, mit einem Controller mit Gyrosensor (DualSense, DualShock 4, Switch Pro; Steam Deck mit deaktiviertem Steam Input für das Spiel). Oberseite nach vorn kippen für Topspin, nach hinten für Backspin, nach links oder rechts drehen für Sidespin. STARK braucht eine kräftige Bewegung, LEICHT eine sanfte. Nur während eines Ballwechsels.",
+"Golpea con un giro de muñeca, en un mando con giroscopio (DualSense, DualShock 4, Switch Pro; Steam Deck con Steam Input desactivado para el juego). Inclina la parte superior hacia delante para efecto liftado, hacia atrás para cortado, y gira a izquierda o derecha para efecto lateral. FUERTE necesita un gesto firme, SUAVE uno ligero. Solo durante un peloteo.",
+"Colpisci con un movimento del polso, su un controller con giroscopio (DualSense, DualShock 4, Switch Pro; Steam Deck con Steam Input disattivato per il gioco). Inclina la parte superiore in avanti per il topspin, indietro per il backspin, ruota a sinistra o a destra per l'effetto laterale. FORTE richiede un movimento deciso, LEGGERO uno delicato. Solo durante uno scambio."
+],
+[
+"STRONG",
+"FORT",
+"STARK",
+"FUERTE",
+"FORTE"
+],
+[
+"SUBTITLES",
+"SOUS-TITRES",
+"UNTERTITEL",
+"SUBTÍTULOS",
+"SOTTOTITOLI"
+],
+[
+"Captions at the bottom of the screen. ANNOUNCER shows what the match announcer says (scores, serves, faults, points, players). ALL SOUNDS also tags crowd reactions such as cheers, applause and gasps.",
+"Sous-titres en bas de l'écran. ANNONCEUR affiche ce que dit l'annonceur du match (scores, services, fautes, points, joueurs). TOUS LES SONS signale aussi les réactions du public comme les acclamations, les applaudissements et les exclamations.",
+"Untertitel am unteren Bildrand. ANSAGER zeigt, was der Ansager des Matches sagt (Spielstand, Aufschläge, Fehler, Punkte, Spieler). ALLE TÖNE kennzeichnet auch Reaktionen des Publikums wie Jubel, Applaus und Raunen.",
+"Subtítulos en la parte inferior de la pantalla. LOCUTOR muestra lo que dice el locutor de la partida (marcador, saques, faltas, puntos, jugadores). TODO EL AUDIO también indica reacciones del público como vítores, aplausos y exclamaciones.",
+"Sottotitoli nella parte bassa dello schermo. ANNUNCIATORE mostra ciò che dice l'annunciatore della partita (punteggio, servizi, falli, punti, giocatori). TUTTI I SUONI segnala anche le reazioni del pubblico come incitamenti, applausi e sussulti."
+],
+[
+"ANNOUNCER",
+"ANNONCEUR",
+"ANSAGER",
+"LOCUTOR",
+"ANNUNCIATORE"
+],
+[
+"ALL SOUNDS",
+"TOUS LES SONS",
+"ALLE TÖNE",
+"TODO EL AUDIO",
+"TUTTI I SUONI"
+],
+[
+"LANGUAGE",
+"LANGUE",
+"SPRACHE",
+"IDIOMA",
+"LINGUA"
+],
+[
+"Menus and text in the game's own translations from your disc. Applies at the next start.",
+"Menus et textes dans les traductions d'origine du jeu, sur votre disque. S'applique au prochain démarrage.",
+"Menüs und Texte in den spieleigenen Übersetzungen der Disc. Gilt ab dem nächsten Start.",
+"Menús y textos en las traducciones originales del juego, desde tu disco. Se aplica en el siguiente inicio.",
+"Menu e testi nelle traduzioni originali del gioco presenti sul tuo disco. Si applica al prossimo avvio."
+],
+[
+"PLAYER NAME",
+"NOM DU JOUEUR",
+"SPIELERNAME",
+"NOMBRE DE JUGADOR",
+"NOME GIOCATORE"
+],
+[
+"The name other players see online and in SYSTEM LINK. Press A to change it (player_name= in tt-recomp.ini).",
+"Le nom que voient les autres joueurs en ligne et en SYSTEM LINK. Appuyez sur A pour le modifier (player_name= dans tt-recomp.ini).",
+"Der Name, den andere Spieler online und bei SYSTEM LINK sehen. A drücken, um ihn zu ändern (player_name= in tt-recomp.ini).",
+"El nombre que ven otros jugadores en línea y en SYSTEM LINK. Pulsa A para cambiarlo (player_name= en tt-recomp.ini).",
+"Il nome che vedono gli altri giocatori online e in SYSTEM LINK. Premi A per cambiarlo (player_name= in tt-recomp.ini)."
+],
+[
+"ONLINE SERVER",
+"SERVEUR EN LIGNE",
+"ONLINE-SERVER",
+"SERVIDOR EN LÍNEA",
+"SERVER ONLINE"
+],
+[
+"The server ONLINE in the main menu plays through (server= in tt-recomp.ini).",
+"Le serveur utilisé par ONLINE dans le menu principal (server= dans tt-recomp.ini).",
+"Der Server, über den ONLINE im Hauptmenü spielt (server= in tt-recomp.ini).",
+"El servidor que usa ONLINE en el menú principal (server= en tt-recomp.ini).",
+"Il server usato da ONLINE nel menu principale (server= in tt-recomp.ini)."
+],
+[
+"ONLINE STATUS",
+"ÉTAT EN LIGNE",
+"ONLINE-STATUS",
+"ESTADO EN LÍNEA",
+"STATO ONLINE"
+],
+[
+"VOICE CHAT",
+"CHAT VOCAL",
+"SPRACHCHAT",
+"CHAT DE VOZ",
+"CHAT VOCALE"
+],
+[
+"Headset voice chat during ONLINE and SYSTEM LINK matches. Needs a microphone; others hear you while you talk.",
+"Chat vocal au casque pendant les matchs ONLINE et SYSTEM LINK. Nécessite un micro ; les autres vous entendent quand vous parlez.",
+"Sprachchat per Headset in Matches über ONLINE und SYSTEM LINK. Benötigt ein Mikrofon; die anderen hören mit, während man spricht.",
+"Chat de voz con auriculares en partidas ONLINE y SYSTEM LINK. Necesita micrófono; los demás te oyen mientras hablas.",
+"Chat vocale con cuffie durante le partite ONLINE e SYSTEM LINK. Serve un microfono; gli altri ti sentono mentre parli."
+],
+[
+"RANKED ACCOUNT",
+"COMPTE CLASSÉ",
+"RANGLISTENKONTO",
+"CUENTA DE RANKING",
+"ACCOUNT CLASSIFICA"
+],
+[
+"CHECK NOW",
+"VÉRIFIER",
+"JETZT PRÜFEN",
+"COMPROBAR",
+"CONTROLLA ORA"
+],
+[
+"VERSION",
+"VERSION",
+"VERSION",
+"VERSIÓN",
+"VERSIONE"
+],
+[
+"NO SERVER SET",
+"AUCUN SERVEUR",
+"KEIN SERVER",
+"SIN SERVIDOR",
+"NESSUN SERVER"
+],
+[
+"ENTER A ROOM CODE",
+"SAISIR UN CODE DE SALON",
+"RAUMCODE EINGEBEN",
+"INTRODUCE CÓDIGO DE SALA",
+"INSERISCI CODICE STANZA"
+],
+[
+"SERVER NOT FOUND",
+"SERVEUR INTROUVABLE",
+"SERVER NICHT GEFUNDEN",
+"SERVIDOR NO ENCONTRADO",
+"SERVER NON TROVATO"
+],
+[
+"CONNECTING",
+"CONNEXION",
+"VERBINDE",
+"CONECTANDO",
+"CONNESSIONE"
+],
+[
+"NO ANSWER FROM SERVER",
+"LE SERVEUR NE RÉPOND PAS",
+"KEINE ANTWORT VOM SERVER",
+"EL SERVIDOR NO RESPONDE",
+"NESSUNA RISPOSTA DAL SERVER"
+],
+[
+"RECONNECTING",
+"RECONNEXION",
+"NEUVERBINDUNG",
+"RECONECTANDO",
+"RICONNESSIONE"
+],
+[
+"CONNECTED",
+"CONNECTÉ",
+"VERBUNDEN",
+"CONECTADO",
+"CONNESSO"
+],
+[
+"THIS SERVER SPEAKS A DIFFERENT VERSION; UPDATE THE GAME",
+"CE SERVEUR UTILISE UNE AUTRE VERSION ; METTEZ LE JEU À JOUR",
+"DIESER SERVER NUTZT EINE ANDERE VERSION; SPIEL AKTUALISIEREN",
+"ESTE SERVIDOR USA OTRA VERSIÓN; ACTUALIZA EL JUEGO",
+"QUESTO SERVER USA UN'ALTRA VERSIONE; AGGIORNA IL GIOCO"
+],
+[
+"INVALID ROOM CODE",
+"CODE DE SALON INVALIDE",
+"UNGÜLTIGER RAUMCODE",
+"CÓDIGO DE SALA INVÁLIDO",
+"CODICE STANZA ERRATO"
+],
+[
+"SERVER IS FULL",
+"SERVEUR PLEIN",
+"SERVER IST VOLL",
+"SERVIDOR LLENO",
+"SERVER PIENO"
+],
+[
+"TOO MANY PLAYERS FROM THIS ADDRESS",
+"TROP DE JOUEURS DEPUIS CETTE ADRESSE",
+"ZU VIELE SPIELER VON DIESER ADRESSE",
+"DEMASIADOS JUGADORES DESDE ESTA DIRECCIÓN",
+"TROPPI GIOCATORI DA QUESTO INDIRIZZO"
+],
+[
+"ROOM IS FULL",
+"SALON PLEIN",
+"RAUM IST VOLL",
+"SALA LLENA",
+"STANZA PIENA"
+],
+[
+"{} PLAYER",
+"{} JOUEUR",
+"{} SPIELER",
+"{} JUGADOR",
+"{} GIOCATORE"
+],
+[
+"{} PLAYERS",
+"{} JOUEURS",
+"{} SPIELER",
+"{} JUGADORES",
+"{} GIOCATORI"
+],
+[
+"Not online. ONLINE in the main menu connects; SYSTEM LINK plays on the local network.",
+"Hors ligne. ONLINE dans le menu principal se connecte ; SYSTEM LINK joue sur le réseau local.",
+"Nicht online. ONLINE im Hauptmenü verbindet; SYSTEM LINK spielt im lokalen Netzwerk.",
+"Sin conexión. ONLINE en el menú principal se conecta; SYSTEM LINK juega en la red local.",
+"Non online. ONLINE nel menu principale si connette; SYSTEM LINK gioca sulla rete locale."
+],
+[
+"NOT CONNECTED",
+"NON CONNECTÉ",
+"NICHT VERBUNDEN",
+"NO CONECTADO",
+"NON CONNESSO"
+],
+[
+"No online server is set (server= in tt-recomp.ini).",
+"Aucun serveur en ligne n'est défini (server= dans tt-recomp.ini).",
+"Kein Online-Server festgelegt (server= in tt-recomp.ini).",
+"No hay ningún servidor en línea configurado (server= en tt-recomp.ini).",
+"Nessun server online impostato (server= in tt-recomp.ini)."
+],
+[
+"Connecting to the online server.",
+"Connexion au serveur en ligne.",
+"Verbindung zum Online-Server wird hergestellt.",
+"Conectando con el servidor en línea.",
+"Connessione al server online."
+],
+[
+"ROOM {}",
+"SALON {}",
+"RAUM {}",
+"SALA {}",
+"STANZA {}"
+],
+[
+"PUBLIC",
+"PUBLIC",
+"ÖFFENTLICH",
+"PÚBLICA",
+"PUBBLICA"
+],
+[
+"Connected. {} players online. Matches with {} player(s) run directly, {} through the server.",
+"Connecté. {} joueurs en ligne. Matchs avec {} joueur(s) en direct, {} via le serveur.",
+"Verbunden. {} Spieler online. Matches mit {} Spieler(n) laufen direkt, {} über den Server.",
+"Conectado. {} jugadores en línea. Partidas con {} jugador(es) en directo, {} a través del servidor.",
+"Connesso. {} giocatori online. Partite con {} giocatore/i in diretta, {} tramite il server."
+],
+[
+"Server: {} ms.",
+"Serveur : {} ms.",
+"Server: {} ms.",
+"Servidor: {} ms.",
+"Server: {} ms."
+],
+[
+"Ranked matches and leaderboards use an account named after the player name. It is created when you go ONLINE.",
+"Les matchs classés et les classements utilisent un compte au nom du joueur. Il est créé quand vous allez sur ONLINE.",
+"Ranglistenspiele und Bestenlisten nutzen ein Konto mit dem Spielernamen. Es wird angelegt, sobald man ONLINE geht.",
+"Las partidas clasificatorias y las clasificaciones usan una cuenta con el nombre del jugador. Se crea al entrar en ONLINE.",
+"Le partite classificate e le classifiche usano un account con il nome del giocatore. Viene creato quando entri in ONLINE."
+],
+[
+"NOT ONLINE",
+"HORS LIGNE",
+"NICHT ONLINE",
+"SIN CONEXIÓN",
+"NON ONLINE"
+],
+[
+"Talking to the online server...",
+"Communication avec le serveur en ligne...",
+"Verbindung mit dem Online-Server...",
+"Comunicando con el servidor en línea...",
+"Comunicazione con il server online..."
+],
+[
+"CONNECTING...",
+"CONNEXION...",
+"VERBINDE...",
+"CONECTANDO...",
+"CONNESSIONE..."
+],
+[
+"Ranked results and leaderboard places are saved to this account. Use SHOW LINK CODE to play with it on another device.",
+"Les résultats classés et les places au classement sont enregistrés sur ce compte. Utilisez AFFICHER LE CODE pour l'utiliser sur un autre appareil.",
+"Ranglistenergebnisse und Bestenlistenplätze werden in diesem Konto gespeichert. Mit LINK-CODE ZEIGEN lässt es sich auf einem anderen Gerät nutzen.",
+"Los resultados clasificatorios y los puestos en las clasificaciones se guardan en esta cuenta. Usa MOSTRAR CÓDIGO para jugar con ella en otro dispositivo.",
+"I risultati classificati e le posizioni in classifica vengono salvati su questo account. Usa MOSTRA CODICE per giocare con esso su un altro dispositivo."
+],
+[
+"Another account already uses this player name. If it is yours, use ENTER LINK CODE with a code from your other device; otherwise pick another PLAYER NAME.",
+"Un autre compte utilise déjà ce nom de joueur. S'il est à vous, utilisez SAISIR UN CODE avec un code de votre autre appareil ; sinon choisissez un autre NOM DU JOUEUR.",
+"Ein anderes Konto nutzt diesen Spielernamen bereits. Gehört es einem selbst, LINK-CODE EINGEBEN mit einem Code vom anderen Gerät verwenden; sonst einen anderen SPIELERNAME wählen.",
+"Otra cuenta ya usa este nombre de jugador. Si es tuya, usa INTRODUCIR CÓDIGO con un código de tu otro dispositivo; si no, elige otro NOMBRE DE JUGADOR.",
+"Un altro account usa già questo nome giocatore. Se è tuo, usa INSERISCI CODICE con un codice dell'altro dispositivo; altrimenti scegli un altro NOME GIOCATORE."
+],
+[
+"NAME TAKEN",
+"NOM PRIS",
+"NAME VERGEBEN",
+"NOMBRE EN USO",
+"NOME IN USO"
+],
+[
+"The online server could not be reached. Press A to try again.",
+"Impossible de joindre le serveur en ligne. Appuyez sur A pour réessayer.",
+"Der Online-Server ist nicht erreichbar. A drücken, um es erneut zu versuchen.",
+"No se pudo contactar con el servidor en línea. Pulsa A para reintentar.",
+"Impossibile raggiungere il server online. Premi A per riprovare."
+],
+[
+"NOT REACHABLE",
+"INJOIGNABLE",
+"NICHT ERREICHBAR",
+"INACCESIBLE",
+"NON RAGGIUNGIBILE"
+],
+[
+"{} FPS, slowest tenth {}, GPU {} ms per frame",
+"{} FPS, dixième le plus lent {}, GPU {} ms par image",
+"{} FPS, langsamstes Zehntel {}, GPU {} ms pro Bild",
+"{} FPS, décimo más lento {}, GPU {} ms por fotograma",
+"{} FPS, decimo più lento {}, GPU {} ms per fotogramma"
+],
+[
+"AUTO: {}p could not hold 60 FPS ({}); GAME RESOLUTION AUTO uses 720p from the next start.",
+"AUTO : {}p n'a pas tenu 60 FPS ({}) ; RÉSOLUTION DU JEU AUTO utilisera 720p au prochain démarrage.",
+"AUTO: {}p konnte 60 FPS nicht halten ({}); SPIELAUFLÖSUNG AUTO nutzt ab dem nächsten Start 720p.",
+"AUTO: {}p no pudo mantener 60 FPS ({}); RESOLUCIÓN DEL JUEGO AUTO usará 720p desde el siguiente inicio.",
+"AUTO: {}p non ha retto 60 FPS ({}); RISOLUZIONE GIOCO AUTO userà 720p dal prossimo avvio."
+],
+[
+"AUTO: {} holds 60 FPS here ({}); the next start tries {}X.",
+"AUTO : {} tient 60 FPS ici ({}) ; le prochain démarrage essaiera {}X.",
+"AUTO: {} hält hier 60 FPS ({}); der nächste Start versucht {}X.",
+"AUTO: {} mantiene 60 FPS aquí ({}); el siguiente inicio probará {}X.",
+"AUTO: {} regge 60 FPS qui ({}); il prossimo avvio proverà {}X."
+],
+[
+"AUTO: {} could not hold 60 FPS ({}); back to {}X from the next start.",
+"AUTO : {} n'a pas tenu 60 FPS ({}) ; retour à {}X au prochain démarrage.",
+"AUTO: {} konnte 60 FPS nicht halten ({}); ab dem nächsten Start wieder {}X.",
+"AUTO: {} no pudo mantener 60 FPS ({}); vuelve a {}X desde el siguiente inicio.",
+"AUTO: {} non ha retto 60 FPS ({}); si torna a {}X dal prossimo avvio."
+],
+[
+"AUTO renders at {} ({}).",
+"AUTO rend en {} ({}).",
+"AUTO rendert mit {} ({}).",
+"AUTO renderiza a {} ({}).",
+"AUTO esegue il rendering a {} ({})."
+],
+[
+"DEFAULTS RESTORED",
+"VALEURS RÉTABLIES",
+"ZURÜCKGESETZT",
+"VALORES RESTABLECIDOS",
+"VALORI RIPRISTINATI"
+],
+[
+"COULD NOT REQUEST THE UPDATE",
+"IMPOSSIBLE DE DEMANDER LA MISE À JOUR",
+"UPDATE KONNTE NICHT ANGEFORDERT WERDEN",
+"NO SE PUDO SOLICITAR LA ACTUALIZACIÓN",
+"IMPOSSIBILE RICHIEDERE L'AGGIORNAMENTO"
+],
+[
+"COULD NOT SAVE {}",
+"IMPOSSIBLE D'ENREGISTRER {}",
+"{} NICHT GESPEICHERT",
+"NO SE PUDO GUARDAR {}",
+"IMPOSSIBILE SALVARE {}"
+],
+[
+"PC SETTINGS",
+"OPTIONS PC",
+"PC-OPTIONEN",
+"OPCIONES PC",
+"OPZIONI PC"
+],
+[
+"NOT SET",
+"NON DÉFINI",
+"NICHT GESETZT",
+"SIN DEFINIR",
+"NON IMPOSTATO"
+],
+[
+"DEV BUILD",
+"VERSION DEV",
+"DEV-BUILD",
+"VERSIÓN DEV",
+"BUILD DEV"
+],
+[
+"UPDATE TO {}",
+"MISE À JOUR {}",
+"UPDATE AUF {}",
+"ACTUALIZAR A {}",
+"AGGIORNA A {}"
+],
+[
+"AUTOMATIC",
+"AUTOMATIQUE",
+"AUTOMATISCH",
+"AUTOMÁTICO",
+"AUTOMATICO"
+],
+[
+"SHOW",
+"AFFICHER",
+"ZEIGEN",
+"MOSTRAR",
+"MOSTRA"
+],
+[
+"ENTER",
+"SAISIR",
+"EINGEBEN",
+"INTRODUCIR",
+"INSERISCI"
+],
+[
+"LINKED - PLAYER NAME IS NOW {} (AFTER RESTART)",
+"LIÉ - LE NOM DU JOUEUR EST MAINTENANT {} (APRÈS REDÉMARRAGE)",
+"VERKNÜPFT - SPIELERNAME IST JETZT {} (NACH NEUSTART)",
+"VINCULADO - EL NOMBRE DE JUGADOR AHORA ES {} (TRAS REINICIAR)",
+"COLLEGATO - IL NOME GIOCATORE ORA È {} (DOPO IL RIAVVIO)"
+],
+[
+"NOT AVAILABLE",
+"INDISPONIBLE",
+"NICHT VERFÜGBAR",
+"NO DISPONIBLE",
+"NON DISPONIBILE"
+],
+[
+"CHECKING...",
+"VÉRIFICATION...",
+"PRÜFE...",
+"COMPROBANDO...",
+"CONTROLLO..."
+],
+[
+"UP TO DATE",
+"À JOUR",
+"AKTUELL",
+"ACTUALIZADO",
+"AGGIORNATO"
+],
+[
+"FOUND {}",
+"{} TROUVÉE",
+"{} GEFUNDEN",
+"{} ENCONTRADA",
+"{} TROVATA"
+],
+[
+"FAILED",
+"ÉCHEC",
+"FEHLER",
+"ERROR",
+"ERRORE"
+],
+[
+"CHECK",
+"VÉRIFIER",
+"PRÜFEN",
+"COMPROBAR",
+"CONTROLLA"
+],
+[
+"AFTER RESTART",
+"APRÈS REDÉMARRAGE",
+"NACH NEUSTART",
+"TRAS REINICIAR",
+"DOPO IL RIAVVIO"
+],
+[
+"Development build: updates are not offered.",
+"Version de développement : aucune mise à jour proposée.",
+"Entwicklungsversion: Es werden keine Updates angeboten.",
+"Versión de desarrollo: no se ofrecen actualizaciones.",
+"Build di sviluppo: gli aggiornamenti non sono disponibili."
+],
+[
+"Installed version {}. New versions are found when the game starts, or with CHECK NOW.",
+"Version installée {}. Les nouvelles versions sont détectées au démarrage du jeu ou avec VÉRIFIER.",
+"Installierte Version {}. Neue Versionen werden beim Spielstart oder mit JETZT PRÜFEN gefunden.",
+"Versión instalada {}. Las nuevas versiones se detectan al iniciar el juego o con COMPROBAR.",
+"Versione installata {}. Le nuove versioni vengono trovate all'avvio del gioco o con CONTROLLA ORA."
+],
+[
+"Version {}",
+"Version {}",
+"Version {}",
+"Versión {}",
+"Versione {}"
+],
+[
+"Two players in one room cannot use the same name.",
+"Deux joueurs d'un même salon ne peuvent pas avoir le même nom.",
+"Zwei Spieler in einem Raum können nicht denselben Namen verwenden.",
+"Dos jugadores en una misma sala no pueden usar el mismo nombre.",
+"Due giocatori nella stessa stanza non possono usare lo stesso nome."
+],
+[
+"Checking from the game is not available here.",
+"La vérification depuis le jeu n'est pas disponible ici.",
+"Die Prüfung aus dem Spiel ist hier nicht verfügbar.",
+"La comprobación desde el juego no está disponible aquí.",
+"Il controllo dal gioco non è disponibile qui."
+],
+[
+"Looking for a new version...",
+"Recherche d'une nouvelle version...",
+"Suche nach einer neuen Version...",
+"Buscando una nueva versión...",
+"Ricerca di una nuova versione..."
+],
+[
+"Version {} is the latest.",
+"La version {} est la plus récente.",
+"Version {} ist die neueste.",
+"La versión {} es la más reciente.",
+"La versione {} è la più recente."
+],
+[
+"Version {} is available: see VERSION below, or press A on it.",
+"La version {} est disponible : voir VERSION ci-dessous, ou appuyez sur A dessus.",
+"Version {} ist verfügbar: siehe VERSION unten, oder dort A drücken.",
+"La versión {} está disponible: mira VERSIÓN más abajo o pulsa A sobre ella.",
+"La versione {} è disponibile: vedi VERSIONE più in basso, oppure premi A su di essa."
+],
+[
+"Look for a new version now.",
+"Rechercher une nouvelle version maintenant.",
+"Jetzt nach einer neuen Version suchen.",
+"Busca una nueva versión ahora.",
+"Cerca subito una nuova versione."
+],
+[
+"Enter {} under ENTER LINK CODE on the other device within 5 minutes. The code works once.",
+"Saisissez {} dans SAISIR UN CODE sur l'autre appareil dans les 5 minutes. Le code ne sert qu'une fois.",
+"{} innerhalb von 5 Minuten auf dem anderen Gerät unter LINK-CODE EINGEBEN eingeben. Der Code gilt nur einmal.",
+"Introduce {} en INTRODUCIR CÓDIGO en el otro dispositivo antes de 5 minutos. El código solo sirve una vez.",
+"Inserisci {} in INSERISCI CODICE sull'altro dispositivo entro 5 minuti. Il codice vale una sola volta."
+],
+[
+"AUTO renders at {}X now and measures the GPU during matches to pick the level for the next start.",
+"AUTO rend actuellement en {}X et mesure le GPU pendant les matchs pour choisir le niveau du prochain démarrage.",
+"AUTO rendert jetzt mit {}X und misst die GPU während der Matches, um die Stufe für den nächsten Start zu wählen.",
+"AUTO renderiza ahora a {}X y mide la GPU durante las partidas para elegir el nivel del siguiente inicio.",
+"AUTO ora esegue il rendering a {}X e misura la GPU durante le partite per scegliere il livello del prossimo avvio."
+],
+[
+"No controller with a gyro is connected right now.",
+"Aucune manette avec gyroscope n'est connectée pour le moment.",
+"Derzeit ist kein Controller mit Gyrosensor verbunden.",
+"Ahora mismo no hay ningún mando con giroscopio conectado.",
+"Al momento non è collegato alcun controller con giroscopio."
+],
+[
+"APPLIES AFTER RESTART",
+"EFFET APRÈS REDÉMARRAGE",
+"GILT NACH NEUSTART",
+"SE APLICA TRAS REINICIAR",
+"SI APPLICA DOPO IL RIAVVIO"
+],
+[
+"APPLIES NOW",
+"EFFET IMMÉDIAT",
+"GILT SOFORT",
+"SE APLICA YA",
+"SI APPLICA SUBITO"
+],
+[
+"SAVED; USED WHEN THE GAME STARTS",
+"ENREGISTRÉ ; UTILISÉ AU DÉMARRAGE DU JEU",
+"GESPEICHERT; GILT BEIM SPIELSTART",
+"GUARDADO; SE USA AL INICIAR EL JUEGO",
+"SALVATO; USATO ALL'AVVIO DEL GIOCO"
+],
+[
+"PRESS A TO UPDATE",
+"A : METTRE À JOUR",
+"A: AKTUALISIEREN",
+"PULSA A PARA ACTUALIZAR",
+"PREMI A PER AGGIORNARE"
+],
+[
+"* APPLIES AFTER RESTART",
+"* EFFET APRÈS REDÉMARRAGE",
+"* GILT NACH NEUSTART",
+"* SE APLICA TRAS REINICIAR",
+"* SI APPLICA DOPO IL RIAVVIO"
+],
+[
+"BACK",
+"RETOUR",
+"ZURÜCK",
+"VOLVER",
+"INDIETRO"
+],
+[
+"CHANGE",
+"MODIFIER",
+"ÄNDERN",
+"CAMBIAR",
+"MODIFICA"
+],
+[
+"RESTORE DEFAULTS",
+"RÉGLAGES PAR DÉFAUT",
+"ZURÜCKSETZEN",
+"RESTABLECER",
+"RIPRISTINA"
+],
+[
+"NAME UNCHANGED",
+"NOM INCHANGÉ",
+"NAME UNVERÄNDERT",
+"NOMBRE SIN CAMBIOS",
+"NOME INVARIATO"
+],
+[
+"NAME SAVED - USED AFTER RESTART",
+"NOM ENREGISTRÉ - UTILISÉ APRÈS REDÉMARRAGE",
+"NAME GESPEICHERT - GILT NACH NEUSTART",
+"NOMBRE GUARDADO - SE USA TRAS REINICIAR",
+"NOME SALVATO - USATO DOPO IL RIAVVIO"
+],
+[
+"LINK CODE",
+"CODE DE LIAISON",
+"LINK-CODE",
+"CÓDIGO DE VÍNCULO",
+"CODICE LINK"
+],
+[
+"Up/down: letter, left/right: position, X: delete. A keyboard works too.",
+"Haut/bas : lettre, gauche/droite : position, X : effacer. Un clavier fonctionne aussi.",
+"Hoch/runter: Buchstabe, links/rechts: Position, X: löschen. Eine Tastatur geht auch.",
+"Arriba/abajo: letra, izquierda/derecha: posición, X: borrar. También funciona un teclado.",
+"Su/giù: lettera, sinistra/destra: posizione, X: cancella. Funziona anche una tastiera."
+],
+[
+"The 6-letter code from SHOW LINK CODE on your other device.",
+"Le code de 6 lettres d'AFFICHER LE CODE sur votre autre appareil.",
+"Der Code aus 6 Buchstaben von LINK-CODE ZEIGEN auf dem anderen Gerät.",
+"El código de 6 letras de MOSTRAR CÓDIGO en tu otro dispositivo.",
+"Il codice di 6 lettere di MOSTRA CODICE sull'altro dispositivo."
+],
+[
+"Empty: the automatic name (this computer's name).",
+"Vide : le nom automatique (le nom de cet ordinateur).",
+"Leer: der automatische Name (der Name dieses Computers).",
+"Vacío: el nombre automático (el nombre de este equipo).",
+"Vuoto: il nome automatico (il nome di questo computer)."
+],
+[
+"{} of {} letters. Used from the next start.",
+"{} lettres sur {}. Utilisé dès le prochain démarrage.",
+"{} von {} Buchstaben. Gilt ab dem nächsten Start.",
+"{} de {} letras. Se usa desde el siguiente inicio.",
+"{} di {} lettere. Usato dal prossimo avvio."
+],
+[
+"CANCEL",
+"ANNULER",
+"ABBRECHEN",
+"CANCELAR",
+"ANNULLA"
+],
+[
+"LINK",
+"LIER",
+"VERKNÜPFEN",
+"VINCULAR",
+"COLLEGA"
+],
+[
+"SAVE",
+"ENREGISTRER",
+"SPEICHERN",
+"GUARDAR",
+"SALVA"
+],
+[
+"UPDATE TO {}?",
+"INSTALLER {} ?",
+"AUF {} AKTUALISIEREN?",
+"¿ACTUALIZAR A {}?",
+"AGGIORNARE A {}?"
+],
+[
+"Update now? The game closes, updates (about a minute) and starts again.",
+"Mettre à jour maintenant ? Le jeu se ferme, se met à jour (environ une minute) puis redémarre.",
+"Jetzt aktualisieren? Das Spiel wird beendet, aktualisiert (etwa eine Minute) und neu gestartet.",
+"¿Actualizar ahora? El juego se cierra, se actualiza (cerca de un minuto) y vuelve a iniciarse.",
+"Aggiornare ora? Il gioco si chiude, si aggiorna (circa un minuto) e si riavvia."
+],
+[
+"LATER",
+"PLUS TARD",
+"SPÄTER",
+"MÁS TARDE",
+"PIÙ TARDI"
+],
+[
+"UPDATE NOW",
+"METTRE À JOUR",
+"AKTUALISIEREN",
+"ACTUALIZAR YA",
+"AGGIORNA ORA"
+],
+[
+"NO GPU DRIVER FOUND",
+"AUCUN PILOTE GPU TROUVÉ",
+"KEIN GPU-TREIBER GEFUNDEN",
+"SIN CONTROLADOR DE GPU",
+"NESSUN DRIVER GPU TROVATO"
+],
+[
+"SOFTWARE RENDERING",
+"RENDU LOGICIEL",
+"SOFTWARE-RENDERING",
+"RENDERIZADO POR SOFTWARE",
+"RENDERING SOFTWARE"
+],
+[
+"THE GAME WILL RUN VERY SLOWLY",
+"LE JEU SERA TRÈS LENT",
+"DAS SPIEL WIRD SEHR LANGSAM LAUFEN",
+"EL JUEGO IRÁ MUY LENTO",
+"IL GIOCO SARÀ MOLTO LENTO"
+],
+[
+"INSTALL YOUR MESA VULKAN DRIVER",
+"INSTALLEZ VOTRE PILOTE MESA VULKAN",
+"MESA-VULKAN-TREIBER INSTALLIEREN",
+"INSTALA TU CONTROLADOR MESA VULKAN",
+"INSTALLA IL DRIVER MESA VULKAN"
+],
+[
+"UPDATE AVAILABLE",
+"MISE À JOUR DISPONIBLE",
+"UPDATE VERFÜGBAR",
+"ACTUALIZACIÓN DISPONIBLE",
+"AGGIORNAMENTO DISPONIBILE"
+],
+[
+"VERSION {}",
+"VERSION {}",
+"VERSION {}",
+"VERSIÓN {}",
+"VERSIONE {}"
+],
+[
+"OPTIONS > PC SETTINGS TO UPDATE",
+"OPTIONS > OPTIONS PC POUR METTRE À JOUR",
+"OPTIONEN > PC-OPTIONEN ZUM AKTUALISIEREN",
+"OPCIONES > OPCIONES PC PARA ACTUALIZAR",
+"OPZIONI > OPZIONI PC PER AGGIORNARE"
+],
+[
+"PACKET LOSS: THE GAME WILL STUTTER AND FEEL DELAYED",
+"PERTE DE PAQUETS : LE JEU VA SACCADER ET PARAÎTRE EN RETARD",
+"PAKETVERLUST: DAS SPIEL WIRD RUCKELN UND VERZÖGERT WIRKEN",
+"PÉRDIDA DE PAQUETES: EL JUEGO IRÁ A TIRONES Y CON RETRASO",
+"PERDITA DI PACCHETTI: IL GIOCO SCATTERÀ E SEMBRERÀ IN RITARDO"
+],
+[
+"HIGH LATENCY: THE GAME WILL FEEL DELAYED",
+"LATENCE ÉLEVÉE : LE JEU VA PARAÎTRE EN RETARD",
+"HOHE LATENZ: DAS SPIEL WIRD VERZÖGERT WIRKEN",
+"LATENCIA ALTA: EL JUEGO IRÁ CON RETRASO",
+"LATENZA ALTA: IL GIOCO SEMBRERÀ IN RITARDO"
+],
+[
+"{}% LOSS",
+"{}% DE PERTE",
+"{}% VERLUST",
+"{}% PÉRDIDA",
+"{}% PERDITA"
+],
+[
+"DIRECT",
+"DIRECT",
+"DIREKT",
+"DIRECTO",
+"DIRETTO"
+],
+[
+"VIA SERVER",
+"VIA SERVEUR",
+"ÜBER SERVER",
+"POR SERVIDOR",
+"VIA SERVER"
+],
+[
+"REDUNDANT",
+"REDONDANT",
+"REDUNDANT",
+"REDUNDANTE",
+"RIDONDANTE"
+],
+[
+"OPPONENT",
+"ADVERSAIRE",
+"GEGNER",
+"RIVAL",
+"AVVERSARIO"
+],
+[
+"PLAY WITH A FRIEND",
+"JOUER AVEC UN AMI",
+"MIT EINEM FREUND SPIELEN",
+"JUGAR CON UN AMIGO",
+"GIOCA CON UN AMICO"
+],
+[
+"SELECT",
+"CHOISIR",
+"AUSWÄHLEN",
+"ELEGIR",
+"SCEGLI"
+],
+[
+"Online play is not available.",
+"Le jeu en ligne n'est pas disponible.",
+"Online-Spiel ist nicht verfügbar.",
+"El juego en línea no está disponible.",
+"Il gioco online non è disponibile."
+],
+[
+"No online server is set (server= in tt-recomp.ini). SYSTEM LINK in the main menu plays against other machines on your local network.",
+"Aucun serveur en ligne n'est défini (server= dans tt-recomp.ini). SYSTEM LINK dans le menu principal permet de jouer contre d'autres machines de votre réseau local.",
+"Kein Online-Server festgelegt (server= in tt-recomp.ini). SYSTEM LINK im Hauptmenü spielt gegen andere Geräte im lokalen Netzwerk.",
+"No hay ningún servidor en línea configurado (server= en tt-recomp.ini). SYSTEM LINK en el menú principal juega contra otros equipos de tu red local.",
+"Nessun server online impostato (server= in tt-recomp.ini). SYSTEM LINK nel menu principale gioca contro altri computer della tua rete locale."
+],
+[
+"PLAY ANYONE",
+"JOUER AVEC TOUS",
+"MIT ALLEN SPIELEN",
+"JUGAR CON TODOS",
+"GIOCA CON TUTTI"
+],
+[
+"Find or create a match with anyone playing online.",
+"Trouvez ou créez un match avec n'importe quel joueur en ligne.",
+"Ein Match mit beliebigen Online-Spielern finden oder erstellen.",
+"Busca o crea una partida con cualquiera que juegue en línea.",
+"Trova o crea una partita con chiunque giochi online."
+],
+[
+"Play only with a friend: one of you shares a room code.",
+"Jouez uniquement avec un ami : l'un de vous partage un code de salon.",
+"Nur mit einem Freund spielen: Einer teilt einen Raumcode.",
+"Juega solo con un amigo: uno de los dos comparte un código de sala.",
+"Gioca solo con un amico: uno di voi condivide un codice stanza."
+],
+[
+"SHOW MY CODE",
+"VOIR MON CODE",
+"CODE ZEIGEN",
+"VER MI CÓDIGO",
+"IL MIO CODICE"
+],
+[
+"ENTER CODE",
+"SAISIR UN CODE",
+"CODE EINGEBEN",
+"INTRODUCIR CÓDIGO",
+"INSERISCI CODICE"
+],
+[
+"Get a code to give your friend, then create a match.",
+"Obtenez un code à donner à votre ami, puis créez un match.",
+"Einen Code für den Freund holen und dann ein Match erstellen.",
+"Consigue un código para tu amigo y luego crea una partida.",
+"Ottieni un codice da dare al tuo amico, poi crea una partita."
+],
+[
+"Type the code your friend gives you, then use QUICK MATCH.",
+"Tapez le code que vous donne votre ami, puis utilisez PARTIE RAPIDE.",
+"Den Code vom Freund eintippen und dann SCHNELLES SPIEL verwenden.",
+"Escribe el código que te dé tu amigo y luego usa PARTIDA RÁPIDA.",
+"Digita il codice che ti dà il tuo amico, poi usa PARTITA VELOCE."
+],
+[
+"Give this code to your friend:",
+"Donnez ce code à votre ami :",
+"Diesen Code dem Freund geben:",
+"Dale este código a tu amigo:",
+"Dai questo codice al tuo amico:"
+],
+[
+"Then choose PLAYER MATCH > CREATE MATCH. Your friend enters the code and uses QUICK MATCH.",
+"Choisissez ensuite PARTIE JOUEUR > CRÉER UNE PARTIE. Votre ami saisit le code et utilise PARTIE RAPIDE.",
+"Dann SPIELERMATCH > MATCH ERSTELLEN wählen. Der Freund gibt den Code ein und nutzt SCHNELLES SPIEL.",
+"Luego elige PARTIDA DE JUGADOR > CREAR PARTIDA. Tu amigo introduce el código y usa PARTIDA RÁPIDA.",
+"Poi scegli PARTITA GIOCATORE > CREA PARTITA. Il tuo amico inserisce il codice e usa PARTITA VELOCE."
+],
+[
+"CONTINUE",
+"CONTINUER",
+"WEITER",
+"CONTINUAR",
+"CONTINUA"
+],
+[
+"Enter your friend's code (up/down: letter, left/right: position):",
+"Saisissez le code de votre ami (haut/bas : lettre, gauche/droite : position) :",
+"Code des Freundes eingeben (hoch/runter: Buchstabe, links/rechts: Position):",
+"Introduce el código de tu amigo (arriba/abajo: letra, izquierda/derecha: posición):",
+"Inserisci il codice del tuo amico (su/giù: lettera, sinistra/destra: posizione):"
+],
+[
+"JOIN",
+"REJOINDRE",
+"BEITRETEN",
+"UNIRSE",
+"UNISCITI"
+],
+[
+"CONNECTED - {} IN THIS ROOM, {} ONLINE",
+"CONNECTÉ - {} DANS CE SALON, {} EN LIGNE",
+"VERBUNDEN - {} IN DIESEM RAUM, {} ONLINE",
+"CONECTADO - {} EN ESTA SALA, {} EN LÍNEA",
+"CONNESSO - {} IN QUESTA STANZA, {} ONLINE"
+],
+[
+"({} NEAR YOU)",
+"({} PRÈS DE VOUS)",
+"({} IN DER NÄHE)",
+"({} CERCA DE TI)",
+"({} VICINO A TE)"
+],
+[
+"SERVER {} MS",
+"SERVEUR {} MS",
+"SERVER {} MS",
+"SERVIDOR {} MS",
+"SERVER {} MS"
+],
+[
+"SHARPENING",
+"NETTETÉ",
+"SCHÄRFE",
+"NITIDEZ",
+"NITIDEZZA"
+],
+[
+"The game renders at GAME RESOLUTION (times RENDER SCALE). AUTO upscales it with FSR to windows at least 1.4 times as tall. CAS sharpens (good on the Steam Deck); FSR upscales and sharpens. INTEGER keeps menus and text crisp when the window is a whole multiple of the picture (1080P on a 4K screen: each pixel a clean 2 X 2 block); use it with RENDER SCALE 1X, since at 2X a 1080P game already fills a 4K screen.",
+"Le jeu est rendu en RÉSOLUTION DU JEU (fois l'ÉCHELLE DE RENDU). AUTO l'agrandit avec FSR dans les fenêtres au moins 1,4 fois plus hautes. CAS accentue la netteté (idéal sur Steam Deck) ; FSR agrandit et accentue. ENTIER garde menus et textes nets quand la fenêtre est un multiple exact de l'image (1080P sur un écran 4K : chaque pixel devient un bloc net de 2 X 2) ; à utiliser avec l'ÉCHELLE DE RENDU 1X, car en 2X un jeu en 1080P remplit déjà un écran 4K.",
+"Das Spiel rendert in SPIELAUFLÖSUNG (mal RENDERSKALA). AUTO skaliert es mit FSR auf Fenster, die mindestens 1,4-mal so hoch sind. CAS schärft (gut auf dem Steam Deck); FSR skaliert und schärft. INTEGER hält Menüs und Text scharf, wenn das Fenster ein ganzzahliges Vielfaches des Bildes ist (1080P auf einem 4K-Bildschirm: jedes Pixel ein sauberer 2 X 2-Block); zusammen mit RENDERSKALA 1X verwenden, denn bei 2X füllt ein 1080P-Spiel einen 4K-Bildschirm bereits aus.",
+"El juego se renderiza en RESOLUCIÓN DEL JUEGO (por la ESCALA DE RENDER). AUTO lo amplía con FSR en ventanas al menos 1,4 veces más altas. CAS aumenta la nitidez (bien en Steam Deck); FSR amplía y aumenta la nitidez. ENTERO mantiene nítidos menús y textos cuando la ventana es un múltiplo exacto de la imagen (1080P en una pantalla 4K: cada píxel es un bloque limpio de 2 X 2); úsalo con ESCALA DE RENDER 1X, porque en 2X un juego a 1080P ya llena una pantalla 4K.",
+"Il gioco viene renderizzato alla RISOLUZIONE GIOCO (per la SCALA RENDER). AUTO lo ingrandisce con FSR nelle finestre alte almeno 1,4 volte tanto. CAS aumenta la nitidezza (ottimo su Steam Deck); FSR ingrandisce e aumenta la nitidezza. INTERO mantiene nitidi menu e testi quando la finestra è un multiplo esatto dell'immagine (1080P su uno schermo 4K: ogni pixel diventa un blocco pulito di 2 X 2); usalo con SCALA RENDER 1X, perché a 2X un gioco a 1080P riempie già uno schermo 4K."
+],
+[
+"NORMAL",
+"NORMAL",
+"NORMAL",
+"NORMAL",
+"NORMALE"
+],
+[
+"ACHIEVEMENT SOUND",
+"SON DES SUCCÈS",
+"ERFOLGSTON",
+"SONIDO DE LOGROS",
+"SUONO OBIETTIVI"
+],
+[
+"Play a chime when an achievement unlocks.",
+"Joue un carillon quand un succès est débloqué.",
+"Spielt einen Ton ab, wenn ein Erfolg freigeschaltet wird.",
+"Suena un aviso al desbloquear un logro.",
+"Riproduce un suono quando sblocchi un obiettivo."
+],
+[
+"SHOW LINK CODE",
+"AFFICHER LE CODE",
+"LINK-CODE ZEIGEN",
+"MOSTRAR CÓDIGO",
+"MOSTRA CODICE"
+],
+[
+"Shows a one-time code (valid 5 minutes) that adds another PC or Steam Deck to this account, so ranked results and leaderboards stay together. Press A.",
+"Affiche un code à usage unique (valable 5 minutes) qui ajoute un autre PC ou Steam Deck à ce compte, pour garder ensemble résultats classés et classements. Appuyez sur A.",
+"Zeigt einen einmaligen Code (5 Minuten gültig), der einen weiteren PC oder ein Steam Deck zu diesem Konto hinzufügt, damit Ranglistenergebnisse zusammenbleiben. A drücken.",
+"Muestra un código de un solo uso (válido 5 minutos) que añade otro PC o Steam Deck a esta cuenta, para que los resultados y las clasificaciones sigan juntos. Pulsa A.",
+"Mostra un codice monouso (valido 5 minuti) che aggiunge un altro PC o Steam Deck a questo account, così risultati e classifiche restano insieme. Premi A."
+],
+[
+"ENTER LINK CODE",
+"SAISIR UN CODE",
+"LINK-CODE EINGEBEN",
+"INTRODUCIR CÓDIGO",
+"INSERISCI CODICE"
+],
+[
+"Joins this device to the account that showed the code. Its ranked results and leaderboard place are then shared with that device. Press A.",
+"Associe cet appareil au compte qui a affiché le code. Ses résultats classés et sa place au classement sont alors partagés avec cet appareil. Appuyez sur A.",
+"Verbindet dieses Gerät mit dem Konto, das den Code gezeigt hat. Ranglistenergebnisse und Platzierung werden dann mit diesem Gerät geteilt. A drücken.",
+"Une este dispositivo a la cuenta que mostró el código. Sus resultados y su puesto en la clasificación se comparten entonces con ese dispositivo. Pulsa A.",
+"Collega questo dispositivo all'account che ha mostrato il codice. I suoi risultati e la posizione in classifica vengono condivisi con quel dispositivo. Premi A."
+],
+[
+"CHECK AT START",
+"VÉRIFIER AU DÉMARRAGE",
+"BEIM START PRÜFEN",
+"COMPROBAR AL INICIAR",
+"CONTROLLA ALL'AVVIO"
+],
+[
+"Look for a new version each time the game starts.",
+"Recherche une nouvelle version à chaque démarrage du jeu.",
+"Bei jedem Spielstart nach einer neuen Version suchen.",
+"Busca una versión nueva cada vez que se inicia el juego.",
+"Cerca una nuova versione a ogni avvio del gioco."
+],
+[
+"AUTOMATIC UPDATES",
+"MISES À JOUR AUTO",
+"AUTOMATISCHE UPDATES",
+"ACTUALIZACIONES AUTO",
+"AGGIORNAMENTI AUTO"
+],
+[
+"Install new versions when the game starts.",
+"Installe les nouvelles versions au démarrage du jeu.",
+"Neue Versionen beim Spielstart installieren.",
+"Instala las versiones nuevas al iniciar el juego.",
+"Installa le nuove versioni all'avvio del gioco."
+],
+[
+"Anisotropic filtering keeps the floor, the table and the walls sharp when seen at a shallow angle. The Xbox 360 used little or none; 16X costs almost nothing on current graphics cards. AUTO is 16X, or OFF when the GPU cannot hold 60 FPS even at 720P (integrated graphics).",
+"Le filtrage anisotrope garde le sol, la table et les murs nets vus sous un angle rasant. La Xbox 360 l'utilisait peu ou pas ; 16X ne coûte presque rien sur les cartes graphiques actuelles. AUTO vaut 16X, ou NON si le GPU ne tient pas 60 FPS même en 720P (graphismes intégrés).",
+"Anisotrope Filterung hält Boden, Tisch und Wände auch bei flachem Blickwinkel scharf. Die Xbox 360 nutzte sie kaum oder gar nicht; 16X kostet auf aktuellen Grafikkarten fast nichts. AUTO ist 16X, oder AUS, wenn die GPU selbst bei 720P keine 60 FPS hält (integrierte Grafik).",
+"El filtrado anisótropo mantiene nítidos el suelo, la mesa y las paredes vistos en ángulo bajo. La Xbox 360 lo usaba poco o nada; 16X apenas cuesta nada en las tarjetas gráficas actuales. AUTO es 16X, o NO si la GPU no mantiene 60 FPS ni siquiera a 720P (gráficos integrados).",
+"Il filtro anisotropico mantiene nitidi pavimento, tavolo e pareti visti ad angolo radente. Xbox 360 lo usava poco o per niente; 16X non costa quasi nulla sulle schede grafiche attuali. AUTO è 16X, oppure NO se la GPU non regge 60 FPS nemmeno a 720P (grafica integrata)."
+],
+[
+"AUTO: 720p at 1X could not hold 60 FPS ({}); TEXTURE FILTERING AUTO is now off.",
+"AUTO : 720p en 1X n'a pas tenu 60 FPS ({}) ; FILTRAGE TEXTURES AUTO est désormais désactivé.",
+"AUTO: 720p bei 1X hielt keine 60 FPS ({}); TEXTURFILTER AUTO ist jetzt aus.",
+"AUTO: 720p a 1X no mantuvo 60 FPS ({}); FILTRADO TEXTURAS AUTO queda desactivado.",
+"AUTO: 720p a 1X non ha retto 60 FPS ({}); FILTRO TEXTURE AUTO ora è disattivato."
+]
+]

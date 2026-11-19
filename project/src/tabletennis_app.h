@@ -17,7 +17,9 @@
 #include "subtitles.h"
 #include "button_prompts.h"
 #include "offline_menu_device.h"
+#include "game_language.h"
 #include "intro_skip.h"
+#include "l10n.h"
 #include "achievement_ui.h"
 #include "frame_pacer.h"
 #include "pc_features.h"
@@ -73,7 +75,7 @@ class FpsOverlayDialog : public rex::ui::ImGuiDialog {
       draw->AddRectFilled(viewport->Pos,
           ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
           IM_COL32(0, 0, 0, 255));
-      const char* message = "LOADING MAIN MENU...";
+      const char* message = tabletennis::l10n::T("LOADING MAIN MENU...");
       auto* font = loading_font_ ? loading_font_ : ImGui::GetFont();
       // Use the baked loading face size, independent of the smaller overlay font.
       const float font_size = loading_font_ ? loading_font_->LegacySize
@@ -284,6 +286,7 @@ class TabletennisApp : public rex::ReXApp {
     if (config.gpu_plugin.empty()) {
       config.gpu_plugin = "xenos";
     }
+    tabletennis::language::Apply();
 
     // Always keep guest video mode refresh rate at 60.0 Hz.
     // This ensures guest VBlank interrupts fire at 60Hz so video player,
@@ -340,6 +343,11 @@ class TabletennisApp : public rex::ReXApp {
 
       std::filesystem::path exe_dir = rex::filesystem::GetExecutableFolder();
       std::filesystem::path flash_override = exe_dir / "assets" / "resource" / "flash";
+      // GAME LANGUAGE: the same menu with its added labels translated (patch_menu.py).
+      const std::filesystem::path localized = flash_override / tabletennis::language::Code();
+      if (tabletennis::language::Code() != "en" && std::filesystem::exists(localized / "flash.rpf")) {
+        flash_override = localized;
+      }
       if (std::filesystem::exists(flash_override / "flash.rpf")) {
         if (auto* root = vfs->ResolvePath("game:")) {
           auto dev = std::make_unique<OfflineMenuDevice>(flash_override, root->device());
@@ -368,7 +376,8 @@ class TabletennisApp : public rex::ReXApp {
     config.OversampleV = 2;
     config.PixelSnapH = false;
     config.RasterizerDensity = 2.0f;
-    static const ImWchar ranges[] = {0x20, 0x7E, 0};
+    // Latin-1 and the few other characters the translated message can use.
+    static const ImWchar ranges[] = {0x20, 0xFF, 0x152, 0x153, 0x2013, 0x2026, 0x20AC, 0x20AC, 0};
     for (const auto& path : LoadingFontCandidates()) {
       if (!std::filesystem::exists(path)) continue;
       loading_font_ = atlas->AddFontFromFileTTF(path.string().c_str(), 39.0f, &config, ranges);

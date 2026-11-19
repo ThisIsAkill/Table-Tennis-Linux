@@ -10,6 +10,7 @@
 #include "subtitles.h"
 
 #include "achievement_ui.h"
+#include "l10n.h"
 #include "pc_features.h"
 
 #include <algorithm>
@@ -39,6 +40,8 @@ extern "C" void __imp__sub_82162FF8(PPCContext& ctx, uint8_t* base);
 namespace tabletennis::subtitles {
 namespace {
 
+using l10n::F;
+using l10n::T;
 using Clock = std::chrono::steady_clock;
 
 // One player per nationality; line names use the nationality (FANS_<PLAYER>:..._<NATIONALITY>
@@ -98,8 +101,9 @@ bool Split(std::string_view s, std::string_view sep, std::string_view& left, std
   return true;
 }
 
+// "{} point" or "{} points" with the number in it; both forms are translated.
 std::string Plural(std::string_view number, const char* one, const char* many) {
-  return std::string(number) + " " + (number == "1" ? one : many);
+  return F(number == "1" ? one : many, {number});
 }
 
 struct Caption {
@@ -146,58 +150,57 @@ std::string AnnouncerText(const std::string& full) {
     }
     struct Named {
       const char* prefix;
-      const char* before;
-      const char* after;
+      const char* text;  // {} is the player's name
     };
     static constexpr Named kNamed[] = {
-        {"Serve_", "", " to serve."}, {"Point_", "Point, ", "."}, {"Fault_", "Fault, ", "."},
-        {"Game_", "Game, ", "."},     {"MATCH_", "Match, ", "."},
+        {"Serve_", N("{} to serve.")}, {"Point_", N("Point, {}.")}, {"Fault_", N("Fault, {}.")},
+        {"Game_", N("Game, {}.")},     {"MATCH_", N("Match, {}.")},
     };
     for (const Named& n : kNamed) {
       if (StartsWith(rest, n.prefix)) {
         const std::string who = PlayerName(rest.substr(std::strlen(n.prefix)));
-        if (!who.empty()) return n.before + who + n.after;
+        if (!who.empty()) return F(n.text, {who});
       }
     }
-    if (rest == "LetServe") return "Let.";
-    if (rest == "NET") return "Net.";
-    if (rest == "OUT") return "Out.";
-    if (rest == "ScoreTied") return "Score tied.";
+    if (rest == "LetServe") return T("Let.");
+    if (rest == "NET") return T("Net.");
+    if (rest == "OUT") return T("Out.");
+    if (rest == "ScoreTied") return T("Score tied.");
     return {};
   }
 
   // Score "7_5", games "2_GAME_1".
   if (Split(line, "_GAME_", a, b) && AllDigits(a) && AllDigits(b)) {
-    return "Games: " + std::string(a) + "\xE2\x80\x93" + std::string(b) + ".";
+    return F("Games: {}\xE2\x80\x93{}.", {a, b});
   }
   if (Split(line, "_", a, b) && AllDigits(a) && AllDigits(b)) {
     return std::string(a) + "\xE2\x80\x93" + std::string(b);
   }
 
-  if (line == "GAMEPOINT") return "Game point.";
-  if (line == "MATCHPOINT") return "Match point.";
-  if (line == "FINALGAME") return "Final game.";
-  if (line == "DEUCE") return "Deuce.";
-  if (line == "POINT") return "Point.";
-  if (line == "QUARTERFINAL") return "Quarter-final.";
-  if (line == "SEMIFINAL") return "Semi-final.";
-  if (line == "FINAL") return "Final.";
-  if (line == "ROUND_TIE") return "The round is tied.";
-  if (line == "TOURNAMENT_TIE") return "The tournament is tied.";
+  if (line == "GAMEPOINT") return T("Game point.");
+  if (line == "MATCHPOINT") return T("Match point.");
+  if (line == "FINALGAME") return T("Final game.");
+  if (line == "DEUCE") return T("Deuce.");
+  if (line == "POINT") return T("Point.");
+  if (line == "QUARTERFINAL") return T("Quarter-final.");
+  if (line == "SEMIFINAL") return T("Semi-final.");
+  if (line == "FINAL") return T("Final.");
+  if (line == "ROUND_TIE") return T("The round is tied.");
+  if (line == "TOURNAMENT_TIE") return T("The tournament is tied.");
   if (StartsWith(line, "GAME") && AllDigits(line.substr(4))) {
-    return "Game " + std::string(line.substr(4)) + ".";
+    return F("Game {}.", {line.substr(4)});
   }
   if (StartsWith(line, "ADVANTAGE_")) {
     const std::string who = PlayerName(line.substr(10));
-    if (!who.empty()) return "Advantage, " + who + ".";
+    if (!who.empty()) return F("Advantage, {}.", {who});
   }
   if (StartsWith(line, "ROUND_WIN_")) {
     const std::string who = PlayerName(line.substr(10));
-    if (!who.empty()) return who + " wins the round.";
+    if (!who.empty()) return F("{} wins the round.", {who});
   }
   if (StartsWith(line, "TOURNAMENT_WIN_")) {
     const std::string who = PlayerName(line.substr(15));
-    if (!who.empty()) return who + " wins the tournament.";
+    if (!who.empty()) return F("{} wins the tournament.", {who});
   }
 
   // Match formats: BESTOF5_11POINTS, SINGLEGAME_21POINTS, 11POINTGAME, 7POINTS_5MINUTES,
@@ -205,50 +208,49 @@ std::string AnnouncerText(const std::string& full) {
   if (StartsWith(line, "BESTOF") && Split(line.substr(6), "_", a, b) && AllDigits(a) &&
       StartsWith(b, "") && b.size() > 6 && b.substr(b.size() - 6) == "POINTS" &&
       AllDigits(b.substr(0, b.size() - 6))) {
-    return "Best of " + std::string(a) + " games, " + std::string(b.substr(0, b.size() - 6)) +
-           " points each.";
+    return F("Best of {} games, {} points each.", {a, b.substr(0, b.size() - 6)});
   }
   if (StartsWith(line, "SINGLEGAME_") && line.size() > 17 && line.substr(line.size() - 6) == "POINTS") {
-    return "A single game to " + std::string(line.substr(11, line.size() - 17)) + " points.";
+    return F("A single game to {} points.", {line.substr(11, line.size() - 17)});
   }
   if (line.size() > 9 && line.substr(line.size() - 9) == "POINTGAME" &&
       AllDigits(line.substr(0, line.size() - 9))) {
-    return "Game to " + std::string(line.substr(0, line.size() - 9)) + " points.";
+    return F("Game to {} points.", {line.substr(0, line.size() - 9)});
   }
   if (Split(line, "POINTS_", a, b) && AllDigits(a) && b.size() > 7 &&
       b.substr(b.size() - 7) == "MINUTES" && AllDigits(b.substr(0, b.size() - 7))) {
-    return Plural(a, "point", "points") + " or " +
-           Plural(b.substr(0, b.size() - 7), "minute", "minutes") + ".";
+    return F("{} or {}.", {Plural(a, N("{} point"), N("{} points")),
+                           Plural(b.substr(0, b.size() - 7), N("{} minute"), N("{} minutes"))});
   }
   if (Split(line, "MINUTES_ONCLOCK", a, b) && AllDigits(a) && b.empty()) {
-    return Plural(a, "minute", "minutes") + " on the clock.";
+    return F("{} on the clock.", {Plural(a, N("{} minute"), N("{} minutes"))});
   }
 
   // Players: LIUPING_VS_LUC, CHINESE_VS_FRENCH, CHINESE_lead_FRENCH, CHINESE_trail_FRENCH,
   // CHINESE_UP_3, CHINESE_DOWN_2, CHINESE_LEAD.
   if (Split(line, "_VS_", a, b)) {
     const std::string left = PlayerName(a), right = PlayerName(b);
-    if (!left.empty() && !right.empty()) return left + " versus " + right + ".";
+    if (!left.empty() && !right.empty()) return F("{} versus {}.", {left, right});
   }
   if (Split(line, "_lead_", a, b)) {
     const std::string left = PlayerName(a), right = PlayerName(b);
-    if (!left.empty() && !right.empty()) return left + " leads " + right + ".";
+    if (!left.empty() && !right.empty()) return F("{} leads {}.", {left, right});
   }
   if (Split(line, "_trail_", a, b)) {
     const std::string left = PlayerName(a), right = PlayerName(b);
-    if (!left.empty() && !right.empty()) return left + " trails " + right + ".";
+    if (!left.empty() && !right.empty()) return F("{} trails {}.", {left, right});
   }
   if (Split(line, "_UP_", a, b) && AllDigits(b)) {
     const std::string who = PlayerName(a);
-    if (!who.empty()) return who + " leads by " + Plural(b, "game", "games") + ".";
+    if (!who.empty()) return F("{} leads by {}.", {who, Plural(b, N("{} game"), N("{} games"))});
   }
   if (Split(line, "_DOWN_", a, b) && AllDigits(b)) {
     const std::string who = PlayerName(a);
-    if (!who.empty()) return who + " trails by " + Plural(b, "game", "games") + ".";
+    if (!who.empty()) return F("{} trails by {}.", {who, Plural(b, N("{} game"), N("{} games"))});
   }
   if (line.size() > 5 && line.substr(line.size() - 5) == "_LEAD") {
     const std::string who = PlayerName(line.substr(0, line.size() - 5));
-    if (!who.empty()) return who + " leads.";
+    if (!who.empty()) return F("{} leads.", {who});
   }
   // BOREDOM_xx and other lines whose wording is not known have no caption.
   return {};
@@ -268,44 +270,44 @@ std::string CrowdText(const std::string& full) {
     };
     // Longest prefixes first where one extends another.
     static constexpr Tag kTags[] = {
-        {"ENDING_APPLAUSE", "[applause]"},
-        {"ENDING_CHEER", "[crowd cheers]"},
-        {"CHEER_MATCH", "[crowd cheers]"},
-        {"CHEER_GAME", "[crowd cheers]"},
-        {"CHEER_LG", "[crowd cheers]"},
-        {"CHEER_MD", "[crowd cheers]"},
-        {"CHEER_BEERDRUNK", "[rowdy cheering]"},
-        {"CHEER", "[cheering]"},
-        {"APPLAUSE", "[applause]"},
-        {"SPIKE_GASP", "[crowd gasps]"},
-        {"SPIKE_OH", "[crowd: \xE2\x80\x9Coh!\xE2\x80\x9D]"},
-        {"SPIKE_OO", "[crowd: \xE2\x80\x9Cooh!\xE2\x80\x9D]"},
-        {"SHOCKED", "[crowd gasps]"},
-        {"FAULT_OUT_NEG", "[crowd groans]"},
-        {"FAULT_SHORT_NEG", "[crowd groans]"},
-        {"FAULT_OUT_POS", "[crowd cheers]"},
-        {"FAULT_SHORT_POS", "[crowd cheers]"},
-        {"BODYFALL", "[crowd laughs]"},
-        {"FAN_GENERIC", "[fans cheer]"},
+        {"ENDING_APPLAUSE", N("[applause]")},
+        {"ENDING_CHEER", N("[crowd cheers]")},
+        {"CHEER_MATCH", N("[crowd cheers]")},
+        {"CHEER_GAME", N("[crowd cheers]")},
+        {"CHEER_LG", N("[crowd cheers]")},
+        {"CHEER_MD", N("[crowd cheers]")},
+        {"CHEER_BEERDRUNK", N("[rowdy cheering]")},
+        {"CHEER", N("[cheering]")},
+        {"APPLAUSE", N("[applause]")},
+        {"SPIKE_GASP", N("[crowd gasps]")},
+        {"SPIKE_OH", N("[crowd: \xE2\x80\x9Coh!\xE2\x80\x9D]")},
+        {"SPIKE_OO", N("[crowd: \xE2\x80\x9Cooh!\xE2\x80\x9D]")},
+        {"SHOCKED", N("[crowd gasps]")},
+        {"FAULT_OUT_NEG", N("[crowd groans]")},
+        {"FAULT_SHORT_NEG", N("[crowd groans]")},
+        {"FAULT_OUT_POS", N("[crowd cheers]")},
+        {"FAULT_SHORT_POS", N("[crowd cheers]")},
+        {"BODYFALL", N("[crowd laughs]")},
+        {"FAN_GENERIC", N("[fans cheer]")},
     };
     for (const Tag& t : kTags) {
-      if (StartsWith(name, t.prefix)) return t.text;
+      if (StartsWith(name, t.prefix)) return T(t.text);
     }
     return {};
   }
   if (StartsWith(bank, "FANS_")) {
     const std::string who = PlayerName(bank.substr(5));
     if (who.empty()) return {};
-    if (StartsWith(name, "ADM_")) return "[" + who + "'s fans cheer]";
-    if (StartsWith(name, "ENC_")) return "[" + who + "'s fans shout encouragement]";
-    if (StartsWith(name, "HECKLE_")) return "[heckling]";
+    if (StartsWith(name, "ADM_")) return F("[{}'s fans cheer]", {who});
+    if (StartsWith(name, "ENC_")) return F("[{}'s fans shout encouragement]", {who});
+    if (StartsWith(name, "HECKLE_")) return T("[heckling]");
     return {};
   }
   // The venue's crowd voices: AMB_<VENUE>:HECKLE_.., BOREDOM_.., SHUT_UP_..
   if (StartsWith(bank, "AMB_")) {
-    if (StartsWith(name, "HECKLE_")) return "[heckling]";
-    if (StartsWith(name, "BOREDOM_")) return "[bored muttering]";
-    if (StartsWith(name, "SHUT_UP_")) return "[spectator shouts]";
+    if (StartsWith(name, "HECKLE_")) return T("[heckling]");
+    if (StartsWith(name, "BOREDOM_")) return T("[bored muttering]");
+    if (StartsWith(name, "SHUT_UP_")) return T("[spectator shouts]");
   }
   return {};
 }

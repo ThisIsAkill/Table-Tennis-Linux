@@ -106,11 +106,12 @@ It prints `@@step`, `@@progress`, `@@error` and `@@done` lines for a front end t
 | `--post` | `auto` `fsr` `cas` `bilinear` `integer` |
 | `--aspect` | `auto` `letterbox` `fill` |
 | `--brightness` | `0.8` to `2.0` |
-| `--texture_filtering` | `off` `2x` `4x` `8x` `16x` |
+| `--texture_filtering` | `auto` `off` `2x` `4x` `8x` `16x` (auto: 16x, off when the GPU cannot hold 60 FPS at 720p) |
 | `--button_prompts` | `auto` `xbox` `playstation` |
 | `--haptics` | `off` `light` `normal` |
 | `--motion_swing` | `off` `light` `normal` `strong` |
 | `--subtitles` | `off` `announcer` `all` |
+| `--language` | `en` `fr` `de` `es` `it` (the game's own translations; restart) |
 | `--achievement_sound`, `--voice_chat`, `--system_link` | `true` `false` |
 | `--keyboard` | `on` `off` |
 | `--gamemode` | `auto` `off` (Feral GameMode when installed) |
@@ -188,6 +189,10 @@ The game's **OPTIONS** menu, in the main menu and in the pause menu during a mat
 **ONLINE**: **player name**, the name other players see (press A, then the D-pad or a keyboard; up to 15 letters, digits, `-` and `_`; applies after a restart), your **ranked account** with **show link code** and **enter link code** (see Ranked matches below), **voice chat** on or off (see below), and the online server and connection status.
 
 **UPDATES**: check now, check at start, automatic updates, and the installed version.
+
+### Languages
+
+**PC SETTINGS > GAME > LANGUAGE** switches the game to French, German, Spanish or Italian (`language=` in `tt-recomp.ini`, from the next start). The game's menus and text come from its own translations on your disc, as on a European Xbox 360. This port's additions (PC SETTINGS, ONLINE and SYSTEM LINK, the main menu's extra rows, achievements, photo mode and subtitles) are translated too. The language selection follows davidptrssvea's Windows version 1.6.0, and several of its translations are reused.
 
 ### PlayStation button icons
 

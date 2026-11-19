@@ -7,6 +7,7 @@
 #include "button_prompts.h"
 #include "pc_features.h"
 #include "intro_skip.h"
+#include "l10n.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -198,7 +199,7 @@ ImFont* LoadFirst(ImFontAtlas* atlas, const std::vector<std::filesystem::path>& 
   config.OversampleH = 2;
   config.OversampleV = 1;
   config.PixelSnapH = false;
-  static const ImWchar ranges[] = {0x20, 0xFF, 0x2013, 0x2026, 0};
+  static const ImWchar ranges[] = {0x20, 0xFF, 0x152, 0x153, 0x2013, 0x2026, 0x20AC, 0x20AC, 0};
   for (const auto& path : candidates) {
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) continue;
@@ -246,9 +247,15 @@ std::string FormatDate(uint64_t filetime) {
 #else
   localtime_r(&seconds, &tm);
 #endif
-  char buffer[32];
-  std::strftime(buffer, sizeof(buffer), "%d %b %Y", &tm);
-  return Upper(buffer);
+  // Month names from the translations rather than the C locale's English ones.
+  static constexpr const char* kMonths[12] = {
+      N("JAN"), N("FEB"), N("MAR"), N("APR"), N("MAY"), N("JUN"),
+      N("JUL"), N("AUG"), N("SEP"), N("OCT"), N("NOV"), N("DEC"),
+  };
+  char day[4];
+  std::snprintf(day, sizeof(day), "%02d", tm.tm_mday);
+  return l10n::F("{} {} {}", {day, l10n::T(kMonths[std::clamp(tm.tm_mon, 0, 11)]),
+                              std::to_string(tm.tm_year + 1900)});
 }
 
 std::vector<uint32_t> ParseIdList(const char* env_name) {
@@ -642,7 +649,7 @@ void AchievementToast::DrawToast(ImGuiIO& io, const rex::system::AchievementInfo
   const float margin = kToast.margin * s;
 
   const std::string name = Upper(info.label);
-  const char* caption = "ACHIEVEMENT UNLOCKED";
+  const char* caption = l10n::T("ACHIEVEMENT UNLOCKED");
   ImFont* name_font = Heavy(name_px);
   ImFont* caption_font = Heavy(caption_px);
   const float badge_w = GamerscoreBadge(nullptr, 0, 0, score_px, int(info.gamerscore), 1.0f, false);
@@ -919,13 +926,16 @@ void AchievementsPanel::OnDraw(ImGuiIO& io) {
 
     const float title_px = 40.0f * s;
     AddOutlinedText(dl, Heavy(title_px), title_px, ImVec2(px0 + 8.0f * s, CapsTop(header_cy, title_px)),
-                    Yellow(in), Outline(in), 2.6f * s, "ACHIEVEMENTS", kCondensed);
+                    Yellow(in), Outline(in), 2.6f * s, l10n::T("ACHIEVEMENTS"), kCondensed);
 
     // Progress block on the right of the band.
     char line[64];
     const float stat_px = 17.0f * s;
     ImFont* stat_font = Heavy(stat_px);
-    std::snprintf(line, sizeof(line), "%d / %d UNLOCKED", unlocked_count_, int(entries_.size()));
+    std::snprintf(line, sizeof(line), "%s",
+                  l10n::F("{} / {} UNLOCKED", {std::to_string(unlocked_count_),
+                                               std::to_string(entries_.size())})
+                      .c_str());
     float wline = TextWidth(stat_font, stat_px, line, kCondensed);
     const float stats_right = px1 - 10.0f * s;
     AddOutlinedText(dl, stat_font, stat_px, ImVec2(stats_right - wline, CapsTop(header_cy - 11.0f * s, stat_px)),
@@ -1035,7 +1045,8 @@ void AchievementsPanel::OnDraw(ImGuiIO& io) {
     // Gamerscore and state on the right.
     const float right_x = rx1 - 12.0f * s;
     GamerscoreBadge(dl, right_x, ry0 + 20.0f * s, 20.0f * s, int(e.info.gamerscore), e.unlocked ? in : 0.55f * in);
-    const std::string state = e.unlocked ? "UNLOCKED " + e.unlock_date : std::string("LOCKED");
+    const std::string state =
+        e.unlocked ? l10n::F("UNLOCKED {}", {e.unlock_date}) : std::string(l10n::T("LOCKED"));
     ImFont* sf = Heavy(small_px);
     const float sw = TextWidth(sf, small_px, state.c_str(), kCondensed);
     AddText(dl, sf, small_px, ImVec2(right_x - sw, CapsTop(ry0 + 44.0f * s, small_px)),
@@ -1064,9 +1075,9 @@ void AchievementsPanel::OnDraw(ImGuiIO& io) {
     Triangle(dl, ImVec2(x + 5.0f * s, fcy - 5.0f * s), 7.0f * s, true, Yellow(in));
     Triangle(dl, ImVec2(x + 5.0f * s, fcy + 5.0f * s), 7.0f * s, false, Yellow(in));
     x += 20.0f * s;
-    AddText(dl, lf, label_px, ImVec2(x, CapsTop(fcy, label_px)), FooterText(in), "SCROLL", kCondensed);
+    AddText(dl, lf, label_px, ImVec2(x, CapsTop(fcy, label_px)), FooterText(in), l10n::T("SCROLL"), kCondensed);
     // Right: close with B.
-    const char* close_label = "CLOSE";
+    const char* close_label = l10n::T("CLOSE");
     const float close_w = TextWidth(lf, label_px, close_label, kCondensed);
     const float glyph_r = 10.0f * s;
     float right = px1 - 20.0f * s;
@@ -1074,7 +1085,7 @@ void AchievementsPanel::OnDraw(ImGuiIO& io) {
     right -= glyph_r * 2.0f + 8.0f * s;
     AddText(dl, lf, label_px, ImVec2(right - close_w, CapsTop(fcy, label_px)), FooterText(in), close_label, kCondensed);
     // Middle: how the list opens, for players who found it by accident.
-    const char* hint = "HOLD VIEW OR PRESS F7 TO OPEN";
+    const char* hint = l10n::T("HOLD VIEW OR PRESS F7 TO OPEN");
     const float hint_px = 11.0f * s;
     const float hint_w = TextWidth(lf, hint_px, hint, kCondensed);
     AddText(dl, lf, hint_px, ImVec2((px0 + px1 - hint_w) * 0.5f, CapsTop(fcy, hint_px)), FooterText(0.55f * in), hint, kCondensed);

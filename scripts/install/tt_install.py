@@ -62,6 +62,8 @@ def cmd_extract(args):
     temp.write_bytes(flash)
     patch_menu.patch(str(temp))  # offline menu, intro timing and the PC SETTINGS entry
     temp.replace(out)
+    if hasattr(patch_menu, 'write_languages'):
+        patch_menu.write_languages(str(out))  # the menu's added labels in the game's other languages
     print('Game executable and menu archive read from the ISO and verified; menu patched. ISO unchanged.')
 
 

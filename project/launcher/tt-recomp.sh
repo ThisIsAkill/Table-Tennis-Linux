@@ -18,9 +18,9 @@
 #                  [--player_name=NAME] [--lan_peers=IP,IP] [--server=HOST[:PORT]]
 #                  [--online_redundancy=auto|on|off] [--keyboard=on|off]
 #                  [--vsync=auto|on|off] [--brightness=0.8..2.0]
-#                  [--texture_filtering=off|2x|4x|8x|16x]
+#                  [--texture_filtering=auto|off|2x|4x|8x|16x]
 #                  [--motion_swing=off|strong|normal|light] [--subtitles=off|announcer|all]
-#                  [--portable=on|off] [--save]
+#                  [--language=en|fr|de|es|it] [--portable=on|off] [--save]
 #                  [-- extra engine flags...]
 #
 # System link (SYSTEM LINK in the main menu) plays against other PCs and Steam Decks on the same
@@ -84,9 +84,11 @@ online_redundancy="auto"
 keyboard="off"
 vsync="auto"
 brightness="1.0"
-texture_filtering="16x"
+texture_filtering="auto"
+texture_filtering_auto="16x"
 motion_swing="off"
 subtitles="off"
+language="en"
 portable="off"
 save=0
 extra=()
@@ -127,8 +129,10 @@ set_option() {
     vsync) vsync="$value" ;;
     brightness) brightness="$value" ;;
     texture_filtering) texture_filtering="$value" ;;
+    texture_filtering_auto) texture_filtering_auto="$value" ;;
     motion_swing) motion_swing="$value" ;;
     subtitles) subtitles="$value" ;;
+    language) language="$value" ;;
     portable) portable="$value" ;;
     *) return 1 ;;
   esac
@@ -225,10 +229,13 @@ case "$system_link" in true|false) ;; *) die "system_link must be true or false"
 case "$keyboard" in on|off) ;; *) die "keyboard must be on or off" ;; esac
 case "$vsync" in auto|on|off) ;; *) die "vsync must be auto, on or off" ;; esac
 [[ "$brightness" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "brightness must be a number (1.0 = normal)"
-# Anisotropic filtering keeps floor and table textures sharp at shallow angles.
-case "$texture_filtering" in
+# Anisotropic filtering keeps floor and table textures sharp at shallow angles. auto is 16x, or
+# off once the game measured that the GPU cannot hold 60 FPS even at 720p (texture_filtering_auto=).
+filtering="$texture_filtering"
+[[ "$filtering" == auto ]] && { [[ "$texture_filtering_auto" == off ]] && filtering=off || filtering=16x; }
+case "$filtering" in
   off) anisotropic=0 ;; 2x) anisotropic=2 ;; 4x) anisotropic=3 ;; 8x) anisotropic=4 ;; 16x) anisotropic=5 ;;
-  *) die "texture_filtering must be off, 2x, 4x, 8x or 16x" ;;
+  *) die "texture_filtering must be auto, off, 2x, 4x, 8x or 16x" ;;
 esac
 # Shots by a flick of a gyro controller; the value is how light a flick may be.
 case "$motion_swing" in
@@ -239,6 +246,7 @@ case "$motion_swing" in
   *) die "motion_swing must be off, strong, normal or light" ;;
 esac
 case "$subtitles" in off|announcer|all) ;; *) die "subtitles must be off, announcer or all" ;; esac
+case "$language" in en|fr|de|es|it) ;; *) die "language must be en, fr, de, es or it" ;; esac
 case "$portable" in on|true) portable=on ;; off|false) portable=off ;; *) die "portable must be on or off" ;; esac
 [[ "$player_name" =~ ^[A-Za-z0-9_\ -]{0,15}$ ]] || die "player_name: up to 15 letters, digits, spaces, - or _"
 [[ "$server" =~ ^[A-Za-z0-9.:_-]*$ ]] || die "server must be a host name or address, optionally with :port"
@@ -278,8 +286,10 @@ keyboard=$keyboard
 vsync=$vsync
 brightness=$brightness
 texture_filtering=$texture_filtering
+texture_filtering_auto=$texture_filtering_auto
 motion_swing=$motion_swing
 subtitles=$subtitles
+language=$language
 portable=$portable
 EOF
   mv -f "$config.tmp" "$config"
@@ -301,7 +311,7 @@ args=(
   "--display_brightness=$brightness"
   "--anisotropic_override=$anisotropic"
   "${motion_args[@]}"
-  "--subtitles=$subtitles"
+  "--subtitles=$subtitles" "--game_language=$language"
 )
 # portable=on keeps saves (user_data) and the shader cache (cache) in this folder instead of
 # ~/.local/share/tabletennis, so the whole install can be copied or moved. The first time, the
